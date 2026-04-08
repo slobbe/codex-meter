@@ -20,32 +20,6 @@ read_metadata_value() {
     sed -nE "s/^[[:space:]]*\"${key}\"[[:space:]]*:[[:space:]]*\"([^\"]+)\".*/\\1/p" "${METADATA_FILE}" | head -n 1
 }
 
-pack_with_gnome_extensions() {
-    local default_bundle="$1"
-    local -a pack_args=(
-        "${SCRIPT_DIR}"
-        --out-dir="${DIST_DIR}"
-        --force
-        --schema="${SCHEMA_FILE}"
-    )
-
-    if [[ -f "${SCRIPT_DIR}/LICENSE" ]]; then
-        pack_args+=(--extra-source="${SCRIPT_DIR}/LICENSE")
-    fi
-
-    if [[ -f "${SCRIPT_DIR}/README.md" ]]; then
-        pack_args+=(--extra-source="${SCRIPT_DIR}/README.md")
-    fi
-
-    printf 'Packing extension bundle with gnome-extensions...\n'
-    gnome-extensions pack "${pack_args[@]}"
-
-    if [[ ! -f "${default_bundle}" ]]; then
-        printf 'Expected bundle was not created: %s\n' "${default_bundle}" >&2
-        exit 1
-    fi
-}
-
 pack_with_zip() {
     local default_bundle="$1"
     local staging_dir
@@ -117,12 +91,7 @@ DEFAULT_BUNDLE="${DIST_DIR}/${UUID}.shell-extension.zip"
 VERSIONED_BUNDLE="${DIST_DIR}/${UUID}-${VERSION_NAME}.zip"
 
 rm -f "${DEFAULT_BUNDLE}" "${VERSIONED_BUNDLE}"
-
-if command -v gnome-extensions >/dev/null 2>&1; then
-    pack_with_gnome_extensions "${DEFAULT_BUNDLE}"
-else
-    pack_with_zip "${DEFAULT_BUNDLE}"
-fi
+pack_with_zip "${DEFAULT_BUNDLE}"
 
 mv -f "${DEFAULT_BUNDLE}" "${VERSIONED_BUNDLE}"
 
