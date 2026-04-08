@@ -27,9 +27,10 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {fetchCodexUsageSnapshot, readCachedUsageSnapshot} from './codex.js';
 
-const REFRESH_INTERVAL_SECONDS = 60;
 const SETTINGS_SHOW_FIVE_HOUR = 'show-five-hour';
 const SETTINGS_SHOW_WEEKLY = 'show-weekly';
+const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES = 'background-refresh-interval-minutes';
+const MIN_REFRESH_INTERVAL_MINUTES = 1;
 
 class CodexUsageIndicator extends PanelMenu.Button {
     static {
@@ -72,6 +73,11 @@ class CodexUsageIndicator extends PanelMenu.Button {
         if (this._settingsChangedId) {
             this._settings.disconnect(this._settingsChangedId);
             this._settingsChangedId = 0;
+        }
+
+        if (this._refreshIntervalChangedId) {
+            this._settings.disconnect(this._refreshIntervalChangedId);
+            this._refreshIntervalChangedId = 0;
         }
 
         super.destroy();
@@ -201,12 +207,25 @@ class CodexUsageIndicator extends PanelMenu.Button {
             this._syncLabel();
         });
 
+        this._refreshIntervalChangedId = this._settings.connect(
+            `changed::${SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES}`,
+            () => {
+                this._scheduleRefresh();
+            }
+        );
     }
 
     _scheduleRefresh() {
+        if (this._refreshId) {
+            GLib.source_remove(this._refreshId);
+            this._refreshId = 0;
+        }
+
+        const refreshIntervalSeconds = this._getRefreshIntervalSeconds();
+
         this._refreshId = GLib.timeout_add_seconds(
             GLib.PRIORITY_DEFAULT,
-            REFRESH_INTERVAL_SECONDS,
+            refreshIntervalSeconds,
             () => {
                 void this._refreshUsage();
                 return GLib.SOURCE_CONTINUE;
@@ -237,6 +256,13 @@ class CodexUsageIndicator extends PanelMenu.Button {
 
         if (snapshot)
             this._snapshot = snapshot;
+    }
+
+    _getRefreshIntervalSeconds() {
+        const intervalMinutes = this._settings.get_uint(SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES);
+        const safeMinutes = Math.max(MIN_REFRESH_INTERVAL_MINUTES, intervalMinutes);
+
+        return safeMinutes * 60;
     }
 
     _syncLabel() {

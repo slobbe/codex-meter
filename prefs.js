@@ -7,6 +7,7 @@ import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/ex
 
 const SETTINGS_SHOW_FIVE_HOUR = 'show-five-hour';
 const SETTINGS_SHOW_WEEKLY = 'show-weekly';
+const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES = 'background-refresh-interval-minutes';
 
 const DisplayPage = GObject.registerClass(
 class DisplayPage extends Adw.PreferencesPage {
@@ -46,6 +47,34 @@ class DisplayPage extends Adw.PreferencesPage {
             'active',
             Gio.SettingsBindFlags.DEFAULT
         );
+
+        const intervalAdjustment = new Gtk.Adjustment({
+            lower: 1,
+            upper: 60,
+            step_increment: 1,
+            page_increment: 5,
+            value: settings.get_uint(SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES),
+        });
+
+        const refreshIntervalRow = new Adw.SpinRow({
+            title: 'Background refresh interval',
+            subtitle: 'How often usage data refreshes in the background, in minutes.',
+            adjustment: intervalAdjustment,
+            climb_rate: 1,
+            digits: 0,
+        });
+        group.add(refreshIntervalRow);
+
+        refreshIntervalRow.connect('notify::value', () => {
+            settings.set_uint(
+                SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES,
+                Math.max(1, Math.round(refreshIntervalRow.value))
+            );
+        });
+
+        settings.connect(`changed::${SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES}`, () => {
+            refreshIntervalRow.value = settings.get_uint(SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES);
+        });
 
         this.add(group);
     }
