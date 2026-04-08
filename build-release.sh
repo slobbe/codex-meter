@@ -52,7 +52,7 @@ pack_with_zip() {
 
     require_command zip
     staging_dir="$(mktemp -d)"
-    trap 'rm -rf "${staging_dir}"' EXIT
+    trap "rm -rf -- $(printf '%q' "${staging_dir}")" EXIT
 
     printf 'Packing extension bundle with zip fallback...\n'
 
@@ -78,6 +78,9 @@ pack_with_zip() {
         cd "${staging_dir}"
         zip -qr "${default_bundle}" .
     )
+
+    rm -rf -- "${staging_dir}"
+    trap - EXIT
 }
 
 require_command glib-compile-schemas
