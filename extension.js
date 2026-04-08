@@ -143,8 +143,12 @@ class CodexUsageIndicator extends PanelMenu.Button {
             y_expand: true,
             style_class: 'cx-usage-bar-fill',
         });
+        const barSpacer = new St.Widget({
+            x_expand: true,
+        });
         barFill.width = 0;
         barTrack.add_child(barFill);
+        barTrack.add_child(barSpacer);
         barTrack.connect('notify::width', () => {
             this._updateUsageBar(item);
         });
@@ -166,6 +170,7 @@ class CodexUsageIndicator extends PanelMenu.Button {
         item.valueLabel = valueLabel;
         item.barTrack = barTrack;
         item.barFill = barFill;
+        item.barSpacer = barSpacer;
         item.percentValue = 0;
         item.detailLabel = detailLabel;
 
