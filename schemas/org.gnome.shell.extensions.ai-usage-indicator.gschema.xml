@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.ai-usage-indicator" path="/org/gnome/shell/extensions/ai-usage-indicator/">
+    <key name="show-five-hour" type="b">
+      <default>true</default>
+      <summary>Show the 5-hour usage percentage in the top bar</summary>
+      <description>If enabled, the top bar includes the current 5-hour Codex usage percentage.</description>
+    </key>
+    <key name="show-weekly" type="b">
+      <default>false</default>
+      <summary>Show the weekly usage percentage in the top bar</summary>
+      <description>If enabled, the top bar includes the current weekly Codex usage percentage.</description>
+    </key>
+  </schema>
+</schemalist>
