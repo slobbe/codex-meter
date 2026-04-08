@@ -1,11 +1,11 @@
 {
   "name": "Codex Usage Indicator",
   "description": "Show current Codex quota usage in the GNOME top bar",
-  "uuid": "ai-usage-indicator@slobbe",
+  "uuid": "codex-usage@slobbe.github.io",
   "shell-version": [
     "49"
   ],
-  "settings-schema": "org.gnome.shell.extensions.ai-usage-indicator",
+  "settings-schema": "org.gnome.shell.extensions.codex-usage",
   "version": 1,
   "version-name": "0.1.0"
 }
