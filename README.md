@@ -4,6 +4,10 @@
 
 ## Install
 
+> [!NOTE]
+> Codex Usage Indicator requires the Codex CLI to be installed and logged in on the same machine.
+> The extension reads your local Codex session from `~/.codex/auth.json`, so it will not work until that file exists.
+
 1. Download the latest release zip from GitHub.
 2. Install it with:
 
