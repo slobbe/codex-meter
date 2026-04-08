@@ -68,11 +68,11 @@ class AboutPage extends Adw.PreferencesPage {
             valign: Gtk.Align.CENTER,
         });
 
-        const icon = new Gtk.Image({
-            icon_name: 'utilities-system-monitor-symbolic',
-            pixel_size: 84,
-            margin_bottom: 16,
-        });
+        //const icon = new Gtk.Image({
+        //    icon_name: 'utilities-system-monitor-symbolic',
+        //    pixel_size: 84,
+        //    margin_bottom: 16,
+        //});
 
         const title = new Gtk.Label({
             label: `<span size="x-large"><b>${escapeMarkup(metadata.name ?? 'Codex Usage Indicator')}</b></span>`,
@@ -90,7 +90,7 @@ class AboutPage extends Adw.PreferencesPage {
             halign: Gtk.Align.CENTER,
         });
 
-        headerBox.append(icon);
+        //headerBox.append(icon);
         headerBox.append(title);
         headerBox.append(description);
         headerGroup.add(headerBox);
