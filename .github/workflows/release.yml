@@ -53,7 +53,7 @@ jobs:
 
       - name: Build release bundle
         shell: bash
-        run: ./build-release.sh
+        run: bash ./build-release.sh
 
       - name: Create GitHub release
         env:
