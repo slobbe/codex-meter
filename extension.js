@@ -81,30 +81,16 @@ class CodexUsageIndicator extends PanelMenu.Button {
     }
 
     _buildMenu() {
-        this._statusItem = this._createInfoItem('Loading Codex usage...');
-        this.menu.addMenuItem(this._statusItem);
-
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
-        this._fiveHourItem = this._createInfoItem('5h usage: --');
-        this._fiveHourResetItem = this._createInfoItem('5h reset: --');
-        this._weeklyItem = this._createInfoItem('Weekly usage: --');
-        this._weeklyResetItem = this._createInfoItem('Weekly reset: --');
+        this._fiveHourItem = this._createUsageItem('5 hour');
+        this._weeklyItem = this._createUsageItem('weekly');
+        this._accountSubscriptionItem = this._createAccountSubscriptionItem();
+        this._updatedItem = this._createInfoItem('Last update: --');
 
         this.menu.addMenuItem(this._fiveHourItem);
-        this.menu.addMenuItem(this._fiveHourResetItem);
         this.menu.addMenuItem(this._weeklyItem);
-        this.menu.addMenuItem(this._weeklyResetItem);
-
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
-        this._planItem = this._createInfoItem('Plan: --');
-        this._subscriptionItem = this._createInfoItem('Subscription: --');
-        this._accountItem = this._createInfoItem('Account: --');
-
-        this.menu.addMenuItem(this._planItem);
-        this.menu.addMenuItem(this._subscriptionItem);
-        this.menu.addMenuItem(this._accountItem);
+        this.menu.addMenuItem(this._accountSubscriptionItem);
+        this.menu.addMenuItem(this._updatedItem);
     }
 
     _createInfoItem(text) {
@@ -112,6 +98,107 @@ class CodexUsageIndicator extends PanelMenu.Button {
             reactive: false,
             can_focus: false,
         });
+    }
+
+    _createUsageItem(title) {
+        const item = new PopupMenu.PopupBaseMenuItem({
+            reactive: false,
+            can_focus: false,
+        });
+
+        const box = new St.BoxLayout({
+            vertical: true,
+            x_expand: true,
+            style_class: 'cx-usage-menu-item',
+        });
+
+        const headingBox = new St.BoxLayout({
+            x_expand: true,
+            style_class: 'cx-usage-heading-row',
+        });
+
+        const titleLabel = new St.Label({
+            text: title,
+            style_class: 'cx-usage-heading cx-usage-title',
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+
+        const valueLabel = new St.Label({
+            text: '-- used',
+            style_class: 'cx-usage-heading cx-usage-value',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+
+        const barTrack = new St.BoxLayout({
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'cx-usage-bar-track',
+        });
+
+        const barFill = new St.Widget({
+            y_expand: true,
+            style_class: 'cx-usage-bar-fill',
+        });
+        barFill.width = 0;
+        barTrack.add_child(barFill);
+        barTrack.connect('notify::width', () => {
+            this._updateUsageBar(item);
+        });
+
+        const detailLabel = new St.Label({
+            text: 'resets in --',
+            x_expand: true,
+            style_class: 'cx-usage-detail',
+        });
+
+        headingBox.add_child(titleLabel);
+        headingBox.add_child(valueLabel);
+
+        box.add_child(headingBox);
+        box.add_child(barTrack);
+        box.add_child(detailLabel);
+        item.add_child(box);
+        item.titleLabel = titleLabel;
+        item.valueLabel = valueLabel;
+        item.barTrack = barTrack;
+        item.barFill = barFill;
+        item.percentValue = 0;
+        item.detailLabel = detailLabel;
+
+        return item;
+    }
+
+    _createAccountSubscriptionItem() {
+        const item = new PopupMenu.PopupBaseMenuItem({
+            reactive: false,
+            can_focus: false,
+        });
+
+        const box = new St.BoxLayout({
+            x_expand: true,
+            style_class: 'cx-account-row',
+        });
+
+        const accountLabel = new St.Label({
+            text: 'Account: --',
+            x_expand: true,
+            style_class: 'cx-account-label',
+        });
+
+        const subscriptionLabel = new St.Label({
+            text: 'Subscription: --',
+            x_align: Clutter.ActorAlign.END,
+            style_class: 'cx-subscription-label',
+        });
+
+        box.add_child(accountLabel);
+        box.add_child(subscriptionLabel);
+        item.add_child(box);
+        item.accountLabel = accountLabel;
+        item.subscriptionLabel = subscriptionLabel;
+
+        return item;
     }
 
     _connectSignals() {
@@ -176,25 +263,52 @@ class CodexUsageIndicator extends PanelMenu.Button {
 
     _syncMenu() {
         if (!this._snapshot) {
-            this._statusItem.label.text = this._errorMessage ?? 'Loading Codex usage...';
-            this._fiveHourItem.label.text = '5h usage: --';
-            this._fiveHourResetItem.label.text = '5h reset: --';
-            this._weeklyItem.label.text = 'Weekly usage: --';
-            this._weeklyResetItem.label.text = 'Weekly reset: --';
-            this._planItem.label.text = 'Plan: --';
-            this._subscriptionItem.label.text = 'Subscription: --';
-            this._accountItem.label.text = 'Account: --';
+            const fallback = this._errorMessage ?? 'Loading Codex usage...';
+            this._setUsageItem(this._fiveHourItem, '5 hour', fallback, 'resets in --', null);
+            this._setUsageItem(this._weeklyItem, 'weekly', '--', 'resets in --', null);
+            this._accountSubscriptionItem.accountLabel.text = 'Account: --';
+            this._accountSubscriptionItem.subscriptionLabel.text = 'Subscription: --';
+            this._updatedItem.label.text = 'Last update: --';
             return;
         }
 
-        this._statusItem.label.text = `Updated ${formatTimestamp(this._snapshot.fetchedAt)}`;
-        this._fiveHourItem.label.text = `5h usage: ${formatPercent(this._snapshot.fiveHour?.usedPercent)}`;
-        this._fiveHourResetItem.label.text = `5h reset: ${formatReset(this._snapshot.fiveHour)}`;
-        this._weeklyItem.label.text = `Weekly usage: ${formatPercent(this._snapshot.weekly?.usedPercent)}`;
-        this._weeklyResetItem.label.text = `Weekly reset: ${formatReset(this._snapshot.weekly)}`;
-        this._planItem.label.text = `Plan: ${formatPlan(this._snapshot.subscription?.planType ?? this._snapshot.planType)}`;
-        this._subscriptionItem.label.text = `Subscription: ${formatSubscription(this._snapshot.subscription)}`;
-        this._accountItem.label.text = `Account: ${shortenAccountId(this._snapshot.subscription?.accountId)}`;
+        this._setUsageItem(
+            this._fiveHourItem,
+            '5 hour',
+            formatPercent(this._snapshot.fiveHour?.usedPercent),
+            formatReset(this._snapshot.fiveHour, 'five-hour'),
+            this._snapshot.fiveHour?.usedPercent
+        );
+        this._setUsageItem(
+            this._weeklyItem,
+            'weekly',
+            formatPercent(this._snapshot.weekly?.usedPercent),
+            formatReset(this._snapshot.weekly, 'weekly'),
+            this._snapshot.weekly?.usedPercent
+        );
+        this._accountSubscriptionItem.accountLabel.text = `Account: ${shortenAccountId(this._snapshot.subscription?.accountId)}`;
+        this._accountSubscriptionItem.subscriptionLabel.text = `Subscription: ${formatPlan(this._snapshot.subscription?.planType ?? this._snapshot.planType)}`;
+        this._updatedItem.label.text = `Last update: ${formatTimestamp(this._snapshot.fetchedAt)}`;
+    }
+
+    _setUsageItem(item, title, value, detail, percentValue) {
+        item.titleLabel.text = title;
+        item.valueLabel.text = `${value} used`;
+        item.detailLabel.text = detail;
+        item.percentValue = normalizePercent(percentValue);
+        this._updateUsageBar(item);
+    }
+
+    _updateUsageBar(item) {
+        const trackWidth = item.barTrack.width;
+        const percent = item.percentValue ?? 0;
+
+        if (trackWidth <= 0) {
+            item.barFill.width = 0;
+            return;
+        }
+
+        item.barFill.width = Math.round(trackWidth * (percent / 100));
     }
 }
 
@@ -202,26 +316,26 @@ function formatPercent(value) {
     return Number.isFinite(value) ? `${value}%` : '--';
 }
 
-function formatReset(window) {
+function formatReset(window, windowType) {
     if (!window)
-        return '--';
+        return 'resets in --';
 
-    const relative = formatDuration(window.resetAfterSeconds);
+    const relative = formatDuration(window.resetAfterSeconds, windowType);
     const absolute = formatUnixTimestamp(window.resetAt);
 
     if (relative === '--' && absolute === '--')
-        return '--';
+        return 'resets in --';
 
     if (relative === '--')
-        return absolute;
+        return `resets in -- (${absolute})`;
 
     if (absolute === '--')
-        return `in ${relative}`;
+        return `resets in ${relative}`;
 
-    return `in ${relative} (${absolute})`;
+    return `resets in ${relative} (${absolute})`;
 }
 
-function formatDuration(totalSeconds) {
+function formatDuration(totalSeconds, windowType) {
     if (!Number.isFinite(totalSeconds))
         return '--';
 
@@ -231,6 +345,12 @@ function formatDuration(totalSeconds) {
     const hours = Math.floor(remaining / 3600);
     remaining %= 3600;
     const minutes = Math.floor(remaining / 60);
+
+    if (windowType === 'five-hour')
+        return `${hours}h ${minutes}m`;
+
+    if (windowType === 'weekly')
+        return `${days}d ${hours}h`;
 
     const parts = [];
 
@@ -279,24 +399,18 @@ function formatPlan(value) {
         .join(' ');
 }
 
-function formatSubscription(subscription) {
-    if (!subscription)
-        return '--';
-
-    if (subscription.activeUntil)
-        return `active until ${formatTimestamp(subscription.activeUntil)}`;
-
-    if (subscription.activeStart)
-        return `active since ${formatTimestamp(subscription.activeStart)}`;
-
-    return '--';
-}
-
 function shortenAccountId(value) {
     if (!value)
         return '--';
 
     return value.length > 18 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
+}
+
+function normalizePercent(value) {
+    if (!Number.isFinite(value))
+        return 0;
+
+    return Math.max(0, Math.min(100, value));
 }
 
 export default class AIUsageIndicatorExtension extends Extension {

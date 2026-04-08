@@ -3,3 +3,53 @@
     min-width: 4.5em;
     text-align: center;
 }
+
+.cx-usage-menu-item {
+    spacing: 2px;
+}
+
+.cx-usage-heading-row {
+    spacing: 12px;
+}
+
+.cx-usage-heading {
+    font-weight: 700;
+    font-size: 1.05em;
+}
+
+.cx-usage-title {
+    text-align: left;
+}
+
+.cx-usage-bar-track {
+    margin-top: 2px;
+    height: 0.7em;
+    border-radius: 999px;
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+.cx-usage-bar-fill {
+    border-radius: 999px;
+    background-color: #67b7ff;
+}
+
+.cx-usage-value {
+    min-width: 5.5em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.cx-usage-detail {
+    margin-top: 2px;
+    font-size: 0.9em;
+    opacity: 0.75;
+}
+
+.cx-account-row {
+    spacing: 12px;
+}
+
+.cx-account-label,
+.cx-subscription-label {
+    font-size: 0.95em;
+}
