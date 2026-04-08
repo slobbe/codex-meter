@@ -63,3 +63,7 @@
 .cx-footer-label {
     font-size: 0.95em;
 }
+
+.cx-footer-button {
+    padding: 4px;
+}

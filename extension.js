@@ -193,11 +193,28 @@ class CodexUsageIndicator extends PanelMenu.Button {
             style_class: 'cx-footer-label',
         });
 
+        const settingsButton = new St.Button({
+            child: new St.Icon({
+                icon_name: 'emblem-system-symbolic',
+                style_class: 'popup-menu-icon',
+            }),
+            style_class: 'cx-footer-button',
+            can_focus: true,
+            x_align: Clutter.ActorAlign.END,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        settingsButton.connect('clicked', () => {
+            this.menu.close();
+            this._extension.openPreferences();
+        });
+
         box.add_child(updatedLabel);
         box.add_child(subscriptionLabel);
+        box.add_child(settingsButton);
         item.add_child(box);
         item.updatedLabel = updatedLabel;
         item.subscriptionLabel = subscriptionLabel;
+        item.settingsButton = settingsButton;
 
         return item;
     }
