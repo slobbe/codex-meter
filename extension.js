@@ -84,12 +84,12 @@ class CodexUsageIndicator extends PanelMenu.Button {
     }
 
     _buildMenu() {
-        this._planItem = this._createPlanItem();
+        this._headerItem = this._createHeaderItem();
         this._fiveHourItem = this._createUsageItem('5 hour');
         this._weeklyItem = this._createUsageItem('weekly');
         this._footerItem = this._createFooterItem();
 
-        this.menu.addMenuItem(this._planItem);
+        this.menu.addMenuItem(this._headerItem);
         this.menu.addMenuItem(this._fiveHourItem);
         this.menu.addMenuItem(this._weeklyItem);
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -172,32 +172,57 @@ class CodexUsageIndicator extends PanelMenu.Button {
         return item;
     }
 
-    _createPlanItem() {
+    _createHeaderItem() {
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
         });
 
         const box = new St.BoxLayout({
+            vertical: true,
             x_expand: true,
-            style_class: 'cx-plan-row',
+            style_class: 'cx-header-item',
         });
 
-        const spacer = new St.Widget({
+        const topRow = new St.BoxLayout({
             x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'cx-header-row',
         });
 
-        const planLabel = new St.Label({
-            text: '--',
-            style_class: 'cx-plan-tag',
+        const titleLabel = new St.Label({
+            text: 'Last updated',
+            x_expand: true,
+            style_class: 'cx-footer-label',
+        });
+
+        const refreshButton = new St.Button({
+            child: new St.Icon({
+                icon_name: 'view-refresh-symbolic',
+                style_class: 'popup-menu-icon',
+            }),
+            style_class: 'cx-footer-button',
+            can_focus: true,
             x_align: Clutter.ActorAlign.END,
             y_align: Clutter.ActorAlign.CENTER,
         });
+        refreshButton.connect('clicked', () => {
+            void this._refreshUsage();
+        });
 
-        box.add_child(spacer);
-        box.add_child(planLabel);
+        const datetimeLabel = new St.Label({
+            text: '--',
+            x_expand: true,
+            style_class: 'cx-header-detail',
+        });
+
+        topRow.add_child(titleLabel);
+        topRow.add_child(refreshButton);
+        box.add_child(topRow);
+        box.add_child(datetimeLabel);
         item.add_child(box);
-        item.planLabel = planLabel;
+        item.datetimeLabel = datetimeLabel;
+        item.refreshButton = refreshButton;
 
         return item;
     }
@@ -214,8 +239,8 @@ class CodexUsageIndicator extends PanelMenu.Button {
             style_class: 'cx-footer-row',
         });
 
-        const updatedLabel = new St.Label({
-            text: 'Last updated: --',
+        const planLabel = new St.Label({
+            text: '--',
             x_expand: true,
             style_class: 'cx-footer-label',
         });
@@ -235,10 +260,10 @@ class CodexUsageIndicator extends PanelMenu.Button {
             this._extension.openPreferences();
         });
 
-        box.add_child(updatedLabel);
+        box.add_child(planLabel);
         box.add_child(settingsButton);
         item.add_child(box);
-        item.updatedLabel = updatedLabel;
+        item.planLabel = planLabel;
         item.settingsButton = settingsButton;
 
         return item;
@@ -329,14 +354,14 @@ class CodexUsageIndicator extends PanelMenu.Button {
     _syncMenu() {
         if (!this._snapshot) {
             const fallback = this._errorMessage ?? 'Loading Codex usage...';
-            this._planItem.planLabel.text = '--';
+            this._headerItem.datetimeLabel.text = '--';
             this._setUsageItem(this._fiveHourItem, '5 hour', fallback, 'resets in --', null);
             this._setUsageItem(this._weeklyItem, 'weekly', '--', 'resets in --', null);
-            this._footerItem.updatedLabel.text = 'Last updated: --';
+            this._footerItem.planLabel.text = '--';
             return;
         }
 
-        this._planItem.planLabel.text = formatPlan(this._snapshot.subscription?.planType ?? this._snapshot.planType);
+        this._headerItem.datetimeLabel.text = formatTimestamp(this._snapshot.fetchedAt);
         this._setUsageItem(
             this._fiveHourItem,
             '5 hour',
@@ -351,7 +376,7 @@ class CodexUsageIndicator extends PanelMenu.Button {
             formatReset(this._snapshot.weekly, 'weekly'),
             this._snapshot.weekly?.usedPercent
         );
-        this._footerItem.updatedLabel.text = `Last updated: ${formatTimestamp(this._snapshot.fetchedAt)}`;
+        this._footerItem.planLabel.text = formatPlan(this._snapshot.subscription?.planType ?? this._snapshot.planType);
     }
 
     _setUsageItem(item, title, value, detail, percentValue) {

@@ -8,15 +8,17 @@
     spacing: 2px;
 }
 
-.cx-plan-row {
+.cx-header-item {
+    spacing: 2px;
+}
+
+.cx-header-row {
     spacing: 12px;
 }
 
-.cx-plan-tag {
-    padding: 4px 10px;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 999px;
+.cx-header-detail {
     font-size: 0.95em;
+    opacity: 0.8;
 }
 
 .cx-usage-heading-row {
