@@ -43,6 +43,7 @@ class CodexUsageIndicator extends PanelMenu.Button {
         this._extension = extension;
         this._settings = extension.getSettings();
         this._refreshId = 0;
+        this._refreshSpinId = 0;
         this._refreshInFlight = false;
         this._snapshot = null;
         this._errorMessage = null;
@@ -68,6 +69,11 @@ class CodexUsageIndicator extends PanelMenu.Button {
         if (this._refreshId) {
             GLib.source_remove(this._refreshId);
             this._refreshId = 0;
+        }
+
+        if (this._refreshSpinId) {
+            GLib.source_remove(this._refreshSpinId);
+            this._refreshSpinId = 0;
         }
 
         if (this._settingsChangedId) {
@@ -211,8 +217,10 @@ class CodexUsageIndicator extends PanelMenu.Button {
             x_align: Clutter.ActorAlign.END,
             y_align: Clutter.ActorAlign.CENTER,
         });
+        const refreshIcon = refreshButton.child;
+        refreshIcon.set_pivot_point(0.5, 0.5);
         refreshButton.connect('clicked', () => {
-            void this._refreshUsage();
+            void this._refreshUsage({manual: true});
         });
 
         const datetimeLabel = new St.Label({
@@ -227,6 +235,7 @@ class CodexUsageIndicator extends PanelMenu.Button {
         box.add_child(datetimeLabel);
         item.add_child(box);
         item.datetimeLabel = datetimeLabel;
+        item.refreshIcon = refreshIcon;
         item.refreshButton = refreshButton;
 
         return item;
@@ -309,11 +318,14 @@ class CodexUsageIndicator extends PanelMenu.Button {
         );
     }
 
-    async _refreshUsage() {
+    async _refreshUsage({manual = false} = {}) {
         if (this._refreshInFlight)
             return;
 
         this._refreshInFlight = true;
+
+        if (manual)
+            this._startRefreshSpin();
 
         try {
             this._snapshot = await fetchCodexUsageSnapshot();
@@ -321,6 +333,8 @@ class CodexUsageIndicator extends PanelMenu.Button {
         } catch (error) {
             this._errorMessage = error?.message ?? 'Unable to load Codex usage.';
         } finally {
+            if (manual)
+                this._stopRefreshSpin();
             this._refreshInFlight = false;
             this._syncLabel();
             this._syncMenu();
@@ -342,6 +356,38 @@ class CodexUsageIndicator extends PanelMenu.Button {
             return 0;
 
         return safeMinutes * 60;
+    }
+
+    _startRefreshSpin() {
+        if (!this._headerItem?.refreshIcon || this._refreshSpinId)
+            return;
+
+        this._headerItem.refreshButton.reactive = false;
+        this._headerItem.refreshButton.can_focus = false;
+
+        this._refreshSpinId = GLib.timeout_add(
+            GLib.PRIORITY_DEFAULT,
+            30,
+            () => {
+                this._headerItem.refreshIcon.rotation_angle_z =
+                    (this._headerItem.refreshIcon.rotation_angle_z + 18) % 360;
+                return GLib.SOURCE_CONTINUE;
+            }
+        );
+    }
+
+    _stopRefreshSpin() {
+        if (this._refreshSpinId) {
+            GLib.source_remove(this._refreshSpinId);
+            this._refreshSpinId = 0;
+        }
+
+        if (!this._headerItem?.refreshIcon)
+            return;
+
+        this._headerItem.refreshIcon.rotation_angle_z = 0;
+        this._headerItem.refreshButton.reactive = true;
+        this._headerItem.refreshButton.can_focus = true;
     }
 
     _syncLabel() {
