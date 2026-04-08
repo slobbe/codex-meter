@@ -74,11 +74,6 @@ class CodexUsageIndicator extends PanelMenu.Button {
             this._settingsChangedId = 0;
         }
 
-        if (this._menuOpenChangedId) {
-            this.menu.disconnect(this._menuOpenChangedId);
-            this._menuOpenChangedId = 0;
-        }
-
         super.destroy();
     }
 
@@ -206,10 +201,6 @@ class CodexUsageIndicator extends PanelMenu.Button {
             this._syncLabel();
         });
 
-        this._menuOpenChangedId = this.menu.connect('open-state-changed', (_menu, open) => {
-            if (open)
-                void this._refreshUsage();
-        });
     }
 
     _scheduleRefresh() {
