@@ -178,24 +178,19 @@ class CodexUsageIndicator extends PanelMenu.Button {
 
         const box = new St.BoxLayout({
             x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
             style_class: 'cx-footer-row',
         });
 
         const updatedLabel = new St.Label({
-            text: 'Last update: --',
+            text: 'Last updated: --',
             x_expand: true,
-            style_class: 'cx-footer-label',
-        });
-
-        const subscriptionLabel = new St.Label({
-            text: '--',
-            x_align: Clutter.ActorAlign.END,
             style_class: 'cx-footer-label',
         });
 
         const settingsButton = new St.Button({
             child: new St.Icon({
-                icon_name: 'emblem-system-symbolic',
+                icon_name: 'preferences-system-symbolic',
                 style_class: 'popup-menu-icon',
             }),
             style_class: 'cx-footer-button',
@@ -209,11 +204,9 @@ class CodexUsageIndicator extends PanelMenu.Button {
         });
 
         box.add_child(updatedLabel);
-        box.add_child(subscriptionLabel);
         box.add_child(settingsButton);
         item.add_child(box);
         item.updatedLabel = updatedLabel;
-        item.subscriptionLabel = subscriptionLabel;
         item.settingsButton = settingsButton;
 
         return item;
@@ -306,8 +299,7 @@ class CodexUsageIndicator extends PanelMenu.Button {
             const fallback = this._errorMessage ?? 'Loading Codex usage...';
             this._setUsageItem(this._fiveHourItem, '5 hour', fallback, 'resets in --', null);
             this._setUsageItem(this._weeklyItem, 'weekly', '--', 'resets in --', null);
-            this._footerItem.updatedLabel.text = 'Last update: --';
-            this._footerItem.subscriptionLabel.text = '--';
+            this._footerItem.updatedLabel.text = 'Last updated: --';
             return;
         }
 
@@ -325,8 +317,7 @@ class CodexUsageIndicator extends PanelMenu.Button {
             formatReset(this._snapshot.weekly, 'weekly'),
             this._snapshot.weekly?.usedPercent
         );
-        this._footerItem.updatedLabel.text = `Last update: ${formatRelativeTimestamp(this._snapshot.fetchedAt)}`;
-        this._footerItem.subscriptionLabel.text = formatPlan(this._snapshot.subscription?.planType ?? this._snapshot.planType);
+        this._footerItem.updatedLabel.text = `Last updated: ${formatTimestamp(this._snapshot.fetchedAt)}`;
     }
 
     _setUsageItem(item, title, value, detail, percentValue) {
@@ -444,34 +435,6 @@ function formatTimestamp(value) {
     } catch (_error) {
         return '--';
     }
-}
-
-function formatRelativeTimestamp(value) {
-    if (!value)
-        return '--';
-
-    const timestamp = new Date(value).getTime();
-
-    if (Number.isNaN(timestamp))
-        return '--';
-
-    const diffSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
-
-    if (diffSeconds < 45)
-        return 'just now';
-
-    if (diffSeconds < 3600) {
-        const minutes = Math.max(1, Math.floor(diffSeconds / 60));
-        return `${minutes} ${minutes === 1 ? 'min' : 'mins'} ago`;
-    }
-
-    if (diffSeconds < 86400) {
-        const hours = Math.floor(diffSeconds / 3600);
-        return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
-    }
-
-    const days = Math.floor(diffSeconds / 86400);
-    return `${days} ${days === 1 ? 'day' : 'days'} ago`;
 }
 
 function formatPlan(value) {
