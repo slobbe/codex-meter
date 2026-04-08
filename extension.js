@@ -292,6 +292,7 @@ class CodexUsageIndicator extends PanelMenu.Button {
         item.valueLabel.text = `${value} used`;
         item.detailLabel.text = detail;
         item.percentValue = normalizePercent(percentValue);
+        this._updateUsageBarColor(item);
         this._updateUsageBar(item);
     }
 
@@ -305,6 +306,26 @@ class CodexUsageIndicator extends PanelMenu.Button {
         }
 
         item.barFill.width = Math.round(trackWidth * (percent / 100));
+    }
+
+    _updateUsageBarColor(item) {
+        item.barFill.remove_style_class_name('cx-usage-bar-fill-green');
+        item.barFill.remove_style_class_name('cx-usage-bar-fill-orange');
+        item.barFill.remove_style_class_name('cx-usage-bar-fill-red');
+
+        const percent = item.percentValue ?? 0;
+
+        if (percent > 95) {
+            item.barFill.add_style_class_name('cx-usage-bar-fill-red');
+            return;
+        }
+
+        if (percent > 75) {
+            item.barFill.add_style_class_name('cx-usage-bar-fill-orange');
+            return;
+        }
+
+        item.barFill.add_style_class_name('cx-usage-bar-fill-green');
     }
 }
 

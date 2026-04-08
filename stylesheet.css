@@ -30,7 +30,18 @@
 
 .cx-usage-bar-fill {
     border-radius: 999px;
-    background-color: #67b7ff;
+}
+
+.cx-usage-bar-fill-green {
+    background-color: #49c16d;
+}
+
+.cx-usage-bar-fill-orange {
+    background-color: #e59a2f;
+}
+
+.cx-usage-bar-fill-red {
+    background-color: #d9534f;
 }
 
 .cx-usage-value {
