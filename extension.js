@@ -419,7 +419,7 @@ class CodexUsageIndicator extends PanelMenu.Button {
             return;
         }
 
-        this._headerItem.datetimeLabel.text = formatTimestamp(this._snapshot.fetchedAt);
+        this._headerItem.datetimeLabel.text = formatRelativeUpdateTimestamp(this._snapshot.fetchedAt);
         this._setUsageItem(
             this._fiveHourItem,
             'Session (5h)',
@@ -551,6 +551,38 @@ function formatTimestamp(value) {
         }).format(new Date(value));
     } catch (_error) {
         return '--';
+    }
+}
+
+function formatRelativeUpdateTimestamp(value) {
+    if (!value)
+        return "--";
+
+    try {
+        const updateTime = new Date(value).getTime();
+
+        if (!Number.isFinite(updateTime))
+            return "--";
+
+        const diffSeconds = Math.max(0, Math.floor((Date.now() - updateTime) / 1000));
+
+        if (diffSeconds < 60)
+            return "Updated just now";
+
+        const diffMinutes = Math.floor(diffSeconds / 60);
+
+        if (diffMinutes < 60)
+            return "Updated " + diffMinutes + "m ago";
+
+        const diffHours = Math.floor(diffMinutes / 60);
+
+        if (diffHours < 24)
+            return "Updated " + diffHours + "h ago";
+
+        const diffDays = Math.floor(diffHours / 24);
+        return "Updated " + diffDays + "d ago";
+    } catch (_error) {
+        return "--";
     }
 }
 
