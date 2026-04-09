@@ -29,6 +29,7 @@ import {fetchCodexUsageSnapshot, readCachedUsageSnapshot} from './codex.js';
 
 const SETTINGS_SHOW_FIVE_HOUR = 'show-five-hour';
 const SETTINGS_SHOW_WEEKLY = 'show-weekly';
+const SETTINGS_TOP_BAR_DISPLAY_MODE = 'top-bar-display-mode';
 const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES = 'background-refresh-interval-minutes';
 const MIN_REFRESH_INTERVAL_MINUTES = 0;
 
@@ -48,13 +49,29 @@ class CodexUsageIndicator extends PanelMenu.Button {
         this._snapshot = null;
         this._errorMessage = null;
 
+        this._panelBox = new St.BoxLayout({
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'cx-panel-box',
+        });
+
+        this._prefixLabel = new St.Label({
+            text: 'CX',
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'cx-panel-prefix',
+        });
+
         this._label = new St.Label({
-            text: 'CX --',
+            text: '--',
             y_align: Clutter.ActorAlign.CENTER,
             style_class: 'cx-usage-label',
         });
 
-        this.add_child(this._label);
+        this._panelBars = this._createPanelBars();
+
+        this._panelBox.add_child(this._prefixLabel);
+        this._panelBox.add_child(this._label);
+        this._panelBox.add_child(this._panelBars);
+        this.add_child(this._panelBox);
         this._buildMenu();
         this._connectSignals();
         this._loadCachedSnapshot();
@@ -100,6 +117,53 @@ class CodexUsageIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(this._weeklyItem);
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         this.menu.addMenuItem(this._footerItem);
+    }
+
+    _createPanelBars() {
+        const box = new St.BoxLayout({
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'cx-panel-bars',
+        });
+
+        this._panelFiveHourBar = this._createPanelBar();
+        this._panelWeeklyBar = this._createPanelBar();
+
+        box.add_child(this._panelFiveHourBar.barTrack);
+        box.add_child(this._panelWeeklyBar.barTrack);
+
+        return box;
+    }
+
+    _createPanelBar() {
+        const barTrack = new St.BoxLayout({
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'cx-panel-bar-track',
+        });
+
+        const barFill = new St.Widget({
+            y_expand: true,
+            style_class: 'cx-usage-bar-fill cx-panel-bar-fill',
+        });
+        const barSpacer = new St.Widget({
+            x_expand: true,
+        });
+
+        barFill.width = 0;
+        barTrack.add_child(barFill);
+        barTrack.add_child(barSpacer);
+
+        const bar = {
+            barTrack,
+            barFill,
+            barSpacer,
+            percentValue: 0,
+        };
+
+        barTrack.connect('notify::width', () => {
+            this._updateUsageBar(bar);
+        });
+
+        return bar;
     }
 
     _createInfoItem(text) {
@@ -391,22 +455,49 @@ class CodexUsageIndicator extends PanelMenu.Button {
     }
 
     _syncLabel() {
+        const showFiveHour = this._settings.get_boolean(SETTINGS_SHOW_FIVE_HOUR);
+        const showWeekly = this._settings.get_boolean(SETTINGS_SHOW_WEEKLY);
+        const displayMode = this._settings.get_string(SETTINGS_TOP_BAR_DISPLAY_MODE);
+        const includeFiveHour = showFiveHour || !showWeekly;
+
+        this._panelFiveHourBar.barTrack.visible = includeFiveHour;
+        this._panelWeeklyBar.barTrack.visible = showWeekly;
+
+        if (this._snapshot) {
+            this._panelFiveHourBar.percentValue = normalizePercent(this._snapshot.fiveHour?.usedPercent);
+            this._panelWeeklyBar.percentValue = normalizePercent(this._snapshot.weekly?.usedPercent);
+            this._updateUsageBarColor(this._panelFiveHourBar);
+            this._updateUsageBarColor(this._panelWeeklyBar);
+            this._updateUsageBar(this._panelFiveHourBar);
+            this._updateUsageBar(this._panelWeeklyBar);
+        } else {
+            this._panelFiveHourBar.percentValue = 0;
+            this._panelWeeklyBar.percentValue = 0;
+            this._updateUsageBar(this._panelFiveHourBar);
+            this._updateUsageBar(this._panelWeeklyBar);
+        }
+
+        const showPanelBars = displayMode === 'bars' && this._snapshot;
+        this._panelBars.visible = showPanelBars;
+        this._label.visible = !showPanelBars;
+
+        if (showPanelBars)
+            return;
+
         if (!this._snapshot) {
-            this._label.text = this._errorMessage ? 'CX !' : 'CX --';
+            this._label.text = this._errorMessage ? '!' : '--';
             return;
         }
 
-        const showFiveHour = this._settings.get_boolean(SETTINGS_SHOW_FIVE_HOUR);
-        const showWeekly = this._settings.get_boolean(SETTINGS_SHOW_WEEKLY);
         const parts = [];
 
-        if (showFiveHour || !showWeekly)
+        if (includeFiveHour)
             parts.push(formatPercent(this._snapshot.fiveHour?.usedPercent));
 
         if (showWeekly)
             parts.push(formatPercent(this._snapshot.weekly?.usedPercent));
 
-        this._label.text = `CX ${parts.join('/')}`;
+        this._label.text = parts.join('/');
     }
 
     _syncMenu() {

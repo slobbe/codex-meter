@@ -7,6 +7,7 @@ import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/ex
 
 const SETTINGS_SHOW_FIVE_HOUR = 'show-five-hour';
 const SETTINGS_SHOW_WEEKLY = 'show-weekly';
+const SETTINGS_TOP_BAR_DISPLAY_MODE = 'top-bar-display-mode';
 const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES = 'background-refresh-interval-minutes';
 
 const DisplayPage = GObject.registerClass(
@@ -19,7 +20,27 @@ class DisplayPage extends Adw.PreferencesPage {
 
         const group = new Adw.PreferencesGroup({
             title: 'Top Bar',
-            description: 'Choose which Codex usage percentages are shown in the GNOME top bar.',
+            description: 'Choose what the GNOME top bar shows and which usage windows are included.',
+        });
+
+        const topBarStyleRow = new Adw.ComboRow({
+            title: 'Top bar style',
+            subtitle: 'Choose whether the GNOME top bar shows percentages or compact progress bars.',
+            model: Gtk.StringList.new(['Percentages', 'Progress bars']),
+            selected: settings.get_string(SETTINGS_TOP_BAR_DISPLAY_MODE) === 'bars' ? 1 : 0,
+        });
+        group.add(topBarStyleRow);
+
+        topBarStyleRow.connect('notify::selected', () => {
+            settings.set_string(
+                SETTINGS_TOP_BAR_DISPLAY_MODE,
+                topBarStyleRow.selected === 1 ? 'bars' : 'percentages'
+            );
+        });
+
+        settings.connect(`changed::${SETTINGS_TOP_BAR_DISPLAY_MODE}`, () => {
+            topBarStyleRow.selected =
+                settings.get_string(SETTINGS_TOP_BAR_DISPLAY_MODE) === 'bars' ? 1 : 0;
         });
 
         const fiveHourRow = new Adw.SwitchRow({

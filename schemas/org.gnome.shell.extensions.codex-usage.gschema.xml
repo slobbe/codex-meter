@@ -11,6 +11,15 @@
       <summary>Show the weekly usage percentage in the top bar</summary>
       <description>If enabled, the top bar includes the current weekly Codex usage percentage.</description>
     </key>
+    <key name="top-bar-display-mode" type="s">
+      <default>'percentages'</default>
+      <summary>Top bar display mode</summary>
+      <description>Controls whether the top bar shows usage percentages or compact progress bars.</description>
+      <choices>
+        <choice value='percentages'/>
+        <choice value='bars'/>
+      </choices>
+    </key>
     <key name="background-refresh-interval-minutes" type="u">
       <default>1</default>
       <summary>Background refresh interval in minutes</summary>
