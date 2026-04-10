@@ -7,8 +7,9 @@ Monitor your Codex usage directly from the GNOME top bar.
 ## Features
 
 - Displays current 5-hour and weekly Codex usage
+- Shows 5-hour usage, weekly usage, or both in the top bar
+- Choose between raw percentages, progress bars, or unified _combined-pressure_ bar
 - Supports manual refresh and configurable background refresh intervals
-- Lets you choose whether the top bar shows 5-hour usage, weekly usage, or both
 
 ## Install
 
