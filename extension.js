@@ -443,9 +443,10 @@ class CodexUsageIndicator extends PanelMenu.Button {
         const showFiveHour = this._settings.get_boolean(SETTINGS_SHOW_FIVE_HOUR);
         const showWeekly = this._settings.get_boolean(SETTINGS_SHOW_WEEKLY);
         const displayMode = this._settings.get_string(SETTINGS_TOP_BAR_DISPLAY_MODE);
-        const includeFiveHour = showFiveHour || !showWeekly;
-        const showUnifiedBar = displayMode === 'unified' && this._snapshot;
-        const showSplitBars = displayMode === 'bars' && this._snapshot;
+        const hasTopBarUsage = showFiveHour || showWeekly;
+        const includeFiveHour = showFiveHour;
+        const showUnifiedBar = displayMode === 'unified' && this._snapshot && hasTopBarUsage;
+        const showSplitBars = displayMode === 'bars' && this._snapshot && hasTopBarUsage;
 
         if (showUnifiedBar) {
             this._panelFiveHourBar.barTrack.visible = true;
@@ -483,6 +484,11 @@ class CodexUsageIndicator extends PanelMenu.Button {
 
         if (showSplitBars || showUnifiedBar)
             return;
+
+        if (!hasTopBarUsage) {
+            this._label.text = '';
+            return;
+        }
 
         if (!this._snapshot) {
             this._label.text = this._errorMessage ? '!' : '--';
