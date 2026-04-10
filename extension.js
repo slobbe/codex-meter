@@ -155,7 +155,6 @@ class CodexUsageIndicator extends PanelMenu.Button {
         const bar = {
             barTrack,
             barFill,
-            barSpacer,
             percentValue: 0,
         };
 
@@ -164,13 +163,6 @@ class CodexUsageIndicator extends PanelMenu.Button {
         });
 
         return bar;
-    }
-
-    _createInfoItem(text) {
-        return new PopupMenu.PopupMenuItem(text, {
-            reactive: false,
-            can_focus: false,
-        });
     }
 
     _createUsageItem(title) {
@@ -240,7 +232,6 @@ class CodexUsageIndicator extends PanelMenu.Button {
         item.valueLabel = valueLabel;
         item.barTrack = barTrack;
         item.barFill = barFill;
-        item.barSpacer = barSpacer;
         item.percentValue = 0;
         item.detailLabel = detailLabel;
 

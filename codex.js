@@ -10,19 +10,19 @@ const CACHE_PATH = GLib.build_filenamev([CACHE_DIR, 'snapshot.json']);
 Gio._promisify(Gio.File.prototype, 'load_contents_async');
 Gio._promisify(Soup.Session.prototype, 'send_and_read_async');
 
-export async function readCodexAuthFile() {
+async function readCodexAuthFile() {
     const raw = await readTextFile(CODEX_AUTH_PATH);
     return JSON.parse(raw);
 }
 
-export async function readTextFile(path) {
+async function readTextFile(path) {
     const file = Gio.File.new_for_path(path);
     const [contents] = await file.load_contents_async(null);
 
     return new TextDecoder('utf-8').decode(contents);
 }
 
-export async function requestUsageQuota(accessToken) {
+async function requestUsageQuota(accessToken) {
     const token = typeof accessToken === 'string' ? accessToken.trim() : '';
 
     if (!token)
@@ -73,7 +73,7 @@ export function readCachedUsageSnapshot() {
     }
 }
 
-export function writeCachedUsageSnapshot(snapshot) {
+function writeCachedUsageSnapshot(snapshot) {
     try {
         GLib.mkdir_with_parents(CACHE_DIR, 0o755);
         GLib.file_set_contents(CACHE_PATH, JSON.stringify(snapshot));
@@ -112,10 +112,6 @@ function extractSubscriptionDetails(auth, usage) {
 
     return {
         planType: usage?.plan_type ?? tokenAuth.chatgpt_plan_type ?? null,
-        activeStart: tokenAuth.chatgpt_subscription_active_start ?? null,
-        activeUntil: tokenAuth.chatgpt_subscription_active_until ?? null,
-        lastChecked: tokenAuth.chatgpt_subscription_last_checked ?? null,
-        accountId: auth?.tokens?.account_id ?? usage?.account_id ?? null,
     };
 }
 
@@ -137,10 +133,6 @@ function normalizeSubscription(subscription) {
 
     return {
         planType: subscription.planType ?? null,
-        activeStart: subscription.activeStart ?? null,
-        activeUntil: subscription.activeUntil ?? null,
-        lastChecked: subscription.lastChecked ?? null,
-        accountId: subscription.accountId ?? null,
     };
 }
 
