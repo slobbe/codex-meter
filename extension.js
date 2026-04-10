@@ -458,10 +458,17 @@ class CodexUsageIndicator extends PanelMenu.Button {
 
         if (this._snapshot) {
             if (showUnifiedBar) {
-                this._panelFiveHourBar.percentValue = calculateUnifiedPercent(
-                    this._snapshot.fiveHour?.usedPercent,
-                    this._snapshot.weekly?.usedPercent
-                );
+                if (showFiveHour && showWeekly) {
+                    this._panelFiveHourBar.percentValue = calculateUnifiedPercent(
+                        this._snapshot.fiveHour?.usedPercent,
+                        this._snapshot.weekly?.usedPercent
+                    );
+                } else if (showFiveHour) {
+                    this._panelFiveHourBar.percentValue = normalizePercent(this._snapshot.fiveHour?.usedPercent);
+                } else {
+                    this._panelFiveHourBar.percentValue = normalizePercent(this._snapshot.weekly?.usedPercent);
+                }
+
                 this._panelWeeklyBar.percentValue = 0;
             } else {
                 this._panelFiveHourBar.percentValue = normalizePercent(this._snapshot.fiveHour?.usedPercent);
