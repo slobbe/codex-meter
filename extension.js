@@ -45,6 +45,7 @@ class CodexUsageIndicator extends PanelMenu.Button {
         this._settings = extension.getSettings();
         this._refreshId = 0;
         this._refreshSpinId = 0;
+        this._menuSyncId = 0;
         this._refreshInFlight = false;
         this._snapshot = null;
         this._errorMessage = null;
@@ -91,6 +92,16 @@ class CodexUsageIndicator extends PanelMenu.Button {
         if (this._refreshSpinId) {
             GLib.source_remove(this._refreshSpinId);
             this._refreshSpinId = 0;
+        }
+
+        if (this._menuSyncId) {
+            GLib.source_remove(this._menuSyncId);
+            this._menuSyncId = 0;
+        }
+
+        if (this._menuOpenChangedId) {
+            this.menu.disconnect(this._menuOpenChangedId);
+            this._menuOpenChangedId = 0;
         }
 
         if (this._settingsChangedId) {
@@ -334,6 +345,11 @@ class CodexUsageIndicator extends PanelMenu.Button {
     }
 
     _connectSignals() {
+        this._menuOpenChangedId = this.menu.connect('open-state-changed', (_menu, isOpen) => {
+            if (isOpen)
+                this._queueMenuBarSync();
+        });
+
         this._settingsChangedId = this._settings.connect('changed', () => {
             this._syncLabel();
         });
@@ -539,6 +555,18 @@ class CodexUsageIndicator extends PanelMenu.Button {
             this._snapshot.weekly?.usedPercent
         );
         this._footerItem.planLabel.text = formatPlan(this._snapshot.subscription?.planType ?? this._snapshot.planType);
+    }
+
+    _queueMenuBarSync() {
+        if (this._menuSyncId)
+            return;
+
+        this._menuSyncId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._menuSyncId = 0;
+            this._updateUsageBar(this._fiveHourItem);
+            this._updateUsageBar(this._weeklyItem);
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     _setUsageItem(item, title, value, detail, percentValue) {
