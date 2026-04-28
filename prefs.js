@@ -159,10 +159,6 @@ class AboutPage extends Adw.PreferencesPage {
             'UUID',
             metadata.uuid ?? '--'
         ));
-        infoGroup.add(this._createInfoRow(
-            'License',
-            metadata.license ?? 'GNU General Public License v3.0 or later'
-        ));
         infoGroup.add(this._createLinkRow(
             'GitHub',
             metadata.url ?? 'https://github.com/slobbe/gnome-codex-usage-indicator'
