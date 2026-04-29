@@ -32,6 +32,9 @@ const SETTINGS_SHOW_WEEKLY = 'show-weekly';
 const SETTINGS_TOP_BAR_DISPLAY_MODE = 'top-bar-display-mode';
 const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES = 'background-refresh-interval-minutes';
 const MIN_REFRESH_INTERVAL_MINUTES = 0;
+const MIN_PREDICTION_SAMPLES = 4;
+const MIN_PREDICTION_TIMESPAN_MS = 15 * 60 * 1000;
+const MIN_PREDICTION_GROWTH_PERCENT = 1;
 
 class CodexUsageIndicator extends PanelMenu.Button {
     static {
@@ -805,7 +808,7 @@ function predictLimitHit(window, snapshot, historyRows, key, now = Date.now()) {
         dedupedSamples.push(sample);
     }
 
-    if (dedupedSamples.length < 2)
+    if (dedupedSamples.length < MIN_PREDICTION_SAMPLES)
         return createPrediction('unavailable');
 
     const first = dedupedSamples[0];
@@ -813,10 +816,14 @@ function predictLimitHit(window, snapshot, historyRows, key, now = Date.now()) {
     const elapsedMs = latest.time - first.time;
     const percentGrowth = latest.percent - first.percent;
 
-    if (elapsedMs <= 0 || percentGrowth <= 0)
+    if (elapsedMs < MIN_PREDICTION_TIMESPAN_MS || percentGrowth < MIN_PREDICTION_GROWTH_PERCENT)
         return createPrediction('unavailable');
 
-    const percentPerMs = percentGrowth / elapsedMs;
+    const percentPerMs = calculateTrendSlope(dedupedSamples);
+
+    if (!Number.isFinite(percentPerMs) || percentPerMs <= 0)
+        return createPrediction('unavailable');
+
     const msToLimit = (100 - latest.percent) / percentPerMs;
     const predictedAt = latest.time + msToLimit;
     const secondsUntilLimit = Math.max(0, Math.round((predictedAt - now) / 1000));
@@ -828,6 +835,27 @@ function predictLimitHit(window, snapshot, historyRows, key, now = Date.now()) {
         return createPrediction('before-reset', predictedAt, secondsUntilLimit);
 
     return createPrediction('safe', predictedAt, secondsUntilLimit);
+}
+
+function calculateTrendSlope(samples) {
+    const originTime = samples[0].time;
+    const meanTime = samples.reduce((sum, sample) => sum + (sample.time - originTime), 0) / samples.length;
+    const meanPercent = samples.reduce((sum, sample) => sum + sample.percent, 0) / samples.length;
+    let covariance = 0;
+    let variance = 0;
+
+    for (const sample of samples) {
+        const timeDelta = (sample.time - originTime) - meanTime;
+        const percentDelta = sample.percent - meanPercent;
+
+        covariance += timeDelta * percentDelta;
+        variance += timeDelta * timeDelta;
+    }
+
+    if (variance <= 0)
+        return null;
+
+    return covariance / variance;
 }
 
 function createPrediction(status, predictedAt = null, secondsUntilLimit = null) {
