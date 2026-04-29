@@ -1,59 +1,93 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*.*.*'
+  workflow_run:
+    workflows:
+      - "CI"
+    types:
+      - completed
 
 permissions:
   contents: write
+  actions: read
+
+concurrency:
+  group: release-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
 
 jobs:
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
 
-      - name: Validate release tag
+      - name: Validate release source
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
-          if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Invalid release tag: ${TAG}" >&2
+          CI_REF="${{ github.event.workflow_run.head_branch }}"
+          CI_SHA="${{ github.event.workflow_run.head_sha }}"
+
+          if [[ ! "${CI_REF}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "CI ref is not a release tag: ${CI_REF}" >&2
             exit 1
           fi
 
-      - name: Validate metadata version
-        shell: bash
-        run: |
-          set -euo pipefail
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          METADATA_VERSION="$(sed -nE 's/^[[:space:]]*"version-name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' metadata.json | head -n 1)"
+          git fetch --force --tags
+          TAG_SHA="$(git rev-list -n 1 "${CI_REF}")"
 
-          if [[ -z "${METADATA_VERSION}" ]]; then
-            echo 'Unable to read version-name from metadata.json' >&2
+          if [[ "${TAG_SHA}" != "${CI_SHA}" ]]; then
+            echo "Tag ${CI_REF} points to ${TAG_SHA}, but CI ran on ${CI_SHA}" >&2
             exit 1
           fi
 
-          if [[ "${METADATA_VERSION}" != "${TAG_VERSION}" ]]; then
-            echo "Tag ${GITHUB_REF_NAME} does not match metadata version-name ${METADATA_VERSION}" >&2
-            exit 1
-          fi
-
-      - name: Install packaging dependencies
+      - name: Install release dependencies
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y libglib2.0-bin zip
+          sudo apt-get install -y jq
 
-      - name: Build release bundle
+      - name: Validate release metadata
         shell: bash
-        run: bash ./build-release.sh
+        run: |
+          set -euo pipefail
+          CI_REF="${{ github.event.workflow_run.head_branch }}"
+          TAG_VERSION="${CI_REF#v}"
+          METADATA_VERSION="$(jq -r '."version-name"' metadata.json)"
+
+          if [[ "${METADATA_VERSION}" != "${TAG_VERSION}" ]]; then
+            echo "Tag ${CI_REF} does not match metadata version-name ${METADATA_VERSION}" >&2
+            exit 1
+          fi
+
+      - name: Download extension bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: extension-bundle
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: dist
+
+      - name: Validate release artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          CI_REF="${{ github.event.workflow_run.head_branch }}"
+          TAG_VERSION="${CI_REF#v}"
+          UUID="$(jq -r '.uuid' metadata.json)"
+          ZIP="dist/${UUID}-${TAG_VERSION}.zip"
+
+          test -f "${ZIP}"
 
       - name: Create GitHub release
         env:
@@ -61,7 +95,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          RELEASE_VERSION="${GITHUB_REF_NAME#v}"
-          gh release create "${GITHUB_REF_NAME}" dist/*.zip \
-            --title "${RELEASE_VERSION}" \
-            --generate-notes
+          CI_REF="${{ github.event.workflow_run.head_branch }}"
+          TAG_VERSION="${CI_REF#v}"
+          UUID="$(jq -r '.uuid' metadata.json)"
+          ZIP="dist/${UUID}-${TAG_VERSION}.zip"
+
+          if gh release view "${CI_REF}" >/dev/null 2>&1; then
+            gh release upload "${CI_REF}" "${ZIP}" --clobber
+          else
+            gh release create "${CI_REF}" "${ZIP}" \
+              --title "${TAG_VERSION}" \
+              --generate-notes \
+              --verify-tag
+          fi

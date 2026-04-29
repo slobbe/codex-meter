@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "main"
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install validation dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y jq libglib2.0-bin shellcheck unzip zip
+
+      - name: Validate metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq empty metadata.json
+          jq -e '
+            .uuid == "codex-usage@slobbe.github.io"
+            and (.name | type == "string" and length > 0)
+            and (.description | type == "string" and length > 0)
+            and (."version-name" | test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))
+            and (."shell-version" | type == "array" and length > 0)
+            and (."settings-schema" == "org.gnome.shell.extensions.codex-usage")
+          ' metadata.json
+
+      - name: Validate schemas
+        shell: bash
+        run: |
+          set -euo pipefail
+          glib-compile-schemas --strict schemas
+
+      - name: Lint shell scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          shellcheck build-release.sh
+
+      - name: Build extension bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash ./build-release.sh
+
+      - name: Validate extension bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(jq -r '."version-name"' metadata.json)"
+          UUID="$(jq -r '.uuid' metadata.json)"
+          ZIP="dist/${UUID}-${VERSION}.zip"
+
+          test -f "${ZIP}"
+          unzip -p "${ZIP}" metadata.json | jq empty
+          unzip -p "${ZIP}" schemas/org.gnome.shell.extensions.codex-usage.gschema.xml >/dev/null
+
+          for file in \
+            metadata.json \
+            extension.js \
+            codex.js \
+            prefs.js \
+            stylesheet.css \
+            schemas/org.gnome.shell.extensions.codex-usage.gschema.xml \
+            schemas/gschemas.compiled
+          do
+            unzip -Z1 "${ZIP}" | grep -Fx "${file}"
+          done
+
+      - name: Upload extension bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-bundle
+          path: dist/*.zip
+          if-no-files-found: error
