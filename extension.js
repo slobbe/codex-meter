@@ -25,7 +25,7 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-import {fetchCodexUsageSnapshot, readCachedUsageSnapshot} from './codex.js';
+import {fetchCodexUsageSnapshot, readCachedUsageSnapshot, readUsageHistory} from './codex.js';
 
 const SETTINGS_SHOW_FIVE_HOUR = 'show-five-hour';
 const SETTINGS_SHOW_WEEKLY = 'show-weekly';
@@ -48,6 +48,7 @@ class CodexUsageIndicator extends PanelMenu.Button {
         this._menuSyncId = 0;
         this._refreshInFlight = false;
         this._snapshot = null;
+        this._historyRows = [];
         this._errorMessage = null;
 
         this._panelBox = new St.BoxLayout({
@@ -76,6 +77,7 @@ class CodexUsageIndicator extends PanelMenu.Button {
         this._buildMenu();
         this._connectSignals();
         this._loadCachedSnapshot();
+        this._loadHistory();
 
         this._syncLabel();
         this._syncMenu();
@@ -226,25 +228,43 @@ class CodexUsageIndicator extends PanelMenu.Button {
             this._updateUsageBar(item);
         });
 
-        const detailLabel = new St.Label({
-            text: 'resets in --',
+        const detailBox = new St.BoxLayout({
             x_expand: true,
             style_class: 'cx-usage-detail',
         });
+        const predictionLabel = new St.Label({
+            text: 'Trend unavailable',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        const detailSeparatorLabel = new St.Label({
+            text: ' · ',
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'cx-usage-detail-muted',
+        });
+        const resetLabel = new St.Label({
+            text: 'resets in --',
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'cx-usage-detail-muted',
+        });
+
+        detailBox.add_child(predictionLabel);
+        detailBox.add_child(detailSeparatorLabel);
+        detailBox.add_child(resetLabel);
 
         headingBox.add_child(titleLabel);
         headingBox.add_child(valueLabel);
 
         box.add_child(headingBox);
         box.add_child(barTrack);
-        box.add_child(detailLabel);
+        box.add_child(detailBox);
         item.add_child(box);
         item.titleLabel = titleLabel;
         item.valueLabel = valueLabel;
         item.barTrack = barTrack;
         item.barFill = barFill;
         item.percentValue = 0;
-        item.detailLabel = detailLabel;
+        item.predictionLabel = predictionLabel;
+        item.resetLabel = resetLabel;
 
         return item;
     }
@@ -394,6 +414,7 @@ class CodexUsageIndicator extends PanelMenu.Button {
 
         try {
             this._snapshot = await fetchCodexUsageSnapshot();
+            this._loadHistory();
             this._errorMessage = null;
         } catch (error) {
             this._errorMessage = error?.message ?? 'Unable to load Codex usage.';
@@ -411,6 +432,10 @@ class CodexUsageIndicator extends PanelMenu.Button {
 
         if (snapshot)
             this._snapshot = snapshot;
+    }
+
+    _loadHistory() {
+        this._historyRows = readUsageHistory();
     }
 
     _getRefreshIntervalSeconds() {
@@ -533,26 +558,46 @@ class CodexUsageIndicator extends PanelMenu.Button {
         if (!this._snapshot) {
             const fallback = this._errorMessage ?? 'Loading Codex usage...';
             this._headerItem.datetimeLabel.text = '--';
-            this._setUsageItem(this._fiveHourItem, 'Session (5h)', fallback, 'resets in --', null);
-            this._setUsageItem(this._weeklyItem, 'Week', '--', 'resets in --', null);
+            this._setUsageItem(this._fiveHourItem, 'Session (5h)', fallback, 'Trend unavailable', 'resets in --', null, 'muted');
+            this._setUsageItem(this._weeklyItem, 'Week', '--', 'Trend unavailable', 'resets in --', null, 'muted');
             this._footerItem.planLabel.text = '--';
             return;
         }
+
+        const now = Date.now();
+        const fiveHourPrediction = predictLimitHit(
+            this._snapshot.fiveHour,
+            this._snapshot,
+            this._historyRows,
+            'sessionUsedPercent',
+            now
+        );
+        const weeklyPrediction = predictLimitHit(
+            this._snapshot.weekly,
+            this._snapshot,
+            this._historyRows,
+            'weeklyUsedPercent',
+            now
+        );
 
         this._headerItem.datetimeLabel.text = formatUpdatedAt(this._snapshot.fetchedAt);
         this._setUsageItem(
             this._fiveHourItem,
             'Session (5h)',
             formatPercent(this._snapshot.fiveHour?.usedPercent),
+            formatLimitPrediction(fiveHourPrediction, 'five-hour'),
             formatReset(this._snapshot.fiveHour, 'five-hour'),
-            this._snapshot.fiveHour?.usedPercent
+            this._snapshot.fiveHour?.usedPercent,
+            getPredictionStyleClass(fiveHourPrediction)
         );
         this._setUsageItem(
             this._weeklyItem,
             'Week',
             formatPercent(this._snapshot.weekly?.usedPercent),
+            formatLimitPrediction(weeklyPrediction, 'weekly'),
             formatReset(this._snapshot.weekly, 'weekly'),
-            this._snapshot.weekly?.usedPercent
+            this._snapshot.weekly?.usedPercent,
+            getPredictionStyleClass(weeklyPrediction)
         );
         this._footerItem.planLabel.text = formatPlan(this._snapshot.subscription?.planType ?? this._snapshot.planType);
     }
@@ -569,10 +614,12 @@ class CodexUsageIndicator extends PanelMenu.Button {
         });
     }
 
-    _setUsageItem(item, title, value, detail, percentValue) {
+    _setUsageItem(item, title, value, prediction, reset, percentValue, predictionStyle = 'muted') {
         item.titleLabel.text = title;
         item.valueLabel.text = `${value} used`;
-        item.detailLabel.text = detail;
+        item.predictionLabel.text = prediction;
+        item.resetLabel.text = reset;
+        setPredictionStyleClass(item.predictionLabel, predictionStyle);
         item.percentValue = normalizePercent(percentValue);
         this._updateUsageBarColor(item);
         this._updateUsageBar(item);
@@ -700,6 +747,136 @@ function formatUpdatedAt(value) {
     } catch (_error) {
         return '--';
     }
+}
+
+function predictLimitHit(window, snapshot, historyRows, key, now = Date.now()) {
+    if (!window)
+        return createPrediction('unavailable');
+
+    const latestPercent = clampPredictionPercent(window.usedPercent);
+
+    if (!Number.isFinite(latestPercent))
+        return createPrediction('unavailable');
+
+    if (latestPercent >= 100)
+        return createPrediction('already-limited', now, 0);
+
+    const resetAt = Number.isFinite(window.resetAt) ? window.resetAt * 1000 : null;
+    const limitWindowMs = Number.isFinite(window.limitWindowSeconds)
+        ? window.limitWindowSeconds * 1000
+        : null;
+
+    if (!Number.isFinite(resetAt) || !Number.isFinite(limitWindowMs) || limitWindowMs <= 0)
+        return createPrediction('unavailable');
+
+    const windowStart = resetAt - limitWindowMs;
+    const samples = historyRows
+        .map(row => ({
+            time: new Date(row.timestamp).getTime(),
+            percent: clampPredictionPercent(row[key]),
+        }))
+        .filter(sample =>
+            Number.isFinite(sample.time) &&
+            sample.time >= windowStart &&
+            sample.time <= resetAt &&
+            Number.isFinite(sample.percent)
+        );
+
+    const currentTime = new Date(snapshot?.fetchedAt).getTime();
+
+    if (Number.isFinite(currentTime)) {
+        const lastSample = samples[samples.length - 1];
+
+        if (!lastSample || lastSample.time !== currentTime || lastSample.percent !== latestPercent)
+            samples.push({time: currentTime, percent: latestPercent});
+    }
+
+    samples.sort((left, right) => left.time - right.time);
+
+    const dedupedSamples = [];
+    for (const sample of samples) {
+        const previous = dedupedSamples[dedupedSamples.length - 1];
+
+        if (previous?.time === sample.time) {
+            previous.percent = sample.percent;
+            continue;
+        }
+
+        dedupedSamples.push(sample);
+    }
+
+    if (dedupedSamples.length < 2)
+        return createPrediction('unavailable');
+
+    const first = dedupedSamples[0];
+    const latest = dedupedSamples[dedupedSamples.length - 1];
+    const elapsedMs = latest.time - first.time;
+    const percentGrowth = latest.percent - first.percent;
+
+    if (elapsedMs <= 0 || percentGrowth <= 0)
+        return createPrediction('unavailable');
+
+    const percentPerMs = percentGrowth / elapsedMs;
+    const msToLimit = (100 - latest.percent) / percentPerMs;
+    const predictedAt = latest.time + msToLimit;
+    const secondsUntilLimit = Math.max(0, Math.round((predictedAt - now) / 1000));
+
+    if (!Number.isFinite(predictedAt) || !Number.isFinite(secondsUntilLimit))
+        return createPrediction('unavailable');
+
+    if (predictedAt < resetAt)
+        return createPrediction('before-reset', predictedAt, secondsUntilLimit);
+
+    return createPrediction('safe', predictedAt, secondsUntilLimit);
+}
+
+function createPrediction(status, predictedAt = null, secondsUntilLimit = null) {
+    return {
+        status,
+        predictedAt,
+        secondsUntilLimit,
+    };
+}
+
+function formatLimitPrediction(prediction, windowType) {
+    switch (prediction?.status) {
+    case 'already-limited':
+        return 'Limit reached';
+    case 'before-reset':
+        return `Limit in ${formatDuration(prediction.secondsUntilLimit, windowType)}`;
+    case 'safe':
+        return 'Safe until reset';
+    default:
+        return 'Trend unavailable';
+    }
+}
+
+function getPredictionStyleClass(prediction) {
+    switch (prediction?.status) {
+    case 'already-limited':
+        return 'danger';
+    case 'before-reset':
+        return prediction.secondsUntilLimit < 30 * 60 ? 'danger' : 'warning';
+    case 'safe':
+        return 'safe';
+    default:
+        return 'muted';
+    }
+}
+
+function setPredictionStyleClass(label, style) {
+    label.remove_style_class_name('cx-usage-prediction-safe');
+    label.remove_style_class_name('cx-usage-prediction-warning');
+    label.remove_style_class_name('cx-usage-prediction-danger');
+    label.remove_style_class_name('cx-usage-prediction-muted');
+    label.add_style_class_name(`cx-usage-prediction-${style}`);
+}
+
+function clampPredictionPercent(value) {
+    if (!Number.isFinite(value))
+        return null;
+
+    return Math.max(0, Math.min(100, value));
 }
 
 function formatPlan(value) {

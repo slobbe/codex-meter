@@ -78,6 +78,19 @@ export function readCachedUsageSnapshot() {
     }
 }
 
+export function readUsageHistory({hours = null} = {}) {
+    const rows = readUsageHistoryRows()
+        .filter(row => Number.isFinite(new Date(row.timestamp).getTime()))
+        .sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime());
+
+    if (!Number.isFinite(hours))
+        return rows;
+
+    const cutoffTime = Date.now() - (hours * 60 * 60 * 1000);
+
+    return rows.filter(row => new Date(row.timestamp).getTime() >= cutoffTime);
+}
+
 function writeCachedUsageSnapshot(snapshot) {
     try {
         GLib.mkdir_with_parents(CACHE_DIR, 0o755);

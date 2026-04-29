@@ -4,11 +4,15 @@ import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';
 
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
+import {readUsageHistory} from './codex.js';
 
 const SETTINGS_SHOW_FIVE_HOUR = 'show-five-hour';
 const SETTINGS_SHOW_WEEKLY = 'show-weekly';
 const SETTINGS_TOP_BAR_DISPLAY_MODE = 'top-bar-display-mode';
 const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES = 'background-refresh-interval-minutes';
+const HISTORY_SESSION_COLOR = [0.29, 0.76, 0.43, 1];
+const HISTORY_WEEK_COLOR = [0.22, 0.55, 0.90, 1];
+const HISTORY_GRID_COLOR = [0.5, 0.5, 0.5, 0.25];
 
 const DisplayPage = GObject.registerClass(
 class DisplayPage extends Adw.PreferencesPage {
@@ -104,6 +108,79 @@ class DisplayPage extends Adw.PreferencesPage {
 
         this.add(topBarGroup);
         this.add(refreshGroup);
+    }
+});
+
+const HistoryPage = GObject.registerClass(
+class HistoryPage extends Adw.PreferencesPage {
+    _init() {
+        super._init({
+            title: 'History',
+            icon_name: 'view-statistics-symbolic',
+        });
+
+        this._historyRows = readUsageHistory();
+
+        const historyGroup = new Adw.PreferencesGroup({
+            title: 'Usage History',
+            description: 'Session and weekly usage percentages from the retained 90-day local history.',
+        });
+
+        const box = new Gtk.Box({
+            orientation: Gtk.Orientation.VERTICAL,
+            spacing: 12,
+            margin_top: 12,
+            margin_bottom: 12,
+            margin_start: 12,
+            margin_end: 12,
+        });
+
+        this._statusLabel = new Gtk.Label({
+            label: this._getStatusText(),
+            halign: Gtk.Align.START,
+            visible: this._getDrawableRows().length < 2,
+        });
+
+        this._drawingArea = new Gtk.DrawingArea({
+            height_request: 220,
+            hexpand: true,
+            vexpand: false,
+            visible: this._getDrawableRows().length >= 2,
+        });
+        this._drawingArea.set_draw_func((_area, cr, width, height) => {
+            drawHistoryChart(cr, width, height, this._historyRows);
+        });
+
+        const legend = new Gtk.Box({
+            orientation: Gtk.Orientation.HORIZONTAL,
+            spacing: 16,
+            halign: Gtk.Align.START,
+        });
+        legend.append(createLegendItem('Session', HISTORY_SESSION_COLOR));
+        legend.append(createLegendItem('Week', HISTORY_WEEK_COLOR));
+
+        box.append(this._statusLabel);
+        box.append(this._drawingArea);
+        box.append(legend);
+        historyGroup.add(box);
+        this.add(historyGroup);
+    }
+
+    _getDrawableRows() {
+        return this._historyRows.filter(row =>
+            Number.isFinite(new Date(row.timestamp).getTime()) &&
+            (Number.isFinite(row.sessionUsedPercent) || Number.isFinite(row.weeklyUsedPercent))
+        );
+    }
+
+    _getStatusText() {
+        if (this._historyRows.length === 0)
+            return 'No usage history yet';
+
+        if (this._getDrawableRows().length < 2)
+            return 'Need at least two samples to draw history';
+
+        return '';
     }
 });
 
@@ -256,11 +333,139 @@ function getTopBarDisplayModeValue(selected) {
     }
 }
 
+function createLegendItem(label, color) {
+    const item = new Gtk.Box({
+        orientation: Gtk.Orientation.HORIZONTAL,
+        spacing: 6,
+        valign: Gtk.Align.CENTER,
+    });
+
+    const swatch = new Gtk.DrawingArea({
+        width_request: 18,
+        height_request: 10,
+    });
+    swatch.set_draw_func((_area, cr, width, height) => {
+        cr.setSourceRGBA(...color);
+        cr.rectangle(0, 0, width, height);
+        cr.fill();
+    });
+
+    item.append(swatch);
+    item.append(new Gtk.Label({
+        label,
+        valign: Gtk.Align.CENTER,
+    }));
+
+    return item;
+}
+
+function drawHistoryChart(cr, width, height, rows) {
+    const padding = {
+        top: 12,
+        right: 12,
+        bottom: 20,
+        left: 34,
+    };
+    const drawableRows = rows
+        .map(row => ({
+            time: new Date(row.timestamp).getTime(),
+            sessionUsedPercent: row.sessionUsedPercent,
+            weeklyUsedPercent: row.weeklyUsedPercent,
+        }))
+        .filter(row =>
+            Number.isFinite(row.time) &&
+            (Number.isFinite(row.sessionUsedPercent) || Number.isFinite(row.weeklyUsedPercent))
+        )
+        .sort((left, right) => left.time - right.time);
+
+    if (drawableRows.length < 2)
+        return;
+
+    const minTime = drawableRows[0].time;
+    const maxTime = drawableRows[drawableRows.length - 1].time;
+    const chartWidth = Math.max(1, width - padding.left - padding.right);
+    const chartHeight = Math.max(1, height - padding.top - padding.bottom);
+    const timeSpan = Math.max(1, maxTime - minTime);
+
+    cr.setLineWidth(1);
+    cr.setSourceRGBA(...HISTORY_GRID_COLOR);
+
+    for (const percent of [0, 50, 100]) {
+        const y = padding.top + chartHeight - ((percent / 100) * chartHeight);
+        cr.moveTo(padding.left, y);
+        cr.lineTo(width - padding.right, y);
+        cr.stroke();
+    }
+
+    drawHistorySeries(
+        cr,
+        drawableRows,
+        'sessionUsedPercent',
+        HISTORY_SESSION_COLOR,
+        padding,
+        chartWidth,
+        chartHeight,
+        minTime,
+        timeSpan
+    );
+    drawHistorySeries(
+        cr,
+        drawableRows,
+        'weeklyUsedPercent',
+        HISTORY_WEEK_COLOR,
+        padding,
+        chartWidth,
+        chartHeight,
+        minTime,
+        timeSpan
+    );
+}
+
+function drawHistorySeries(cr, rows, key, color, padding, chartWidth, chartHeight, minTime, timeSpan) {
+    cr.setLineWidth(2);
+    cr.setSourceRGBA(...color);
+
+    let hasPath = false;
+    let previousTime = null;
+
+    for (const row of rows) {
+        if (!Number.isFinite(row[key])) {
+            hasPath = false;
+            previousTime = null;
+            continue;
+        }
+
+        const gapMs = previousTime === null ? 0 : row.time - previousTime;
+        const x = padding.left + (((row.time - minTime) / timeSpan) * chartWidth);
+        const y = padding.top + chartHeight - ((normalizeChartPercent(row[key]) / 100) * chartHeight);
+
+        if (!hasPath || gapMs > 12 * 60 * 60 * 1000) {
+            cr.moveTo(x, y);
+            hasPath = true;
+        } else {
+            cr.lineTo(x, y);
+        }
+
+        previousTime = row.time;
+    }
+
+    if (hasPath)
+        cr.stroke();
+}
+
+function normalizeChartPercent(value) {
+    if (!Number.isFinite(value))
+        return 0;
+
+    return Math.max(0, Math.min(100, value));
+}
+
 export default class AIUsageIndicatorPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
 
         window.add(new DisplayPage(settings));
+        window.add(new HistoryPage());
         window.add(new AboutPage(this.metadata));
         window.set_default_size(640, 720);
     }

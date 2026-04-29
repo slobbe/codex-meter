@@ -89,6 +89,26 @@
 .cx-usage-detail {
     margin-top: 2px;
     font-size: 0.9em;
+    spacing: 0;
+}
+
+.cx-usage-detail-muted {
+    opacity: 0.75;
+}
+
+.cx-usage-prediction-safe {
+    color: #49c16d;
+}
+
+.cx-usage-prediction-warning {
+    color: #e59a2f;
+}
+
+.cx-usage-prediction-danger {
+    color: #d9534f;
+}
+
+.cx-usage-prediction-muted {
     opacity: 0.75;
 }
 
