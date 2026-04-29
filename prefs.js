@@ -14,6 +14,7 @@ const HISTORY_SESSION_COLOR = [0.29, 0.76, 0.43, 1];
 const HISTORY_WEEK_COLOR = [0.22, 0.55, 0.90, 1];
 const HISTORY_GRID_COLOR = [0.5, 0.5, 0.5, 0.25];
 const HISTORY_LABEL_COLOR = [0.5, 0.5, 0.5, 0.8];
+const HISTORY_CHART_DAYS = 30;
 
 const DisplayPage = GObject.registerClass(
 class DisplayPage extends Adw.PreferencesPage {
@@ -120,11 +121,11 @@ class HistoryPage extends Adw.PreferencesPage {
             icon_name: 'view-statistics-symbolic',
         });
 
-        this._historyRows = readUsageHistory();
+        this._historyRows = readUsageHistory({hours: HISTORY_CHART_DAYS * 24});
 
         const historyGroup = new Adw.PreferencesGroup({
             title: 'Usage History',
-            description: 'Session and weekly usage percentages from the retained 90-day local history.',
+            description: `Session and weekly usage percentages from the past ${HISTORY_CHART_DAYS} days.`,
         });
 
         const box = new Gtk.Box({
