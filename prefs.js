@@ -15,7 +15,7 @@ const HISTORY_SESSION_COLOR = [0.29, 0.76, 0.43, 1];
 const HISTORY_WEEK_COLOR = [0.22, 0.55, 0.90, 1];
 const HISTORY_GRID_COLOR = [0.5, 0.5, 0.5, 0.25];
 const HISTORY_LABEL_COLOR = [0.5, 0.5, 0.5, 0.8];
-const HISTORY_CHART_DAYS = 30;
+const HISTORY_CHART_DAYS = 14;
 const HISTORY_CSV_PATH = GLib.build_filenamev([
     GLib.get_user_cache_dir(),
     'codex-usage-indicator',
