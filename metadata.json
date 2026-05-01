@@ -1,12 +1,12 @@
 {
-  "name": "Codex Usage Indicator",
+  "name": "Codex Meter",
   "description": "Monitor your Codex usage directly from the GNOME top bar",
-  "uuid": "codex-usage@slobbe.github.io",
+  "uuid": "codex-meter@slobbe.github.io",
   "shell-version": [
     "49"
   ],
-  "settings-schema": "org.gnome.shell.extensions.codex-usage",
-  "url": "https://github.com/slobbe/gnome-codex-usage-indicator",
+  "settings-schema": "org.gnome.shell.extensions.codex-meter",
+  "url": "https://github.com/slobbe/codex-meter",
   "license": "GNU General Public License v3.0 or later",
   "version-name": "0.4.0"
 }

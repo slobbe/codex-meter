@@ -43,13 +43,13 @@ const WEEKLY_PREDICTION_REQUIREMENTS = {
     minGrowthPercent: 2,
 };
 
-class CodexUsageIndicator extends PanelMenu.Button {
+class CodexMeterIndicator extends PanelMenu.Button {
     static {
         GObject.registerClass(this);
     }
 
     constructor(extension) {
-        super(0.0, 'CodexUsageIndicator');
+        super(0.0, "CodexMeter");
 
         this._extension = extension;
         this._settings = extension.getSettings();
@@ -67,7 +67,7 @@ class CodexUsageIndicator extends PanelMenu.Button {
         });
 
         this._prefixLabel = new St.Label({
-            text: 'CX',
+            text: "CM",
             y_align: Clutter.ActorAlign.CENTER,
             style_class: 'cx-panel-prefix',
         });
@@ -953,7 +953,7 @@ function normalizePercent(value) {
 
 export default class AIUsageIndicatorExtension extends Extension {
     enable() {
-        this._indicator = new CodexUsageIndicator(this);
+        this._indicator = new CodexMeterIndicator(this);
         Main.panel.addToStatusArea(this.uuid, this._indicator);
     }
 

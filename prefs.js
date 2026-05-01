@@ -18,7 +18,7 @@ const HISTORY_LABEL_COLOR = [0.5, 0.5, 0.5, 0.8];
 const HISTORY_CHART_DAYS = 14;
 const HISTORY_CSV_PATH = GLib.build_filenamev([
     GLib.get_user_cache_dir(),
-    'codex-usage-indicator',
+    "codex-meter",
     'usage-history.csv',
 ]);
 
@@ -233,7 +233,7 @@ class AboutPage extends Adw.PreferencesPage {
         });
 
         const title = new Gtk.Label({
-            label: `<span size="x-large"><b>${escapeMarkup(metadata.name ?? 'Codex Usage Indicator')}</b></span>`,
+            label: `<span size="x-large"><b>${escapeMarkup(metadata.name ?? "Codex Meter")}</b></span>`,
             use_markup: true,
             justify: Gtk.Justification.CENTER,
             halign: Gtk.Align.CENTER,
@@ -269,7 +269,7 @@ class AboutPage extends Adw.PreferencesPage {
         ));
         infoGroup.add(this._createLinkRow(
             'GitHub',
-            metadata.url ?? 'https://github.com/slobbe/gnome-codex-usage-indicator'
+            metadata.url ?? "https://github.com/slobbe/codex-meter"
         ));
 
         this.add(infoGroup);
@@ -548,7 +548,7 @@ function normalizeChartPercent(value) {
     return Math.max(0, Math.min(100, value));
 }
 
-export default class AIUsageIndicatorPreferences extends ExtensionPreferences {
+export default class CodexMeterPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
 

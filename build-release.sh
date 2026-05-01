@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 DIST_DIR="${SCRIPT_DIR}/dist"
 METADATA_FILE="${SCRIPT_DIR}/metadata.json"
-SCHEMA_FILE="${SCRIPT_DIR}/schemas/org.gnome.shell.extensions.codex-usage.gschema.xml"
+SCHEMA_FILE="${SCRIPT_DIR}/schemas/org.gnome.shell.extensions.codex-meter.gschema.xml"
 
 require_command() {
     if ! command -v "$1" >/dev/null 2>&1; then

@@ -1,9 +1,9 @@
-# Codex Usage Indicator GNOME Extension
+# Codex Meter GNOME Extension
 
 Monitor your Codex usage directly from the GNOME top bar.
 
-[![GitHub Release](https://img.shields.io/github/v/release/slobbe/gnome-codex-usage-indicator?style=flat-square&color=royalblue)](https://github.com/slobbe/gnome-codex-usage-indicator/releases/latest)
-[![GitHub License](https://img.shields.io/github/license/slobbe/gnome-codex-usage-indicator?style=flat-square&color=teal)](/LICENSE)
+[![GitHub Release](https://img.shields.io/github/v/release/slobbe/codex-meter?style=flat-square&color=royalblue)](https://github.com/slobbe/codex-meter/releases/latest)
+[![GitHub License](https://img.shields.io/github/license/slobbe/codex-meter?style=flat-square&color=teal)](/LICENSE)
 
 > Inspired by [CodexBar](https://github.com/steipete/CodexBar) by [Peter Steinberger](https://github.com/steipete), adapted for GNOME.
 
@@ -21,14 +21,14 @@ Monitor your Codex usage directly from the GNOME top bar.
 > [!NOTE]
 > Requires the Codex CLI and an active login on the same machine.
 > The extension reads your local local auth credentials from `~/.codex/auth.json` to fetch usage data from `https://chatgpt.com/backend-api/wham/usage`.
-> Successful checks are recorded in `${XDG_CACHE_HOME:-~/.cache}/codex-usage-indicator/usage-history.csv` with `timestamp`, `session_used_percent`, and `weekly_used_percent` columns. The extension keeps 90 days of history.
+> Successful checks are recorded in `${XDG_CACHE_HOME:-~/.cache}/codex-meter/usage-history.csv` with `timestamp`, `session_used_percent`, and `weekly_used_percent` columns. The extension keeps 90 days of history.
 
-1. Download the [latest release](https://github.com/slobbe/gnome-codex-usage-indicator/releases/latest) zip.
+1. Download the [latest release](https://github.com/slobbe/codex-meter/releases/latest) zip.
 2. Install and enable the extension with:
 
 ```sh
-gnome-extensions install codex-usage@slobbe.github.io-<version>.zip --force
-gnome-extensions enable codex-usage@slobbe.github.io
+gnome-extensions install codex-meter@slobbe.github.io-<version>.zip --force
+gnome-extensions enable codex-meter@slobbe.github.io
 ```
 
 If GNOME does not pick it up immediately, log out and back in.
@@ -38,11 +38,11 @@ If GNOME does not pick it up immediately, log out and back in.
 For local development, install the extension into your user extensions directory:
 
 ```bash
-mkdir -p ~/.local/share/gnome-shell/extensions/codex-usage@slobbe.github.io
-rsync -a --delete ./ ~/.local/share/gnome-shell/extensions/codex-usage@slobbe.github.io/
+mkdir -p ~/.local/share/gnome-shell/extensions/codex-meter@slobbe.github.io
+rsync -a --delete ./ ~/.local/share/gnome-shell/extensions/codex-meter@slobbe.github.io/
 glib-compile-schemas schemas
-gnome-extensions disable codex-usage@slobbe.github.io
-gnome-extensions enable codex-usage@slobbe.github.io
+gnome-extensions disable codex-meter@slobbe.github.io
+gnome-extensions enable codex-meter@slobbe.github.io
 ```
 
 To build a release bundle locally:

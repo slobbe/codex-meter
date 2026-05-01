@@ -4,7 +4,7 @@ import Soup from 'gi://Soup?version=3.0';
 
 const CODEX_AUTH_PATH = `${GLib.get_home_dir()}/.codex/auth.json`;
 const CODEX_USAGE_URL = 'https://chatgpt.com/backend-api/wham/usage';
-const CACHE_DIR = GLib.build_filenamev([GLib.get_user_cache_dir(), 'codex-usage-indicator']);
+const CACHE_DIR = GLib.build_filenamev([GLib.get_user_cache_dir(), "codex-meter"]);
 const CACHE_PATH = GLib.build_filenamev([CACHE_DIR, 'snapshot.json']);
 const HISTORY_PATH = GLib.build_filenamev([CACHE_DIR, "usage-history.csv"]);
 const HISTORY_RETENTION_DAYS = 90;

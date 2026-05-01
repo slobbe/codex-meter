@@ -37,12 +37,12 @@ jobs:
           set -euo pipefail
           jq empty metadata.json
           jq -e '
-            .uuid == "codex-usage@slobbe.github.io"
+            .uuid == "codex-meter@slobbe.github.io"
             and (.name | type == "string" and length > 0)
             and (.description | type == "string" and length > 0)
             and (."version-name" | test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))
             and (."shell-version" | type == "array" and length > 0)
-            and (."settings-schema" == "org.gnome.shell.extensions.codex-usage")
+            and (."settings-schema" == "org.gnome.shell.extensions.codex-meter")
           ' metadata.json
 
       - name: Validate schemas
@@ -73,7 +73,7 @@ jobs:
 
           test -f "${ZIP}"
           unzip -p "${ZIP}" metadata.json | jq empty
-          unzip -p "${ZIP}" schemas/org.gnome.shell.extensions.codex-usage.gschema.xml >/dev/null
+          unzip -p "${ZIP}" schemas/org.gnome.shell.extensions.codex-meter.gschema.xml >/dev/null
 
           for file in \
             metadata.json \
@@ -81,7 +81,7 @@ jobs:
             codex.js \
             prefs.js \
             stylesheet.css \
-            schemas/org.gnome.shell.extensions.codex-usage.gschema.xml \
+            schemas/org.gnome.shell.extensions.codex-meter.gschema.xml \
             schemas/gschemas.compiled
           do
             unzip -Z1 "${ZIP}" | grep -Fx "${file}"
