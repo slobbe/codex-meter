@@ -20,19 +20,19 @@ const DisplayPage = GObject.registerClass(
       });
 
       const topBarGroup = new Adw.PreferencesGroup({
-        title: "Top Bar",
+        title: "Top Panel",
         description:
-          "Choose what the top bar shows.",
+          "Choose what the top panel shows.",
       });
 
       const refreshGroup = new Adw.PreferencesGroup({
-        title: "Refresh",
+        title: "Background Refresh",
         description:
-          "Control how often the extension refreshes usage data in the background.",
+          "Control how often the extension refreshes usage data.",
       });
 
       const topBarStyleRow = new Adw.ComboRow({
-        title: "Top bar style",
+        title: "Top panel style",
         model: Gtk.StringList.new([
           "Percentages",
           "Progress bars",
@@ -90,9 +90,9 @@ const DisplayPage = GObject.registerClass(
       });
 
       const refreshIntervalRow = new Adw.SpinRow({
-        title: "Background refresh interval (min)",
+        title: "Refresh interval (min)",
         subtitle:
-          "Set to 0 for manual refresh only.",
+          "Set to 0 for manual refresh",
         adjustment: intervalAdjustment,
         climb_rate: 1,
         digits: 0,
