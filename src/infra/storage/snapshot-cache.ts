@@ -7,11 +7,58 @@ export async function writeSnapshot(snapshot: UsageSnapshot): Promise<void> {
 }
 
 export async function readSnapshot(): Promise<UsageSnapshot | null> {
-    const raw = await readJsonFile(getSnapshotPath());
+    try {
+        const raw = await readJsonFile<unknown>(getSnapshotPath());
 
-    if (!raw || typeof raw !== "object") {
+        if (!isUsageSnapshot(raw)) {
+            return null;
+        }
+
+        return raw;
+    } catch {
         return null;
     }
+}
 
-    return raw as UsageSnapshot;
+function isUsageSnapshot(value: unknown): value is UsageSnapshot {
+    if (!value || typeof value !== "object") {
+        return false;
+    }
+
+    const snapshot = value as Record<string, unknown>;
+
+    return (
+        typeof snapshot.fetchedAt === "number" &&
+        typeof snapshot.planType === "string" &&
+        isRateLimit(snapshot.rateLimit)
+    );
+}
+
+function isRateLimit(value: unknown): boolean {
+    if (!value || typeof value !== "object") {
+        return false;
+    }
+
+    const rateLimit = value as Record<string, unknown>;
+
+    return (
+        typeof rateLimit.limitReached === "boolean" &&
+        isUsageWindow(rateLimit.primary) &&
+        isUsageWindow(rateLimit.secondary)
+    );
+}
+
+function isUsageWindow(value: unknown): boolean {
+    if (!value || typeof value !== "object") {
+        return false;
+    }
+
+    const window = value as Record<string, unknown>;
+
+    return (
+        typeof window.usedPercent === "number" &&
+        typeof window.limitWindowSeconds === "number" &&
+        typeof window.resetAfterSeconds === "number" &&
+        typeof window.resetAt === "number"
+    );
 }
