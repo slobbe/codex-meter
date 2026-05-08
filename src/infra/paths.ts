@@ -10,7 +10,7 @@ export const STATE_DIR = GLib.build_filenamev([
 ]);
 
 export function getSnapshotPath() {
-    return GLib.build_filenamev([STATE_DIR, "snapshot.json"]);
+    return GLib.build_filenamev([CACHE_DIR, "snapshot.json"]);
 }
 
 export function getHistoryPath() {

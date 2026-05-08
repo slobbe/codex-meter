@@ -1,6 +1,6 @@
 {
     "name": "Codex Meter",
-    "description": "Monitor your Codex usage from the top panel",
+    "description": "Monitor your Codex usage from the top panel.",
     "uuid": "codex-meter@slobbe.github.io",
     "shell-version": ["49", "50"],
     "settings-schema": "org.gnome.shell.extensions.codex-meter",

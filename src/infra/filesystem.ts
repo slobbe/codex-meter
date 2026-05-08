@@ -60,16 +60,18 @@ export async function appendFile(path: string, line: string): Promise<void> {
 
         stream = (await (file.append_to_async as unknown as (
             flags: Gio.FileCreateFlags,
+            ioPriority: number,
             cancellable: Gio.Cancellable | null,
-        ) => Promise<Gio.OutputStream>)(Gio.FileCreateFlags.NONE, null)) as Gio.OutputStream;
+        ) => Promise<Gio.OutputStream>)(Gio.FileCreateFlags.NONE, GLib.PRIORITY_DEFAULT, null)) as Gio.OutputStream;
 
         const text = line.endsWith("\n") ? line : `${line}\n`;
         const bytes = new TextEncoder().encode(text);
 
         await (stream.write_all_async as unknown as (
             buffer: Uint8Array,
+            ioPriority: number,
             cancellable: Gio.Cancellable | null,
-        ) => Promise<[boolean, number]>)(bytes, null);
+        ) => Promise<[boolean, number]>)(bytes, GLib.PRIORITY_DEFAULT, null);
     } catch (error) {
         throw new Error(
             `Failed to append file "${path}": ${error instanceof Error ? error.message : String(error)}`,
@@ -77,8 +79,9 @@ export async function appendFile(path: string, line: string): Promise<void> {
     } finally {
         if (stream) {
             await (stream.close_async as unknown as (
+                ioPriority: number,
                 cancellable: Gio.Cancellable | null,
-            ) => Promise<void>)(null).catch(() => {});
+            ) => Promise<void>)(GLib.PRIORITY_DEFAULT, null).catch(() => {});
         }
     }
 }

@@ -18,7 +18,7 @@ type HistoryEntrySlice = {
     usedPercent: number
 }
 
-export function predictUsage(history: HistoryEntry[], snapshot: UsageSnapshot): UsagePrediction {   
+export function predict(history: HistoryEntry[], snapshot: UsageSnapshot): UsagePrediction {   
     const sessionStartedAt = snapshot.fetchedAt - (snapshot.rateLimit.primary.limitWindowSeconds - snapshot.rateLimit.primary.resetAfterSeconds);
     const weeklyStartedAt = snapshot.fetchedAt - (snapshot.rateLimit.secondary.limitWindowSeconds - snapshot.rateLimit.secondary.resetAfterSeconds);
     

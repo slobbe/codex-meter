@@ -17,12 +17,12 @@ export function toUsageSnapshot(api: ApiResponse): UsageSnapshot {
                 resetAt: api.rate_limit.primary_window.reset_at,
             },
             secondary: {
-                usedPercent: api.rate_limit.primary_window.used_percent,
+                usedPercent: api.rate_limit.secondary_window.used_percent,
                 limitWindowSeconds:
-                    api.rate_limit.primary_window.limit_window_seconds,
+                    api.rate_limit.secondary_window.limit_window_seconds,
                 resetAfterSeconds:
-                    api.rate_limit.primary_window.reset_after_seconds,
-                resetAt: api.rate_limit.primary_window.reset_at,
+                    api.rate_limit.secondary_window.reset_after_seconds,
+                resetAt: api.rate_limit.secondary_window.reset_at,
             },
         },
     };

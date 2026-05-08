@@ -3,12 +3,13 @@
         "module": "NodeNext",
         "moduleResolution": "NodeNext",
         "outDir": "./dist",
+        "rootDir": "./src",
         "sourceMap": false,
         "strict": false,
         "skipLibCheck": true,
         "target": "ES2023",
         "lib": ["ES2023"]
     },
-    "include": ["ambient.d.ts", "**/*.ts"],
+    "include": ["src/**/*.ts"],
     "exclude": ["dist", "node_modules"]
 }

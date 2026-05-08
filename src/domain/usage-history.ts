@@ -10,6 +10,6 @@ export function toHistoryEntry(snapshot: UsageSnapshot): HistoryEntry {
     return {
         timestamp: new Date(snapshot.fetchedAt * 1000).toISOString(),
         session_used_percent: snapshot.rateLimit.primary.usedPercent,
-        weekly_used_percent: snapshot.rateLimit.primary.usedPercent,
+        weekly_used_percent: snapshot.rateLimit.secondary.usedPercent,
     };
 }

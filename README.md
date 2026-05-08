@@ -1,6 +1,6 @@
-# Codex Meter GNOME Extension
+# Codex Meter
 
-Monitor your Codex usage directly from the GNOME top panel.
+Monitor your Codex usage from the GNOME top panel.
 
 [![GitHub Release](https://img.shields.io/github/v/release/slobbe/codex-meter?style=flat-square&color=royalblue)](https://github.com/slobbe/codex-meter/releases/latest)
 [![GitHub License](https://img.shields.io/github/license/slobbe/codex-meter?style=flat-square&color=teal)](/LICENSE)
@@ -11,7 +11,7 @@ Monitor your Codex usage directly from the GNOME top panel.
 
 - Displays current 5-hour and weekly Codex usage
 - Predicts whether current usage trends will hit the session or weekly limit before reset
-- Shows 5-hour usage, weekly usage, or both in the top bar
+- Shows 5-hour usage, weekly usage, or both in the top panel
 - Choose between raw percentages, progress bars, or unified _combined-pressure_ bar
 - Supports manual refresh and configurable background refresh intervals
 - Shows a 14-day usage chart in preferences and records successful checks to a local CSV history file
