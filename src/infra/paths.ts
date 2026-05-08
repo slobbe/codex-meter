@@ -16,3 +16,7 @@ export function getSnapshotPath() {
 export function getHistoryPath() {
     return GLib.build_filenamev([CACHE_DIR, "usage-history.csv"]);
 }
+
+export function getCodexAuthPath() {
+    return GLib.build_filenamev([GLib.get_home_dir(), ".codex", "auth.json"]);
+}
