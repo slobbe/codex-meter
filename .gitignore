@@ -2,3 +2,6 @@
 *.po
 *.pot
 dist
+*.zip
+
+node_modules

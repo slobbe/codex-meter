@@ -1,0 +1,28 @@
+{
+    "name": "codex-meter",
+    "version": "0.5.0",
+    "description": "Monitor your Codex usage from the top panel",
+    "type": "module",
+    "private": true,
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/slobbe/codex-meter.git"
+    },
+    "author": "Sebastian Lobbe <slobbe@lobbe.cc>",
+    "license": "GPL-3.0-or-later",
+    "bugs": {
+        "url": "https://github.com/slobbe/codex-meter/issues"
+    },
+    "homepage": "https://github.com/slobbe/codex-meter",
+    "sideEffects": false,
+    "scripts": {
+        "build": "tsc"
+    },
+    "devDependencies": {
+        "typescript": "^6.0.3"
+    },
+    "dependencies": {
+        "@girs/gjs": "^4.0.0-rc.9",
+        "@girs/gnome-shell": "^50.0.0"
+    }
+}
