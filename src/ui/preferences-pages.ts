@@ -233,7 +233,7 @@ function createLegalGroup(metadata: Metadata) {
 
     box.append(
         new Gtk.Label({
-            label: `<span size="small">This program comes with absolutely no warranty.\nSee the <a href="${metadata.url + '/LICENSE'}">${ metadata.license ?? 'GNU General Public License, version 3 or later'}</a> for details.</span>`,
+            label: `<span size="small">This program comes with absolutely no warranty.\nSee the <a href="${metadata.url + '/blob/main/LICENSE'}">${ metadata.license ?? 'GNU General Public License, version 3 or later'}</a> for details.</span>`,
             use_markup: true,
             justify: Gtk.Justification.CENTER,
             wrap: true,
