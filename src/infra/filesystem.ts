@@ -163,7 +163,7 @@ export async function appendCsvFile(
         return;
     }
 
-    const existingRows = parseCsv(existingText.replace(/^\uFEFF/, ""));
+    const existingRows = parseCsv(getFirstCsvLine(existingText.replace(/^\uFEFF/, "")));
 
     if (existingRows.length === 0) {
         await writeCsvFile(path, rows);
@@ -285,6 +285,16 @@ function parseCsv(text: string): string[][] {
     }
 
     return rows;
+}
+
+function getFirstCsvLine(text: string): string {
+    const newlineIndex = text.search(/[\r\n]/);
+
+    if (newlineIndex === -1) {
+        return text;
+    }
+
+    return text.slice(0, newlineIndex);
 }
 
 // JSON

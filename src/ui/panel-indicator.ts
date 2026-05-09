@@ -35,6 +35,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         );
         this._refreshSpinId = 0;
         this._menuSyncId = 0;
+        this._refreshPromise = null;
         this._snapshot = null;
         this._prediction = null;
         this._errorMessage = null;
@@ -191,17 +192,43 @@ export class CodexMeterIndicator extends PanelMenu.Button {
     async _refreshUsage({ manual = false } = {}) {
         if (manual) this._startRefreshSpin();
 
+        if (this._refreshPromise) {
+            try {
+                await this._refreshPromise;
+            } finally {
+                if (manual) this._stopRefreshSpin();
+            }
+            return;
+        }
+
+        this._refreshPromise = this._refreshUsageOnce();
+
+        try {
+            await this._refreshPromise;
+        } finally {
+            this._refreshPromise = null;
+            if (manual) this._stopRefreshSpin();
+        }
+    }
+
+    async _refreshUsageOnce() {
         try {
             this._snapshot = await this._usageService.refresh();
-            this._prediction = this._snapshot
-                ? await this._usageService.predict(this._snapshot)
-                : null;
             this._errorMessage = null;
+
+            try {
+                this._prediction = await this._usageService.predict(
+                    this._snapshot,
+                );
+            } catch (error) {
+                this._prediction = null;
+                console.error("Unable to predict Codex usage", error);
+            }
         } catch (error) {
             this._errorMessage =
                 error?.message ?? "Unable to load Codex usage.";
+            console.error("Unable to refresh Codex usage", error);
         } finally {
-            if (manual) this._stopRefreshSpin();
             this._syncLabel();
             this._syncMenu();
         }

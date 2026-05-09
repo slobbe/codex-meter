@@ -8,11 +8,11 @@ import { appendHistory, readHistory } from "../infra/storage/history.js";
 import { readSnapshot, writeSnapshot } from "../infra/storage/snapshot-cache.js";
 
 export class UsageService {
-    async refresh(): Promise<UsageSnapshot | null> {
+    async refresh(): Promise<UsageSnapshot> {
         const token = await getAccessToken();
 
         if (!token) {
-            return null;
+            throw new Error("No Codex access token found. Run `codex login` and try again.");
         }
 
         const apiResponse = await fetchUsage(token);
