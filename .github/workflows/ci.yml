@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y jq libglib2.0-bin shellcheck unzip zip
+          sudo apt-get install -y jq libglib2.0-bin unzip zip
 
       - name: Install Node.js dependencies
         run: npm ci
@@ -66,12 +66,6 @@ jobs:
         run: |
           set -euo pipefail
           glib-compile-schemas --strict schemas
-
-      - name: Lint shell scripts
-        shell: bash
-        run: |
-          set -euo pipefail
-          shellcheck build-release.sh
 
       - name: Build extension bundle
         shell: bash

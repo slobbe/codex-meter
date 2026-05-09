@@ -45,7 +45,7 @@ You may need to log out and back in to see the changes.
 To build a release bundle locally:
 
 ```sh
-./build-release.sh
+make clean pack
 ```
 
 ## License
