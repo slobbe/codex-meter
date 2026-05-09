@@ -39,7 +39,7 @@ export const AboutPage = GObject.registerClass(
 
             this.add(createAboutHeaderGroup(metadata));
             this.add(createAboutInfoGroup(metadata));
-            this.add(createLegalGroup());
+            this.add(createLegalGroup(metadata));
         }
     },
 );
@@ -187,7 +187,7 @@ function createAboutHeaderGroup(metadata: Metadata) {
         new Gtk.Label({
             label:
                 metadata.description ??
-                "Show current Codex quota usage in the top panel",
+                "",
             justify: Gtk.Justification.CENTER,
             wrap: true,
             max_width_chars: 48,
@@ -205,25 +205,22 @@ function createAboutInfoGroup(metadata: Metadata) {
 
     group.add(
         createInfoRow(
-            "Extension Version",
+            "Version",
             metadata["version-name"] ?? `${metadata.version ?? 1}`,
         ),
     );
-    group.add(
-        createInfoRow(
-            "GNOME Version",
-            formatShellVersions(metadata["shell-version"]),
-        ),
-    );
-    group.add(createInfoRow("UUID", metadata.uuid ?? "--"));
+    group.add(createInfoRow("Created By", "Sebastian Lobbe"));
     group.add(
         createLinkRow("GitHub", metadata.url ?? "https://github.com/slobbe/codex-meter"),
+    );
+    group.add(
+        createLinkRow("Report a Bug", "https://github.com/slobbe/codex-meter/issues"),
     );
 
     return group;
 }
 
-function createLegalGroup() {
+function createLegalGroup(metadata: Metadata) {
     const group = new Adw.PreferencesGroup();
     const box = new Gtk.Box({
         orientation: Gtk.Orientation.VERTICAL,
@@ -236,7 +233,7 @@ function createLegalGroup() {
 
     box.append(
         new Gtk.Label({
-            label: '<span size="small">This program comes with absolutely no warranty.\nSee the <a href="https://www.gnu.org/licenses/gpl-3.0-standalone.html">GNU General Public License, version 3 or later</a> for details.</span>',
+            label: `<span size="small">This program comes with absolutely no warranty.\nSee the <a href="${metadata.url + '/LICENSE'}">${ metadata.license ?? 'GNU General Public License, version 3 or later'}</a> for details.</span>`,
             use_markup: true,
             justify: Gtk.Justification.CENTER,
             wrap: true,

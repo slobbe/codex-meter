@@ -3,18 +3,15 @@
   <schema id="org.gnome.shell.extensions.codex-meter" path="/org/gnome/shell/extensions/codex-meter/">
     <key name="show-five-hour" type="b">
       <default>true</default>
-      <summary>Show the 5-hour usage percentage in the top bar</summary>
-      <description>If enabled, the top bar includes the current 5-hour Codex usage percentage.</description>
+      <summary>Show session (5h) usage</summary>
     </key>
     <key name="show-weekly" type="b">
       <default>false</default>
-      <summary>Show the weekly usage percentage in the top bar</summary>
-      <description>If enabled, the top bar includes the current weekly Codex usage percentage.</description>
+      <summary>Show weekly usage</summary>
     </key>
     <key name="top-bar-display-mode" type="s">
       <default>'percentages'</default>
-      <summary>Top bar display mode</summary>
-      <description>Controls whether the top bar shows usage percentages, split progress bars, or a unified progress bar.</description>
+      <summary>Top panel style</summary>
       <choices>
         <choice value='percentages'/>
         <choice value='bars'/>
@@ -23,8 +20,8 @@
     </key>
     <key name="background-refresh-interval-minutes" type="u">
       <default>1</default>
-      <summary>Background refresh interval in minutes</summary>
-      <description>Controls how often the extension refreshes Codex usage data in the background. Set to 0 to disable scheduled refreshes and rely on manual refresh only.</description>
+      <summary>Refresh interval (min)</summary>
+      <description>Set to 0 for manual refresh</description>
       <range min="0" max="60"/>
     </key>
   </schema>
