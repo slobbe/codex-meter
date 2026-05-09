@@ -1,7 +1,8 @@
 NAME=codex-meter
 DOMAIN=slobbe.github.io
 VERSION=$(shell node -p "require('./package.json').version")
-ZIP=$(NAME)@$(DOMAIN)-$(VERSION).zip
+TAG_VERSION=v$(VERSION)
+ZIP=$(NAME)@$(DOMAIN)-$(TAG_VERSION).zip
 TS_SOURCES=$(shell find . -path ./dist -prune -o -path ./node_modules -prune -o -name "*.ts" -print)
 
 .PHONY: all pack install clean
