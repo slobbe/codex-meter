@@ -3,10 +3,6 @@ name: CI
 on:
   pull_request:
   push:
-    branches:
-      - "main"
-    tags:
-      - "v*.*.*"
   workflow_dispatch:
 
 permissions:
@@ -24,12 +20,21 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
       - name: Install validation dependencies
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y jq libglib2.0-bin shellcheck unzip zip
+
+      - name: Install Node.js dependencies
+        run: npm ci
 
       - name: Validate metadata
         shell: bash
@@ -44,6 +49,17 @@ jobs:
             and (."shell-version" | type == "array" and length > 0)
             and (."settings-schema" == "org.gnome.shell.extensions.codex-meter")
           ' metadata.json
+
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          METADATA_VERSION="$(jq -r '."version-name"' metadata.json)"
+
+          if [[ "${PACKAGE_VERSION}" != "${METADATA_VERSION}" ]]; then
+            echo "package.json version ${PACKAGE_VERSION} does not match metadata.json version-name ${METADATA_VERSION}" >&2
+            exit 1
+          fi
+
+      - name: Type-check and build
+        run: npm run build
 
       - name: Validate schemas
         shell: bash
@@ -61,15 +77,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash ./build-release.sh
+          make clean pack
 
       - name: Validate extension bundle
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="$(jq -r '."version-name"' metadata.json)"
+          VERSION="$(node -p "require('./package.json').version")"
           UUID="$(jq -r '.uuid' metadata.json)"
-          ZIP="dist/${UUID}-${VERSION}.zip"
+          ZIP="${UUID}-${VERSION}.zip"
 
           test -f "${ZIP}"
           unzip -p "${ZIP}" metadata.json | jq empty
@@ -90,6 +106,6 @@ jobs:
       - name: Upload extension bundle
         uses: actions/upload-artifact@v4
         with:
-          name: extension-bundle
-          path: dist/*.zip
+          name: release-bundle
+          path: codex-meter@slobbe.github.io-*.zip
           if-no-files-found: error

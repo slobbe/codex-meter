@@ -12,7 +12,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: release-${{ github.event.workflow_run.head_branch }}
+  group: release-${{ github.event.workflow_run.head_branch || github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
 jobs:
@@ -55,7 +55,12 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y jq
+          sudo apt-get install -y jq unzip
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
 
       - name: Validate release metadata
         shell: bash
@@ -63,7 +68,13 @@ jobs:
           set -euo pipefail
           CI_REF="${{ github.event.workflow_run.head_branch }}"
           TAG_VERSION="${CI_REF#v}"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
           METADATA_VERSION="$(jq -r '."version-name"' metadata.json)"
+
+          if [[ "${PACKAGE_VERSION}" != "${TAG_VERSION}" ]]; then
+            echo "Tag ${CI_REF} does not match package version ${PACKAGE_VERSION}" >&2
+            exit 1
+          fi
 
           if [[ "${METADATA_VERSION}" != "${TAG_VERSION}" ]]; then
             echo "Tag ${CI_REF} does not match metadata version-name ${METADATA_VERSION}" >&2
@@ -73,10 +84,10 @@ jobs:
       - name: Download extension bundle
         uses: actions/download-artifact@v4
         with:
-          name: extension-bundle
+          name: release-bundle
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
-          path: dist
+          path: release-artifacts
 
       - name: Validate release artifact
         shell: bash
@@ -85,9 +96,12 @@ jobs:
           CI_REF="${{ github.event.workflow_run.head_branch }}"
           TAG_VERSION="${CI_REF#v}"
           UUID="$(jq -r '.uuid' metadata.json)"
-          ZIP="dist/${UUID}-${TAG_VERSION}.zip"
+          ZIP="release-artifacts/${UUID}-${TAG_VERSION}.zip"
 
           test -f "${ZIP}"
+          unzip -p "${ZIP}" metadata.json | jq empty
+          unzip -p "${ZIP}" extension.js >/dev/null
+          unzip -p "${ZIP}" prefs.js >/dev/null
 
       - name: Create GitHub release
         env:
@@ -98,13 +112,13 @@ jobs:
           CI_REF="${{ github.event.workflow_run.head_branch }}"
           TAG_VERSION="${CI_REF#v}"
           UUID="$(jq -r '.uuid' metadata.json)"
-          ZIP="dist/${UUID}-${TAG_VERSION}.zip"
+          ZIP="release-artifacts/${UUID}-${TAG_VERSION}.zip"
 
           if gh release view "${CI_REF}" >/dev/null 2>&1; then
             gh release upload "${CI_REF}" "${ZIP}" --clobber
           else
             gh release create "${CI_REF}" "${ZIP}" \
-              --title "${TAG_VERSION}" \
+              --title "${CI_REF}" \
               --generate-notes \
               --verify-tag
           fi
