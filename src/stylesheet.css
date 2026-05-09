@@ -89,11 +89,15 @@
 .cx-usage-detail {
     margin-top: 2px;
     font-size: 0.9em;
-    spacing: 0;
+    spacing: 12px;
 }
 
 .cx-usage-detail-muted {
     opacity: 0.75;
+}
+
+.cx-usage-prediction {
+    text-align: right;
 }
 
 .cx-usage-prediction-warning {

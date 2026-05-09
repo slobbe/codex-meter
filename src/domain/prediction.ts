@@ -3,7 +3,7 @@ import { UsageSnapshot } from "./usage-snapshot.js";
 
 type Trend = "safe" | "unsafe" | "limit reached" | "unknown";
 
-type WindowPrediction = {
+export type WindowPrediction = {
     estimatedLimitAt: number | null
     trend: Trend
 }
@@ -51,12 +51,21 @@ function predictWindow(windowHistory: HistoryEntrySlice[], resetAt: number): Win
             trend: "unknown"
         };
     }
-    const history = windowHistory.toSorted((a, b) => b.timestamp - a.timestamp);
+    const history = windowHistory.toSorted((a, b) => a.timestamp - b.timestamp);
+    const oldest = history[0];
+    const latest = history[history.length - 1];
     
-    if (history[history.length - 1].usedPercent >= 100) {
+    if (latest.usedPercent >= 100) {
         return {
             estimatedLimitAt: null,
             trend: "limit reached"
+        };
+    }
+
+    if (latest.usedPercent <= oldest.usedPercent) {
+        return {
+            estimatedLimitAt: null,
+            trend: "safe"
         };
     }
 
@@ -64,16 +73,23 @@ function predictWindow(windowHistory: HistoryEntrySlice[], resetAt: number): Win
     
     const limitAt = fit(100);
 
+    if (!Number.isFinite(limitAt)) {
+        return {
+            estimatedLimitAt: null,
+            trend: "safe"
+        };
+    }
+
     return {
         estimatedLimitAt: limitAt,
-        trend: (limitAt < resetAt) ? "safe" : "unsafe"
+        trend: (limitAt < resetAt) ? "unsafe" : "safe"
     };
 }
 
 function calculateFit(x: number[], y: number[]) {
     const n = x.length
 
-    const slope = (x[n - 1] - x[0]) / (y[n - 1] - y[0]);
+    const secondsPerPercent = (x[n - 1] - x[0]) / (y[n - 1] - y[0]);
 
-    return (t: number) => x[n - 1] + ((t - y[n - 1]) * slope);
+    return (t: number) => x[n - 1] + ((t - y[n - 1]) * secondsPerPercent);
 }

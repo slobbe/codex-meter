@@ -105,24 +105,20 @@ export class CodexMeterPopupMenu {
             x_expand: true,
             style_class: "cx-usage-detail",
         });
-        const predictionLabel = new St.Label({
-            text: "Trend unavailable",
-            y_align: Clutter.ActorAlign.CENTER,
-        });
-        const detailSeparatorLabel = new St.Label({
-            text: " · ",
-            y_align: Clutter.ActorAlign.CENTER,
-            style_class: "cx-usage-detail-muted",
-        });
         const resetLabel = new St.Label({
             text: "resets in --",
+            x_expand: true,
             y_align: Clutter.ActorAlign.CENTER,
             style_class: "cx-usage-detail-muted",
         });
+        const predictionLabel = new St.Label({
+            text: "Trend: --",
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: "cx-usage-prediction",
+        });
 
-        detailBox.add_child(predictionLabel);
-        detailBox.add_child(detailSeparatorLabel);
         detailBox.add_child(resetLabel);
+        detailBox.add_child(predictionLabel);
 
         headingBox.add_child(titleLabel);
         headingBox.add_child(valueLabel);

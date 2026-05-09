@@ -1,3 +1,6 @@
+import { UsagePrediction, WindowPrediction } from "../domain/prediction.js";
+import { UsageSnapshot, UsageWindow } from "../domain/usage-snapshot.js";
+
 export type UsageWindowType = "five-hour" | "weekly";
 
 export type PredictionStyle = "safe" | "warning" | "danger" | "muted";
@@ -36,8 +39,7 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
     const includeFiveHour = showFiveHour;
     const showUnifiedBar =
         displayMode === "unified" && snapshot && hasTopBarUsage;
-    const showSplitBars =
-        displayMode === "bars" && snapshot && hasTopBarUsage;
+    const showSplitBars = displayMode === "bars" && snapshot && hasTopBarUsage;
 
     const viewModel: PanelBarViewModel = {
         fiveHourVisible: includeFiveHour,
@@ -104,7 +106,7 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
     return viewModel;
 }
 
-export function createMenuViewModel(snapshot, prediction, errorMessage) {
+export function createMenuViewModel(snapshot: UsageSnapshot, prediction: UsagePrediction, errorMessage) {
     if (!snapshot) {
         const fallback = errorMessage ?? "Loading Codex usage...";
 
@@ -123,14 +125,11 @@ export function createMenuViewModel(snapshot, prediction, errorMessage) {
     }
 
     return {
-        updatedAt: formatUpdatedAt(snapshot.fetchedAt),
+        updatedAt: "Updated at " + formatUnixTimestamp(snapshot.fetchedAt, false),
         fiveHour: createUsageItemViewModel({
             title: "Session (5h)",
             value: formatPercent(snapshot.rateLimit.primary?.usedPercent),
-            prediction: formatLimitPrediction(
-                prediction?.primary,
-                "five-hour",
-            ),
+            prediction: formatLimitPrediction(prediction?.primary, "five-hour"),
             reset: formatReset(snapshot.rateLimit.primary, "five-hour"),
             percentValue: snapshot.rateLimit.primary?.usedPercent,
             predictionStyle: getPredictionStyleClass(prediction?.primary),
@@ -150,7 +149,7 @@ export function createMenuViewModel(snapshot, prediction, errorMessage) {
 export function createUsageItemViewModel({
     title,
     value,
-    prediction = "Trend unavailable",
+    prediction = "Trend: --",
     reset = "resets in --",
     percentValue = null,
     predictionStyle = "muted" as PredictionStyle,
@@ -165,31 +164,33 @@ export function createUsageItemViewModel({
     };
 }
 
-export function calculateBarFillWidth(trackWidth, percentValue) {
+export function calculateBarFillWidth(trackWidth: number, percentValue: number): number {
     if (trackWidth <= 0) return 0;
 
     return Math.round(trackWidth * (normalizePercent(percentValue) / 100));
 }
 
-export function getUsageBarColorStyleClass(percentValue) {
+export function getUsageBarColorStyleClass(percentValue: number): string {
     const percent = normalizePercent(percentValue);
 
-    if (percent > 95) return "cx-usage-bar-fill-red";
+    if (percent >= 100) return "cx-usage-bar-fill-red";
 
     if (percent > 75) return "cx-usage-bar-fill-orange";
 
     return "cx-usage-bar-fill-green";
 }
 
-export function formatPercent(value) {
+export function formatPercent(value: number): string {
     return Number.isFinite(value) ? `${value}%` : "--";
 }
 
-export function formatReset(window, windowType: UsageWindowType) {
+export function formatReset(window: UsageWindow, windowType: UsageWindowType) {
     if (!window) return "resets in --";
 
+    const useDate = windowType === "weekly" ? true : false;
+    
     const relative = formatDuration(window.resetAfterSeconds, windowType);
-    const absolute = formatUnixTimestamp(window.resetAt);
+    const absolute = formatUnixTimestamp(window.resetAt, useDate);
 
     if (relative === "--" && absolute === "--") return "resets in --";
 
@@ -200,7 +201,7 @@ export function formatReset(window, windowType: UsageWindowType) {
     return `resets in ${relative} (${absolute})`;
 }
 
-export function formatDuration(totalSeconds, windowType?: UsageWindowType) {
+export function formatDuration(totalSeconds: number, windowType?: UsageWindowType) {
     if (!Number.isFinite(totalSeconds)) return "--";
 
     let remaining = Math.max(0, Math.floor(totalSeconds));
@@ -225,78 +226,97 @@ export function formatDuration(totalSeconds, windowType?: UsageWindowType) {
     return parts.join(" ");
 }
 
-export function formatUnixTimestamp(value) {
+/**
+ * Format a UNIX timestamp given in seconds into time or datetime string
+ * 
+ * @param value UNIX timestamp in seconds
+ * @param date whether to format a datetime or time only
+ * @returns formatted string
+ */
+export function formatUnixTimestamp(value: number, date: boolean = true): string {
     if (!Number.isFinite(value)) return "--";
 
-    return formatTimestamp(new Date(value * 1000).toISOString());
+    return formatTimestamp(new Date(value * 1000).toISOString(), date);
 }
 
-export function formatTimestamp(value) {
+/**
+ * Format a ISO string timestamp into time or datetime string
+ * 
+ * @param value ISO string timestamp
+ * @param date whether to format a datetime or time only
+ * @returns formatted string
+ */
+export function formatTimestamp(value: string, date: boolean = true): string {
     if (!value) return "--";
 
+    const datetimeFormat = new Intl.DateTimeFormat(undefined, {
+        day: "numeric",
+        month: "short",
+        hour: "numeric",
+        minute: "2-digit",
+    });
+
+    const timeFormat = new Intl.DateTimeFormat(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+    });
+
+    const format = date ? datetimeFormat : timeFormat;
+
     try {
-        return new Intl.DateTimeFormat(undefined, {
-            day: "numeric",
-            month: "short",
-            hour: "numeric",
-            minute: "2-digit",
-        }).format(new Date(value));
+        return format.format(new Date(value));
     } catch (_error) {
         return "--";
     }
 }
 
-export function formatUpdatedAt(value) {
-    if (!value) return "--";
+/**
+ * Calculate seconds from now until timestamp
+ * 
+ * @param unixTimestamp UNIX timestamp in seconds
+ * @returns 
+ */
+export function secondsUntil(unixTimestamp: number): number {
+    if (!Number.isFinite(unixTimestamp)) return null;
 
-    try {
-        return (
-            "Updated at " +
-            new Intl.DateTimeFormat(undefined, {
-                hour: "numeric",
-                minute: "2-digit",
-            }).format(new Date(value * 1000))
-        );
-    } catch (_error) {
-        return "--";
-    }
+    return Math.max(0, Math.round(unixTimestamp - Date.now() / 1000));
 }
 
-export function formatLimitPrediction(prediction, windowType: UsageWindowType) {
+export function formatLimitPrediction(prediction: WindowPrediction, windowType: UsageWindowType) {
+    let trend: string;
+    
     switch (prediction?.trend) {
         case "limit reached":
-            return "Limit reached";
-        case "safe":
-            return `Limit in ${formatDuration(
+            trend = "Limit reached";
+            break;
+        case "unsafe":
+            trend = `Limit in ${formatDuration(
                 secondsUntil(prediction.estimatedLimitAt),
                 windowType,
             )}`;
-        case "unsafe":
-            return "Safe until reset";
+            break;
+        case "safe":
+            trend = "Safe";
+            break;
         default:
-            return "Trend unavailable";
+            trend = "--";
+            break;
     }
+
+    return `Trend: ${trend}`;
 }
 
-export function getPredictionStyleClass(prediction): PredictionStyle {
+export function getPredictionStyleClass(prediction: WindowPrediction): PredictionStyle {
     switch (prediction?.trend) {
         case "limit reached":
             return "danger";
-        case "safe":
-            return secondsUntil(prediction.estimatedLimitAt) < 30 * 60
-                ? "danger"
-                : "warning";
         case "unsafe":
+            return "warning";
+        case "safe":
             return "safe";
         default:
             return "muted";
     }
-}
-
-export function secondsUntil(unixTimestamp) {
-    if (!Number.isFinite(unixTimestamp)) return null;
-
-    return Math.max(0, Math.round(unixTimestamp - Date.now() / 1000));
 }
 
 export function formatPlan(value) {
@@ -325,7 +345,7 @@ export function calculateUnifiedPercent(...values) {
     return Math.round((1 - remainingCapacity) * 100);
 }
 
-export function normalizePercent(value) {
+export function normalizePercent(value: number): number {
     if (!Number.isFinite(value)) return 0;
 
     return Math.max(0, Math.min(100, value));

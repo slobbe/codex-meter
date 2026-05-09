@@ -8,7 +8,7 @@ export type UsageSnapshot = {
     };
 };
 
-type UsageWindow = {
+export type UsageWindow = {
     usedPercent: number;
     limitWindowSeconds: number;
     resetAfterSeconds: number;
