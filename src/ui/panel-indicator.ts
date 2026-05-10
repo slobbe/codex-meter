@@ -54,7 +54,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._prefixIcon = new St.Icon({
             gicon: new Gio.FileIcon({
                 file: Gio.File.new_for_path(
-                    `${this._extension.path}/icons/codex-dark.svg`,
+                    `${this._extension.path}/icons/codex-symbolic.svg`,
                 ),
             }),
             y_align: Clutter.ActorAlign.CENTER,

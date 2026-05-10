@@ -85,7 +85,7 @@ function createRefreshGroup(settings: Gio.Settings) {
 
 function createTopBarStyleRow(settings: Gio.Settings) {
     const row = new Adw.ComboRow({
-        title: "Top panel style",
+        title: "Usage indicator style",
         model: Gtk.StringList.new([
             "Percentages",
             "Progress bars",

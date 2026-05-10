@@ -11,7 +11,7 @@
     </key>
     <key name="top-bar-display-mode" type="s">
       <default>'percentages'</default>
-      <summary>Top panel style</summary>
+      <summary>Usage indicator style</summary>
       <choices>
         <choice value='percentages'/>
         <choice value='bars'/>
