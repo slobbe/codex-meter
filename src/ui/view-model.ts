@@ -319,7 +319,7 @@ export function formatLimitPrediction(prediction: WindowPrediction, windowType: 
             trend = "Limit reached";
             break;
         case "unsafe":
-            trend = `Limit in ${formatDuration(
+            trend = `Limit in ~${formatDuration(
                 secondsUntil(prediction.estimatedLimitAt),
                 windowType,
             )}`;
