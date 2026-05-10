@@ -96,7 +96,7 @@ jobs:
           CI_REF="${{ github.event.workflow_run.head_branch }}"
           TAG_VERSION="${CI_REF#v}"
           UUID="$(jq -r '.uuid' metadata.json)"
-          ZIP="release-artifacts/${UUID}-${TAG_VERSION}.zip"
+          ZIP="release-artifacts/${UUID}-v${TAG_VERSION}.zip"
 
           test -f "${ZIP}"
           unzip -p "${ZIP}" metadata.json | jq empty
@@ -112,7 +112,7 @@ jobs:
           CI_REF="${{ github.event.workflow_run.head_branch }}"
           TAG_VERSION="${CI_REF#v}"
           UUID="$(jq -r '.uuid' metadata.json)"
-          ZIP="release-artifacts/${UUID}-${TAG_VERSION}.zip"
+          ZIP="release-artifacts/${UUID}-v${TAG_VERSION}.zip"
 
           if gh release view "${CI_REF}" >/dev/null 2>&1; then
             gh release upload "${CI_REF}" "${ZIP}" --clobber
