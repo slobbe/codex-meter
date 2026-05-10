@@ -6,5 +6,5 @@
     "settings-schema": "org.gnome.shell.extensions.codex-meter",
     "url": "https://github.com/slobbe/codex-meter",
     "license": "GNU General Public License v3.0 or later",
-    "version-name": "0.5.0"
+    "version-name": "0.5.1"
 }
