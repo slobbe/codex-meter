@@ -8,6 +8,10 @@ import { appendHistory, readHistory } from "../infra/storage/history.js";
 import { readSnapshot, writeSnapshot } from "../infra/storage/snapshot-cache.js";
 
 export class UsageService {
+    async readCachedSnapshot(): Promise<UsageSnapshot | null> {
+        return await readSnapshot();
+    }
+
     async refresh(): Promise<UsageSnapshot> {
         const token = await getAccessToken();
 

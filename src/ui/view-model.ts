@@ -39,9 +39,8 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
     const displayMode = settings.topBarDisplayMode;
     const hasTopBarUsage = showFiveHour || showWeekly;
     const includeFiveHour = showFiveHour;
-    const showUnifiedBar =
-        displayMode === "unified" && snapshot && hasTopBarUsage;
-    const showSplitBars = displayMode === "bars" && snapshot && hasTopBarUsage;
+    const showUnifiedBar = displayMode === "unified" && hasTopBarUsage;
+    const showSplitBars = displayMode === "bars" && hasTopBarUsage;
 
     const viewModel: PanelBarViewModel = {
         fiveHourVisible: includeFiveHour,

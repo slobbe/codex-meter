@@ -79,7 +79,9 @@ export class CodexMeterIndicator extends PanelMenu.Button {
 
         this._syncLabel();
         this._syncMenu();
-        this._scheduler.start({ runImmediately: true });
+        void this._loadCachedSnapshot().finally(() => {
+            this._scheduler.start({ runImmediately: true });
+        });
     }
 
     destroy() {
@@ -239,9 +241,37 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             this._errorMessage =
                 error?.message ?? "Unable to load Codex usage.";
             console.error("Unable to refresh Codex usage", error);
+
+            if (this._snapshot) {
+                this._errorMessage = null;
+            }
         } finally {
             this._syncLabel();
             this._syncMenu();
+        }
+    }
+
+    async _loadCachedSnapshot() {
+        if (this._snapshot || this._errorMessage) return;
+
+        try {
+            const snapshot = await this._usageService.readCachedSnapshot();
+
+            if (!snapshot || this._snapshot || this._errorMessage) return;
+
+            this._snapshot = snapshot;
+
+            try {
+                this._prediction = await this._usageService.predict(snapshot);
+            } catch (error) {
+                this._prediction = null;
+                console.error("Unable to predict cached Codex usage", error);
+            }
+
+            this._syncLabel();
+            this._syncMenu();
+        } catch (error) {
+            console.error("Unable to load cached Codex usage", error);
         }
     }
 
