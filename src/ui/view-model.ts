@@ -29,6 +29,8 @@ export type MenuViewModel = {
     fiveHour: UsageItemViewModel;
     weekly: UsageItemViewModel;
     plan: string;
+    errorMessage: string | null;
+    hasError: boolean;
 };
 
 export function createPanelBarViewModel(settings, snapshot, errorMessage) {
@@ -50,6 +52,15 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
         showLabel: !showSplitBars && !showUnifiedBar,
         label: "",
     };
+
+    if (errorMessage) {
+        viewModel.fiveHourVisible = false;
+        viewModel.weeklyVisible = false;
+        viewModel.showBars = false;
+        viewModel.showLabel = false;
+
+        return viewModel;
+    }
 
     if (showUnifiedBar) {
         viewModel.fiveHourVisible = true;
@@ -107,14 +118,31 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
 }
 
 export function createMenuViewModel(snapshot: UsageSnapshot, prediction: UsagePrediction, errorMessage) {
-    if (!snapshot) {
-        const fallback = errorMessage ?? "Loading Codex usage...";
-
+    if (errorMessage) {
         return {
             updatedAt: "--",
+            errorMessage,
+            hasError: true,
             fiveHour: createUsageItemViewModel({
                 title: "Session (5h)",
-                value: fallback,
+                value: "--",
+            }),
+            weekly: createUsageItemViewModel({
+                title: "Week",
+                value: "--",
+            }),
+            plan: "--",
+        };
+    }
+
+    if (!snapshot) {
+        return {
+            updatedAt: "--",
+            errorMessage: null,
+            hasError: false,
+            fiveHour: createUsageItemViewModel({
+                title: "Session (5h)",
+                value: "Loading...",
             }),
             weekly: createUsageItemViewModel({
                 title: "Week",
@@ -126,6 +154,8 @@ export function createMenuViewModel(snapshot: UsageSnapshot, prediction: UsagePr
 
     return {
         updatedAt: "Updated at " + formatUnixTimestamp(snapshot.fetchedAt, false),
+        errorMessage: null,
+        hasError: false,
         fiveHour: createUsageItemViewModel({
             title: "Session (5h)",
             value: formatPercent(snapshot.rateLimit.primary?.usedPercent),

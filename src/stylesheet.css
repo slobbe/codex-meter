@@ -31,6 +31,31 @@
     spacing: 2px;
 }
 
+.cx-error-menu-item {
+    spacing: 8px;
+}
+
+.cx-error-heading-row {
+    spacing: 8px;
+}
+
+.cx-error-icon,
+.cx-error-title {
+    color: #d9534f;
+}
+
+.cx-error-title {
+    font-weight: 700;
+    font-size: 1.05em;
+}
+
+.cx-error-message {
+    padding: 8px;
+    border-radius: 10px;
+    background-color: rgba(217, 83, 79, 0.12);
+    color: rgba(255, 255, 255, 0.92);
+}
+
 .cx-header-item {
     spacing: 1px;
 }

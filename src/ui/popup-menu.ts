@@ -10,6 +10,7 @@ import {
 
 export class CodexMeterPopupMenu {
     headerItem: any;
+    errorItem: any;
     fiveHourItem: any;
     weeklyItem: any;
     footerItem: any;
@@ -22,6 +23,7 @@ export class CodexMeterPopupMenu {
         this._onOpenPreferences = onOpenPreferences;
 
         this.headerItem = this._createHeaderItem();
+        this.errorItem = this._createErrorItem();
         this.fiveHourItem = this._createUsageItem("Session (5h)");
         this.weeklyItem = this._createUsageItem("Week");
         this.footerItem = this._createFooterItem();
@@ -29,6 +31,7 @@ export class CodexMeterPopupMenu {
 
     addToMenu(menu) {
         menu.addMenuItem(this.headerItem);
+        menu.addMenuItem(this.errorItem);
         menu.addMenuItem(this.fiveHourItem);
         menu.addMenuItem(this.weeklyItem);
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -49,6 +52,16 @@ export class CodexMeterPopupMenu {
         item.percentValue = viewModel.percentValue;
         this._updateUsageBarColor(item);
         this._updateUsageBar(item);
+    }
+
+    setError(message) {
+        const hasError = Boolean(message);
+
+        this.errorItem.visible = hasError;
+        this.fiveHourItem.visible = !hasError;
+        this.weeklyItem.visible = !hasError;
+        this.errorItem.message = message ?? "";
+        this.errorItem.messageLabel.text = message ?? "";
     }
 
     private _createUsageItem(title) {
@@ -134,6 +147,73 @@ export class CodexMeterPopupMenu {
         item.percentValue = 0;
         item.predictionLabel = predictionLabel;
         item.resetLabel = resetLabel;
+
+        return item;
+    }
+
+    private _createErrorItem() {
+        const item = new PopupMenu.PopupBaseMenuItem({
+            reactive: false,
+            can_focus: false,
+        }) as any;
+
+        const box = new St.BoxLayout({
+            vertical: true,
+            x_expand: true,
+            style_class: "cx-error-menu-item",
+        });
+
+        const headingBox = new St.BoxLayout({
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: "cx-error-heading-row",
+        });
+
+        const icon = new St.Icon({
+            icon_name: "dialog-error-symbolic",
+            style_class: "popup-menu-icon cx-error-icon",
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+
+        const titleLabel = new St.Label({
+            text: "Unable to load usage",
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: "cx-error-title",
+        });
+
+        const copyButton = new St.Button({
+            child: new St.Icon({
+                icon_name: "edit-copy-symbolic",
+                style_class: "popup-menu-icon",
+            }),
+            style_class: "cx-footer-button",
+            can_focus: true,
+            x_align: Clutter.ActorAlign.END,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        copyButton.connect("clicked", () => {
+            copyTextToClipboard(item.message);
+        });
+
+        const messageLabel = new St.Label({
+            text: "",
+            x_expand: true,
+            style_class: "cx-error-message",
+        });
+        messageLabel.clutter_text.line_wrap = true;
+        messageLabel.clutter_text.ellipsize = 0;
+
+        headingBox.add_child(icon);
+        headingBox.add_child(titleLabel);
+        headingBox.add_child(copyButton);
+        box.add_child(headingBox);
+        box.add_child(messageLabel);
+        item.add_child(box);
+        item.visible = false;
+        item.message = "";
+        item.messageLabel = messageLabel;
+        item.copyButton = copyButton;
 
         return item;
     }
@@ -257,4 +337,10 @@ function setPredictionStyleClass(label, style) {
     label.remove_style_class_name("cx-usage-prediction-muted");
 
     label.add_style_class_name(`cx-usage-prediction-${style}`);
+}
+
+function copyTextToClipboard(text) {
+    if (!text) return;
+
+    St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, text);
 }

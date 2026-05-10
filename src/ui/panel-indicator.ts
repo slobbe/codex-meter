@@ -294,6 +294,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         );
 
         this._headerItem.datetimeLabel.text = viewModel.updatedAt;
+        this._popupMenu.setError(viewModel.errorMessage);
         this._setUsageItem(this._fiveHourItem, viewModel.fiveHour);
         this._setUsageItem(this._weeklyItem, viewModel.weekly);
         this._footerItem.planLabel.text = viewModel.plan;
