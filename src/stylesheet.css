@@ -6,6 +6,10 @@
     font-weight: 700;
 }
 
+.cx-panel-icon {
+    icon-size: 1.05em;
+}
+
 .cx-usage-label {
     font-variant-numeric: tabular-nums;
     min-width: 4.5em;

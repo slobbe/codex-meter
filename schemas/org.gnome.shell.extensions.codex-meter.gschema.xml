@@ -18,6 +18,14 @@
         <choice value='unified'/>
       </choices>
     </key>
+    <key name="top-bar-indicator-icon" type="s">
+      <default>'text'</default>
+      <summary>Icon</summary>
+      <choices>
+        <choice value='text'/>
+        <choice value='icon'/>
+      </choices>
+    </key>
     <key name="background-refresh-interval-minutes" type="u">
       <default>1</default>
       <summary>Refresh interval (min)</summary>

@@ -9,6 +9,8 @@ import {
     SETTINGS_SHOW_FIVE_HOUR,
     SETTINGS_SHOW_WEEKLY,
     SETTINGS_TOP_BAR_DISPLAY_MODE,
+    SETTINGS_TOP_BAR_INDICATOR_ICON,
+    type TopBarIndicatorIcon,
     type TopBarDisplayMode,
 } from "../app/settings.js";
 
@@ -50,6 +52,7 @@ function createTopBarGroup(settings: Gio.Settings) {
         description: "Choose what the top panel shows.",
     });
 
+    group.add(createTopBarIndicatorIconRow(settings));
     group.add(createTopBarStyleRow(settings));
     group.add(
         createBoundSwitchRow({
@@ -103,6 +106,31 @@ function createTopBarStyleRow(settings: Gio.Settings) {
     settings.connect(`changed::${SETTINGS_TOP_BAR_DISPLAY_MODE}`, () => {
         row.selected = getTopBarDisplayModeIndex(
             settings.get_string(SETTINGS_TOP_BAR_DISPLAY_MODE),
+        );
+    });
+
+    return row;
+}
+
+function createTopBarIndicatorIconRow(settings: Gio.Settings) {
+    const row = new Adw.ComboRow({
+        title: "Icon",
+        model: Gtk.StringList.new(["Shortcode", "Icon"]),
+        selected: getTopBarIndicatorIconIndex(
+            settings.get_string(SETTINGS_TOP_BAR_INDICATOR_ICON),
+        ),
+    });
+
+    row.connect("notify::selected", () => {
+        settings.set_string(
+            SETTINGS_TOP_BAR_INDICATOR_ICON,
+            getTopBarIndicatorIconValue(row.selected),
+        );
+    });
+
+    settings.connect(`changed::${SETTINGS_TOP_BAR_INDICATOR_ICON}`, () => {
+        row.selected = getTopBarIndicatorIconIndex(
+            settings.get_string(SETTINGS_TOP_BAR_INDICATOR_ICON),
         );
     });
 
@@ -313,4 +341,16 @@ function getTopBarDisplayModeValue(selected: number): TopBarDisplayMode {
         default:
             return "percentages";
     }
+}
+
+function getTopBarIndicatorIconIndex(value: string) {
+    if (value === "icon") return 1;
+
+    return 0;
+}
+
+function getTopBarIndicatorIconValue(selected: number): TopBarIndicatorIcon {
+    if (selected === 1) return "icon";
+
+    return "text";
 }

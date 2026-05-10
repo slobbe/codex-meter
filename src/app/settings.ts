@@ -3,17 +3,20 @@ import Gio from "gi://Gio";
 export const SETTINGS_SHOW_FIVE_HOUR = "show-five-hour";
 export const SETTINGS_SHOW_WEEKLY = "show-weekly";
 export const SETTINGS_TOP_BAR_DISPLAY_MODE = "top-bar-display-mode";
+export const SETTINGS_TOP_BAR_INDICATOR_ICON = "top-bar-indicator-icon";
 export const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES =
     "background-refresh-interval-minutes";
 
 export const MIN_REFRESH_INTERVAL_MINUTES = 0;
 
 export type TopBarDisplayMode = "percentages" | "bars" | "unified";
+export type TopBarIndicatorIcon = "text" | "icon";
 
 export type ExtensionSettings = {
     showFiveHour: boolean;
     showWeekly: boolean;
     topBarDisplayMode: TopBarDisplayMode;
+    topBarIndicatorIcon: TopBarIndicatorIcon;
     backgroundRefreshIntervalMinutes: number;
     backgroundRefreshIntervalSeconds: number;
 };
@@ -29,6 +32,7 @@ export class SettingsService {
             showFiveHour: this.getShowFiveHour(),
             showWeekly: this.getShowWeekly(),
             topBarDisplayMode: this.getTopBarDisplayMode(),
+            topBarIndicatorIcon: this.getTopBarIndicatorIcon(),
             backgroundRefreshIntervalMinutes,
             backgroundRefreshIntervalSeconds:
                 backgroundRefreshIntervalMinutes * 60,
@@ -51,6 +55,16 @@ export class SettingsService {
         }
 
         return "percentages";
+    }
+
+    getTopBarIndicatorIcon(): TopBarIndicatorIcon {
+        const value = this.settings.get_string(SETTINGS_TOP_BAR_INDICATOR_ICON);
+
+        if (value === "icon") {
+            return value;
+        }
+
+        return "text";
     }
 
     getBackgroundRefreshIntervalMinutes(): number {

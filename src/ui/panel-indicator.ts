@@ -1,4 +1,5 @@
 import Clutter from "gi://Clutter";
+import Gio from "gi://Gio";
 import GLib from "gi://GLib";
 import GObject from "gi://GObject";
 import St from "gi://St";
@@ -50,6 +51,15 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             y_align: Clutter.ActorAlign.CENTER,
             style_class: "cx-panel-prefix",
         });
+        this._prefixIcon = new St.Icon({
+            gicon: new Gio.FileIcon({
+                file: Gio.File.new_for_path(
+                    `${this._extension.path}/icons/codex-dark.svg`,
+                ),
+            }),
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: "cx-panel-icon",
+        });
 
         this._label = new St.Label({
             text: "--",
@@ -60,6 +70,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._panelBars = this._createPanelBars();
 
         this._panelBox.add_child(this._prefixLabel);
+        this._panelBox.add_child(this._prefixIcon);
         this._panelBox.add_child(this._label);
         this._panelBox.add_child(this._panelBars);
         this.add_child(this._panelBox);
@@ -279,6 +290,8 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._panelBars.visible = viewModel.showBars;
         this._label.visible = viewModel.showLabel;
         this._label.text = viewModel.label;
+        this._prefixLabel.visible = settings.topBarIndicatorIcon === "text";
+        this._prefixIcon.visible = settings.topBarIndicatorIcon === "icon";
 
         this._updateUsageBarColor(this._panelFiveHourBar);
         this._updateUsageBarColor(this._panelWeeklyBar);

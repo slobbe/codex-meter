@@ -19,8 +19,9 @@ dist/extension.js dist/prefs.js &: node_modules/.package-lock.json $(TS_SOURCES)
 schemas/gschemas.compiled: schemas/org.gnome.shell.extensions.$(NAME).gschema.xml
 	glib-compile-schemas schemas
 
-$(ZIP): dist/extension.js dist/prefs.js schemas/gschemas.compiled metadata.json src/stylesheet.css
+$(ZIP): dist/extension.js dist/prefs.js schemas/gschemas.compiled metadata.json src/stylesheet.css icons/codex-dark.svg
 	@cp -r schemas dist/
+	@cp -r icons dist/
 	@cp metadata.json dist/
 	@cp src/stylesheet.css dist/stylesheet.css
 	@rm -f $(ZIP)
