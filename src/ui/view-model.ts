@@ -202,11 +202,11 @@ export function calculateBarFillWidth(trackWidth: number, percentValue: number):
 export function getUsageBarColorStyleClass(percentValue: number): string {
     const percent = normalizePercent(percentValue);
 
-    if (percent >= 100) return "cx-usage-bar-fill-red";
+    if (percent >= 100) return "cx-color-danger";
 
-    if (percent > 75) return "cx-usage-bar-fill-orange";
+    if (percent > 75) return "cx-color-warning";
 
-    return "cx-usage-bar-fill-green";
+    return "cx-color-green";
 }
 
 export function formatPercent(value: number): string {

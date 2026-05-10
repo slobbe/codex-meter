@@ -171,7 +171,7 @@ export class CodexMeterPopupMenu {
 
         const icon = new St.Icon({
             icon_name: "dialog-error-symbolic",
-            style_class: "popup-menu-icon cx-error-icon",
+            style_class: "popup-menu-icon cx-color-danger",
             y_align: Clutter.ActorAlign.CENTER,
         });
 
@@ -179,7 +179,7 @@ export class CodexMeterPopupMenu {
             text: "Unable to load usage",
             x_expand: true,
             y_align: Clutter.ActorAlign.CENTER,
-            style_class: "cx-error-title",
+            style_class: "cx-error-title cx-color-danger",
         });
 
         const copyButton = new St.Button({
@@ -320,9 +320,7 @@ export class CodexMeterPopupMenu {
     }
 
     private _updateUsageBarColor(item) {
-        item.barFill.remove_style_class_name("cx-usage-bar-fill-green");
-        item.barFill.remove_style_class_name("cx-usage-bar-fill-orange");
-        item.barFill.remove_style_class_name("cx-usage-bar-fill-red");
+        removeColorStyleClasses(item.barFill);
 
         item.barFill.add_style_class_name(
             getUsageBarColorStyleClass(item.percentValue),
@@ -331,12 +329,23 @@ export class CodexMeterPopupMenu {
 }
 
 function setPredictionStyleClass(label, style) {
-    label.remove_style_class_name("cx-usage-prediction-safe");
-    label.remove_style_class_name("cx-usage-prediction-warning");
-    label.remove_style_class_name("cx-usage-prediction-danger");
-    label.remove_style_class_name("cx-usage-prediction-muted");
+    removeColorStyleClasses(label);
 
-    label.add_style_class_name(`cx-usage-prediction-${style}`);
+    label.add_style_class_name(getPredictionColorStyleClass(style));
+}
+
+function getPredictionColorStyleClass(style) {
+    if (style === "safe") return "cx-color-green";
+    if (style === "muted") return "cx-muted";
+
+    return `cx-color-${style}`;
+}
+
+function removeColorStyleClasses(actor) {
+    actor.remove_style_class_name("cx-color-green");
+    actor.remove_style_class_name("cx-color-warning");
+    actor.remove_style_class_name("cx-color-danger");
+    actor.remove_style_class_name("cx-muted");
 }
 
 function copyTextToClipboard(text) {

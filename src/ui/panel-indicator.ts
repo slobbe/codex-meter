@@ -365,9 +365,10 @@ export class CodexMeterIndicator extends PanelMenu.Button {
     }
 
     _updateUsageBarColor(item) {
-        item.barFill.remove_style_class_name("cx-usage-bar-fill-green");
-        item.barFill.remove_style_class_name("cx-usage-bar-fill-orange");
-        item.barFill.remove_style_class_name("cx-usage-bar-fill-red");
+        item.barFill.remove_style_class_name("cx-color-green");
+        item.barFill.remove_style_class_name("cx-color-warning");
+        item.barFill.remove_style_class_name("cx-color-danger");
+        item.barFill.remove_style_class_name("cx-muted");
 
         item.barFill.add_style_class_name(
             getUsageBarColorStyleClass(item.percentValue),
