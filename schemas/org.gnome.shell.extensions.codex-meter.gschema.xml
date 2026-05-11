@@ -6,11 +6,11 @@
       <summary>Show session (5h) usage</summary>
     </key>
     <key name="show-secondary" type="b">
-      <default>false</default>
+      <default>true</default>
       <summary>Show weekly usage</summary>
     </key>
     <key name="top-bar-display-mode" type="s">
-      <default>'percentages'</default>
+      <default>'unified'</default>
       <summary>Usage indicator style</summary>
       <choices>
         <choice value='percentages'/>
@@ -19,7 +19,7 @@
       </choices>
     </key>
     <key name="top-bar-indicator-icon" type="s">
-      <default>'text'</default>
+      <default>'codex'</default>
       <summary>Icon</summary>
       <choices>
         <choice value='text'/>
