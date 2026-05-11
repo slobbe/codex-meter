@@ -11,8 +11,8 @@ import {
 export class CodexMeterPopupMenu {
     headerItem: any;
     errorItem: any;
-    fiveHourItem: any;
-    weeklyItem: any;
+    primaryItem: any;
+    secondaryItem: any;
     footerItem: any;
 
     private _onRefresh: () => void;
@@ -24,23 +24,23 @@ export class CodexMeterPopupMenu {
 
         this.headerItem = this._createHeaderItem();
         this.errorItem = this._createErrorItem();
-        this.fiveHourItem = this._createUsageItem("Session (5h)");
-        this.weeklyItem = this._createUsageItem("Week");
+        this.primaryItem = this._createUsageItem("Session (5h)");
+        this.secondaryItem = this._createUsageItem("Week");
         this.footerItem = this._createFooterItem();
     }
 
     addToMenu(menu) {
         menu.addMenuItem(this.headerItem);
         menu.addMenuItem(this.errorItem);
-        menu.addMenuItem(this.fiveHourItem);
-        menu.addMenuItem(this.weeklyItem);
+        menu.addMenuItem(this.primaryItem);
+        menu.addMenuItem(this.secondaryItem);
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         menu.addMenuItem(this.footerItem);
     }
 
     syncBars() {
-        this._updateUsageBar(this.fiveHourItem);
-        this._updateUsageBar(this.weeklyItem);
+        this._updateUsageBar(this.primaryItem);
+        this._updateUsageBar(this.secondaryItem);
     }
 
     setUsageItem(item, viewModel) {
@@ -58,8 +58,8 @@ export class CodexMeterPopupMenu {
         const hasError = Boolean(message);
 
         this.errorItem.visible = hasError;
-        this.fiveHourItem.visible = !hasError;
-        this.weeklyItem.visible = !hasError;
+        this.primaryItem.visible = !hasError;
+        this.secondaryItem.visible = !hasError;
         this.errorItem.message = message ?? "";
         this.errorItem.messageLabel.text = message ?? "";
     }

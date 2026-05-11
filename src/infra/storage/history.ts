@@ -15,13 +15,13 @@ export async function readHistory(): Promise<HistoryEntry[]> {
     return rows
         .map((row) => ({
             timestamp: row.timestamp,
-            session_used_percent: Number(row.session_used_percent),
-            weekly_used_percent: Number(row.weekly_used_percent),
+            primaryUsedPercent: Number(row.session_used_percent),
+            secondaryUsedPercent: Number(row.weekly_used_percent),
         }))
         .filter((row) =>
             row.timestamp &&
-            Number.isFinite(row.session_used_percent) &&
-            Number.isFinite(row.weekly_used_percent),
+            Number.isFinite(row.primaryUsedPercent) &&
+            Number.isFinite(row.secondaryUsedPercent),
         );
 }
 
@@ -30,8 +30,8 @@ export async function appendHistory(row: HistoryEntry): Promise<void> {
         ...await readHistory(),
         {
             timestamp: row.timestamp,
-            session_used_percent: row.session_used_percent,
-            weekly_used_percent: row.weekly_used_percent,
+            session_used_percent: row.primaryUsedPercent,
+            weekly_used_percent: row.secondaryUsedPercent,
         },
     ]);
 }

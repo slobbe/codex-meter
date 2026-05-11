@@ -1,7 +1,7 @@
 import Gio from "gi://Gio";
 
-export const SETTINGS_SHOW_FIVE_HOUR = "show-five-hour";
-export const SETTINGS_SHOW_WEEKLY = "show-weekly";
+export const SETTINGS_SHOW_PRIMARY = "show-primary";
+export const SETTINGS_SHOW_SECONDARY = "show-secondary";
 export const SETTINGS_TOP_BAR_DISPLAY_MODE = "top-bar-display-mode";
 export const SETTINGS_TOP_BAR_INDICATOR_ICON = "top-bar-indicator-icon";
 export const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES =
@@ -13,8 +13,8 @@ export type TopBarDisplayMode = "percentages" | "bars" | "unified";
 export type TopBarIndicatorIcon = "text" | "codex" | "openai";
 
 export type ExtensionSettings = {
-    showFiveHour: boolean;
-    showWeekly: boolean;
+    showPrimary: boolean;
+    showSecondary: boolean;
     topBarDisplayMode: TopBarDisplayMode;
     topBarIndicatorIcon: TopBarIndicatorIcon;
     backgroundRefreshIntervalMinutes: number;
@@ -29,8 +29,8 @@ export class SettingsService {
             this.getBackgroundRefreshIntervalMinutes();
 
         return {
-            showFiveHour: this.getShowFiveHour(),
-            showWeekly: this.getShowWeekly(),
+            showPrimary: this.getShowPrimary(),
+            showSecondary: this.getShowSecondary(),
             topBarDisplayMode: this.getTopBarDisplayMode(),
             topBarIndicatorIcon: this.getTopBarIndicatorIcon(),
             backgroundRefreshIntervalMinutes,
@@ -39,12 +39,12 @@ export class SettingsService {
         };
     }
 
-    getShowFiveHour(): boolean {
-        return this.settings.get_boolean(SETTINGS_SHOW_FIVE_HOUR);
+    getShowPrimary(): boolean {
+        return this.settings.get_boolean(SETTINGS_SHOW_PRIMARY);
     }
 
-    getShowWeekly(): boolean {
-        return this.settings.get_boolean(SETTINGS_SHOW_WEEKLY);
+    getShowSecondary(): boolean {
+        return this.settings.get_boolean(SETTINGS_SHOW_SECONDARY);
     }
 
     getTopBarDisplayMode(): TopBarDisplayMode {

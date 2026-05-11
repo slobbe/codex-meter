@@ -137,8 +137,8 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         });
 
         this._headerItem = this._popupMenu.headerItem;
-        this._fiveHourItem = this._popupMenu.fiveHourItem;
-        this._weeklyItem = this._popupMenu.weeklyItem;
+        this._primaryItem = this._popupMenu.primaryItem;
+        this._secondaryItem = this._popupMenu.secondaryItem;
         this._footerItem = this._popupMenu.footerItem;
 
         this._popupMenu.addToMenu(this.menu);
@@ -150,11 +150,11 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             style_class: "cx-panel-bars",
         });
 
-        this._panelFiveHourBar = this._createPanelBar();
-        this._panelWeeklyBar = this._createPanelBar();
+        this._panelPrimaryBar = this._createPanelBar();
+        this._panelSecondaryBar = this._createPanelBar();
 
-        box.add_child(this._panelFiveHourBar.barTrack);
-        box.add_child(this._panelWeeklyBar.barTrack);
+        box.add_child(this._panelPrimaryBar.barTrack);
+        box.add_child(this._panelSecondaryBar.barTrack);
 
         return box;
     }
@@ -323,10 +323,10 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             this._errorMessage,
         );
 
-        this._panelFiveHourBar.barTrack.visible = viewModel.fiveHourVisible;
-        this._panelWeeklyBar.barTrack.visible = viewModel.weeklyVisible;
-        this._panelFiveHourBar.percentValue = viewModel.fiveHourPercent;
-        this._panelWeeklyBar.percentValue = viewModel.weeklyPercent;
+        this._panelPrimaryBar.barTrack.visible = viewModel.primaryVisible;
+        this._panelSecondaryBar.barTrack.visible = viewModel.secondaryVisible;
+        this._panelPrimaryBar.percentValue = viewModel.primaryPercent;
+        this._panelSecondaryBar.percentValue = viewModel.secondaryPercent;
         this._panelBars.visible = viewModel.showBars;
         this._label.visible = viewModel.showLabel;
         this._label.text = viewModel.label;
@@ -334,10 +334,10 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._codexIcon.visible = settings.topBarIndicatorIcon === "codex";
         this._openAiIcon.visible = settings.topBarIndicatorIcon === "openai";
 
-        this._updateUsageBarColor(this._panelFiveHourBar);
-        this._updateUsageBarColor(this._panelWeeklyBar);
-        this._updateUsageBar(this._panelFiveHourBar);
-        this._updateUsageBar(this._panelWeeklyBar);
+        this._updateUsageBarColor(this._panelPrimaryBar);
+        this._updateUsageBarColor(this._panelSecondaryBar);
+        this._updateUsageBar(this._panelPrimaryBar);
+        this._updateUsageBar(this._panelSecondaryBar);
     }
 
     _syncMenu() {
@@ -349,8 +349,8 @@ export class CodexMeterIndicator extends PanelMenu.Button {
 
         this._headerItem.datetimeLabel.text = viewModel.updatedAt;
         this._popupMenu.setError(viewModel.errorMessage);
-        this._setUsageItem(this._fiveHourItem, viewModel.fiveHour);
-        this._setUsageItem(this._weeklyItem, viewModel.weekly);
+        this._setUsageItem(this._primaryItem, viewModel.primary);
+        this._setUsageItem(this._secondaryItem, viewModel.secondary);
         this._footerItem.planLabel.text = viewModel.plan;
     }
 

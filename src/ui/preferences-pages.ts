@@ -6,8 +6,8 @@ import Gtk from "gi://Gtk";
 import {
     MIN_REFRESH_INTERVAL_MINUTES,
     SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES,
-    SETTINGS_SHOW_FIVE_HOUR,
-    SETTINGS_SHOW_WEEKLY,
+    SETTINGS_SHOW_PRIMARY,
+    SETTINGS_SHOW_SECONDARY,
     SETTINGS_TOP_BAR_DISPLAY_MODE,
     SETTINGS_TOP_BAR_INDICATOR_ICON,
     type TopBarIndicatorIcon,
@@ -57,14 +57,14 @@ function createTopBarGroup(settings: Gio.Settings) {
     group.add(
         createBoundSwitchRow({
             settings,
-            key: SETTINGS_SHOW_FIVE_HOUR,
+            key: SETTINGS_SHOW_PRIMARY,
             title: "Show session (5h) usage",
         }),
     );
     group.add(
         createBoundSwitchRow({
             settings,
-            key: SETTINGS_SHOW_WEEKLY,
+            key: SETTINGS_SHOW_SECONDARY,
             title: "Show weekly usage",
         }),
     );

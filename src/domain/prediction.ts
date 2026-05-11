@@ -19,26 +19,26 @@ type HistoryEntrySlice = {
 }
 
 export function predict(history: HistoryEntry[], snapshot: UsageSnapshot): UsagePrediction {   
-    const sessionStartedAt = snapshot.fetchedAt - (snapshot.rateLimit.primary.limitWindowSeconds - snapshot.rateLimit.primary.resetAfterSeconds);
-    const weeklyStartedAt = snapshot.fetchedAt - (snapshot.rateLimit.secondary.limitWindowSeconds - snapshot.rateLimit.secondary.resetAfterSeconds);
+    const primaryStartedAt = snapshot.fetchedAt - (snapshot.rateLimit.primary.limitWindowSeconds - snapshot.rateLimit.primary.resetAfterSeconds);
+    const secondaryStartedAt = snapshot.fetchedAt - (snapshot.rateLimit.secondary.limitWindowSeconds - snapshot.rateLimit.secondary.resetAfterSeconds);
     
-    const sessionHistory = history.map(h => {
+    const primaryHistory = history.map(h => {
         return {
             timestamp: new Date(h.timestamp).getTime() / 1000,
-            usedPercent: h.session_used_percent
+            usedPercent: h.primaryUsedPercent
         }
-    }).toSorted((a, b) => b.timestamp - a.timestamp).filter(h => h.timestamp >= sessionStartedAt);
+    }).toSorted((a, b) => b.timestamp - a.timestamp).filter(h => h.timestamp >= primaryStartedAt);
 
-    const weeklyHistory = history.map(h => {
+    const secondaryHistory = history.map(h => {
         return {
             timestamp: new Date(h.timestamp).getTime() / 1000,
-            usedPercent: h.weekly_used_percent
+            usedPercent: h.secondaryUsedPercent
         }
-    }).toSorted((a, b) => b.timestamp - a.timestamp).filter(h => h.timestamp >= weeklyStartedAt);
+    }).toSorted((a, b) => b.timestamp - a.timestamp).filter(h => h.timestamp >= secondaryStartedAt);
 
     return {
-        primary: predictWindow(sessionHistory, snapshot.rateLimit.primary.resetAt),
-        secondary: predictWindow(weeklyHistory, snapshot.rateLimit.secondary.resetAt)
+        primary: predictWindow(primaryHistory, snapshot.rateLimit.primary.resetAt),
+        secondary: predictWindow(secondaryHistory, snapshot.rateLimit.secondary.resetAt)
     }
     
 }

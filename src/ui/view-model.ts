@@ -1,7 +1,7 @@
 import { UsagePrediction, WindowPrediction } from "../domain/prediction.js";
 import { UsageSnapshot, UsageWindow } from "../domain/usage-snapshot.js";
 
-export type UsageWindowType = "five-hour" | "weekly";
+export type UsageWindowType = "primary" | "secondary";
 
 export type PredictionStyle = "safe" | "warning" | "danger" | "muted";
 
@@ -15,10 +15,10 @@ export type UsageItemViewModel = {
 };
 
 export type PanelBarViewModel = {
-    fiveHourVisible: boolean;
-    weeklyVisible: boolean;
-    fiveHourPercent: number;
-    weeklyPercent: number;
+    primaryVisible: boolean;
+    secondaryVisible: boolean;
+    primaryPercent: number;
+    secondaryPercent: number;
     showBars: boolean;
     showLabel: boolean;
     label: string;
@@ -26,35 +26,35 @@ export type PanelBarViewModel = {
 
 export type MenuViewModel = {
     updatedAt: string;
-    fiveHour: UsageItemViewModel;
-    weekly: UsageItemViewModel;
+    primary: UsageItemViewModel;
+    secondary: UsageItemViewModel;
     plan: string;
     errorMessage: string | null;
     hasError: boolean;
 };
 
 export function createPanelBarViewModel(settings, snapshot, errorMessage) {
-    const showFiveHour = settings.showFiveHour;
-    const showWeekly = settings.showWeekly;
+    const showPrimary = settings.showPrimary;
+    const showSecondary = settings.showSecondary;
     const displayMode = settings.topBarDisplayMode;
-    const hasTopBarUsage = showFiveHour || showWeekly;
-    const includeFiveHour = showFiveHour;
+    const hasTopBarUsage = showPrimary || showSecondary;
+    const includePrimary = showPrimary;
     const showUnifiedBar = displayMode === "unified" && hasTopBarUsage;
     const showSplitBars = displayMode === "bars" && hasTopBarUsage;
 
     const viewModel: PanelBarViewModel = {
-        fiveHourVisible: includeFiveHour,
-        weeklyVisible: showWeekly,
-        fiveHourPercent: 0,
-        weeklyPercent: 0,
+        primaryVisible: includePrimary,
+        secondaryVisible: showSecondary,
+        primaryPercent: 0,
+        secondaryPercent: 0,
         showBars: Boolean(showSplitBars || showUnifiedBar),
         showLabel: !showSplitBars && !showUnifiedBar,
         label: "",
     };
 
     if (errorMessage) {
-        viewModel.fiveHourVisible = false;
-        viewModel.weeklyVisible = false;
+        viewModel.primaryVisible = false;
+        viewModel.secondaryVisible = false;
         viewModel.showBars = false;
         viewModel.showLabel = false;
 
@@ -62,31 +62,31 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
     }
 
     if (showUnifiedBar) {
-        viewModel.fiveHourVisible = true;
-        viewModel.weeklyVisible = false;
+        viewModel.primaryVisible = true;
+        viewModel.secondaryVisible = false;
     }
 
     if (snapshot) {
         if (showUnifiedBar) {
-            if (showFiveHour && showWeekly) {
-                viewModel.fiveHourPercent = calculateUnifiedPercent(
+            if (showPrimary && showSecondary) {
+                viewModel.primaryPercent = calculateUnifiedPercent(
                     snapshot.rateLimit.primary?.usedPercent,
                     snapshot.rateLimit.secondary?.usedPercent,
                 );
-            } else if (showFiveHour) {
-                viewModel.fiveHourPercent = normalizePercent(
+            } else if (showPrimary) {
+                viewModel.primaryPercent = normalizePercent(
                     snapshot.rateLimit.primary?.usedPercent,
                 );
             } else {
-                viewModel.fiveHourPercent = normalizePercent(
+                viewModel.primaryPercent = normalizePercent(
                     snapshot.rateLimit.secondary?.usedPercent,
                 );
             }
         } else {
-            viewModel.fiveHourPercent = normalizePercent(
+            viewModel.primaryPercent = normalizePercent(
                 snapshot.rateLimit.primary?.usedPercent,
             );
-            viewModel.weeklyPercent = normalizePercent(
+            viewModel.secondaryPercent = normalizePercent(
                 snapshot.rateLimit.secondary?.usedPercent,
             );
         }
@@ -103,11 +103,11 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
 
     const parts = [];
 
-    if (includeFiveHour) {
+    if (includePrimary) {
         parts.push(formatPercent(snapshot.rateLimit.primary?.usedPercent));
     }
 
-    if (showWeekly) {
+    if (showSecondary) {
         parts.push(formatPercent(snapshot.rateLimit.secondary?.usedPercent));
     }
 
@@ -122,11 +122,11 @@ export function createMenuViewModel(snapshot: UsageSnapshot, prediction: UsagePr
             updatedAt: "--",
             errorMessage,
             hasError: true,
-            fiveHour: createUsageItemViewModel({
+            primary: createUsageItemViewModel({
                 title: "Session (5h)",
                 value: "--",
             }),
-            weekly: createUsageItemViewModel({
+            secondary: createUsageItemViewModel({
                 title: "Week",
                 value: "--",
             }),
@@ -139,11 +139,11 @@ export function createMenuViewModel(snapshot: UsageSnapshot, prediction: UsagePr
             updatedAt: "--",
             errorMessage: null,
             hasError: false,
-            fiveHour: createUsageItemViewModel({
+            primary: createUsageItemViewModel({
                 title: "Session (5h)",
                 value: "Loading...",
             }),
-            weekly: createUsageItemViewModel({
+            secondary: createUsageItemViewModel({
                 title: "Week",
                 value: "--",
             }),
@@ -155,19 +155,19 @@ export function createMenuViewModel(snapshot: UsageSnapshot, prediction: UsagePr
         updatedAt: "Updated at " + formatUnixTimestamp(snapshot.fetchedAt, false),
         errorMessage: null,
         hasError: false,
-        fiveHour: createUsageItemViewModel({
+        primary: createUsageItemViewModel({
             title: "Session (5h)",
             value: formatPercent(snapshot.rateLimit.primary?.usedPercent),
-            prediction: formatLimitPrediction(prediction?.primary, "five-hour"),
-            reset: formatReset(snapshot.rateLimit.primary, "five-hour"),
+            prediction: formatLimitPrediction(prediction?.primary, "primary"),
+            reset: formatReset(snapshot.rateLimit.primary, "primary"),
             percentValue: snapshot.rateLimit.primary?.usedPercent,
             predictionStyle: getPredictionStyleClass(prediction?.primary),
         }),
-        weekly: createUsageItemViewModel({
+        secondary: createUsageItemViewModel({
             title: "Week",
             value: formatPercent(snapshot.rateLimit.secondary?.usedPercent),
-            prediction: formatLimitPrediction(prediction?.secondary, "weekly"),
-            reset: formatReset(snapshot.rateLimit.secondary, "weekly"),
+            prediction: formatLimitPrediction(prediction?.secondary, "secondary"),
+            reset: formatReset(snapshot.rateLimit.secondary, "secondary"),
             percentValue: snapshot.rateLimit.secondary?.usedPercent,
             predictionStyle: getPredictionStyleClass(prediction?.secondary),
         }),
@@ -216,7 +216,7 @@ export function formatPercent(value: number): string {
 export function formatReset(window: UsageWindow, windowType: UsageWindowType) {
     if (!window) return "resets in --";
 
-    const useDate = windowType === "weekly" ? true : false;
+    const useDate = windowType === "secondary" ? true : false;
     
     const relative = formatDuration(window.resetAfterSeconds, windowType);
     const absolute = formatUnixTimestamp(window.resetAt, useDate);
@@ -240,9 +240,9 @@ export function formatDuration(totalSeconds: number, windowType?: UsageWindowTyp
     remaining %= 3600;
     const minutes = Math.floor(remaining / 60);
 
-    if (windowType === "five-hour") return `${hours}h ${minutes}m`;
+    if (windowType === "primary") return `${hours}h ${minutes}m`;
 
-    if (windowType === "weekly") return `${days}d ${hours}h`;
+    if (windowType === "secondary") return `${days}d ${hours}h`;
 
     const parts = [];
 
