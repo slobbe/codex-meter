@@ -25,10 +25,18 @@
     spacing: 4px;
 }
 
+.cx-panel-bars-stacked {
+    spacing: 3px;
+}
+
 .cx-panel-bar-track {
     width: 1.8em;
     height: 0.45em;
     background-color: rgba(255, 255, 255, 0.14);
+}
+
+.cx-panel-bars-stacked .cx-panel-bar-track {
+    height: 0.26em;
 }
 
 .cx-panel-bar-track,

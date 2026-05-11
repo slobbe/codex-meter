@@ -146,6 +146,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
 
     _createPanelBars() {
         const box = new St.BoxLayout({
+            vertical: true,
             y_align: Clutter.ActorAlign.CENTER,
             style_class: "cx-panel-bars",
         });
@@ -328,6 +329,11 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._panelPrimaryBar.percentValue = viewModel.primaryPercent;
         this._panelSecondaryBar.percentValue = viewModel.secondaryPercent;
         this._panelBars.visible = viewModel.showBars;
+        if (viewModel.primaryVisible && viewModel.secondaryVisible) {
+            this._panelBars.add_style_class_name("cx-panel-bars-stacked");
+        } else {
+            this._panelBars.remove_style_class_name("cx-panel-bars-stacked");
+        }
         this._label.visible = viewModel.showLabel;
         this._label.text = viewModel.label;
         this._prefixLabel.visible = settings.topPanelIndicatorIcon === "text";
