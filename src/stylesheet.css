@@ -17,8 +17,11 @@
 }
 
 .cx-usage-label {
-    min-width: 4.5em;
     text-align: center;
+}
+
+.cx-usage-label-wide {
+    min-width: 4.5em;
 }
 
 .cx-panel-bars {

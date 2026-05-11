@@ -334,8 +334,13 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         } else {
             this._panelBars.remove_style_class_name("cx-panel-bars-stacked");
         }
-        this._label.visible = viewModel.showLabel;
+        this._label.visible = viewModel.showLabel && viewModel.label !== "";
         this._label.text = viewModel.label;
+        if (viewModel.label.includes("/")) {
+            this._label.add_style_class_name("cx-usage-label-wide");
+        } else {
+            this._label.remove_style_class_name("cx-usage-label-wide");
+        }
         this._prefixLabel.visible = settings.topPanelIndicatorIcon === "text";
         this._codexIcon.visible = settings.topPanelIndicatorIcon === "codex";
         this._openAiIcon.visible = settings.topPanelIndicatorIcon === "openai";
