@@ -115,7 +115,7 @@ function createTopBarStyleRow(settings: Gio.Settings) {
 function createTopBarIndicatorIconRow(settings: Gio.Settings) {
     const row = new Adw.ComboRow({
         title: "Icon",
-        model: Gtk.StringList.new(["Shortcode", "Icon"]),
+        model: Gtk.StringList.new(["Shortcode", "Codex icon", "OpenAI icon"]),
         selected: getTopBarIndicatorIconIndex(
             settings.get_string(SETTINGS_TOP_BAR_INDICATOR_ICON),
         ),
@@ -344,13 +344,15 @@ function getTopBarDisplayModeValue(selected: number): TopBarDisplayMode {
 }
 
 function getTopBarIndicatorIconIndex(value: string) {
-    if (value === "icon") return 1;
+    if (value === "codex" || value === "icon") return 1;
+    if (value === "openai") return 2;
 
     return 0;
 }
 
 function getTopBarIndicatorIconValue(selected: number): TopBarIndicatorIcon {
-    if (selected === 1) return "icon";
+    if (selected === 1) return "codex";
+    if (selected === 2) return "openai";
 
     return "text";
 }

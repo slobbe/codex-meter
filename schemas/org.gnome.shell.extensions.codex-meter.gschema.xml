@@ -23,7 +23,8 @@
       <summary>Icon</summary>
       <choices>
         <choice value='text'/>
-        <choice value='icon'/>
+        <choice value='codex'/>
+        <choice value='openai'/>
       </choices>
     </key>
     <key name="background-refresh-interval-minutes" type="u">

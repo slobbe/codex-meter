@@ -51,10 +51,19 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             y_align: Clutter.ActorAlign.CENTER,
             style_class: "cx-panel-prefix",
         });
-        this._prefixIcon = new St.Icon({
+        this._codexIcon = new St.Icon({
             gicon: new Gio.FileIcon({
                 file: Gio.File.new_for_path(
                     `${this._extension.path}/icons/codex-symbolic.svg`,
+                ),
+            }),
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: "cx-panel-icon",
+        });
+        this._openAiIcon = new St.Icon({
+            gicon: new Gio.FileIcon({
+                file: Gio.File.new_for_path(
+                    `${this._extension.path}/icons/openai-symbolic.svg`,
                 ),
             }),
             y_align: Clutter.ActorAlign.CENTER,
@@ -70,7 +79,8 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._panelBars = this._createPanelBars();
 
         this._panelBox.add_child(this._prefixLabel);
-        this._panelBox.add_child(this._prefixIcon);
+        this._panelBox.add_child(this._codexIcon);
+        this._panelBox.add_child(this._openAiIcon);
         this._panelBox.add_child(this._label);
         this._panelBox.add_child(this._panelBars);
         this.add_child(this._panelBox);
@@ -321,7 +331,8 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._label.visible = viewModel.showLabel;
         this._label.text = viewModel.label;
         this._prefixLabel.visible = settings.topBarIndicatorIcon === "text";
-        this._prefixIcon.visible = settings.topBarIndicatorIcon === "icon";
+        this._codexIcon.visible = settings.topBarIndicatorIcon === "codex";
+        this._openAiIcon.visible = settings.topBarIndicatorIcon === "openai";
 
         this._updateUsageBarColor(this._panelFiveHourBar);
         this._updateUsageBarColor(this._panelWeeklyBar);

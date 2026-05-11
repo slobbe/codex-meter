@@ -10,7 +10,7 @@ export const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES =
 export const MIN_REFRESH_INTERVAL_MINUTES = 0;
 
 export type TopBarDisplayMode = "percentages" | "bars" | "unified";
-export type TopBarIndicatorIcon = "text" | "icon";
+export type TopBarIndicatorIcon = "text" | "codex" | "openai";
 
 export type ExtensionSettings = {
     showFiveHour: boolean;
@@ -60,8 +60,12 @@ export class SettingsService {
     getTopBarIndicatorIcon(): TopBarIndicatorIcon {
         const value = this.settings.get_string(SETTINGS_TOP_BAR_INDICATOR_ICON);
 
-        if (value === "icon") {
+        if (value === "codex" || value === "openai") {
             return value;
+        }
+
+        if (value === "icon") {
+            return "codex";
         }
 
         return "text";
