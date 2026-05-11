@@ -10,7 +10,7 @@
       <summary>Show weekly usage</summary>
     </key>
     <key name="top-panel-display-mode" type="s">
-      <default>'unified'</default>
+      <default>'bars'</default>
       <summary>Usage indicator style</summary>
       <choices>
         <choice value='percentages'/>
