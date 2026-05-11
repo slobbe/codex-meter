@@ -330,9 +330,9 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._panelBars.visible = viewModel.showBars;
         this._label.visible = viewModel.showLabel;
         this._label.text = viewModel.label;
-        this._prefixLabel.visible = settings.topBarIndicatorIcon === "text";
-        this._codexIcon.visible = settings.topBarIndicatorIcon === "codex";
-        this._openAiIcon.visible = settings.topBarIndicatorIcon === "openai";
+        this._prefixLabel.visible = settings.topPanelIndicatorIcon === "text";
+        this._codexIcon.visible = settings.topPanelIndicatorIcon === "codex";
+        this._openAiIcon.visible = settings.topPanelIndicatorIcon === "openai";
 
         this._updateUsageBarColor(this._panelPrimaryBar);
         this._updateUsageBarColor(this._panelSecondaryBar);

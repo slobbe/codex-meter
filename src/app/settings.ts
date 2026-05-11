@@ -2,21 +2,21 @@ import Gio from "gi://Gio";
 
 export const SETTINGS_SHOW_PRIMARY = "show-primary";
 export const SETTINGS_SHOW_SECONDARY = "show-secondary";
-export const SETTINGS_TOP_BAR_DISPLAY_MODE = "top-bar-display-mode";
-export const SETTINGS_TOP_BAR_INDICATOR_ICON = "top-bar-indicator-icon";
+export const SETTINGS_TOP_PANEL_DISPLAY_MODE = "top-panel-display-mode";
+export const SETTINGS_TOP_PANEL_INDICATOR_ICON = "top-panel-indicator-icon";
 export const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES =
     "background-refresh-interval-minutes";
 
 export const MIN_REFRESH_INTERVAL_MINUTES = 0;
 
-export type TopBarDisplayMode = "percentages" | "bars" | "unified";
-export type TopBarIndicatorIcon = "text" | "codex" | "openai";
+export type TopPanelDisplayMode = "percentages" | "bars" | "unified";
+export type TopPanelIndicatorIcon = "text" | "codex" | "openai";
 
 export type ExtensionSettings = {
     showPrimary: boolean;
     showSecondary: boolean;
-    topBarDisplayMode: TopBarDisplayMode;
-    topBarIndicatorIcon: TopBarIndicatorIcon;
+    topPanelDisplayMode: TopPanelDisplayMode;
+    topPanelIndicatorIcon: TopPanelIndicatorIcon;
     backgroundRefreshIntervalMinutes: number;
     backgroundRefreshIntervalSeconds: number;
 };
@@ -31,8 +31,8 @@ export class SettingsService {
         return {
             showPrimary: this.getShowPrimary(),
             showSecondary: this.getShowSecondary(),
-            topBarDisplayMode: this.getTopBarDisplayMode(),
-            topBarIndicatorIcon: this.getTopBarIndicatorIcon(),
+            topPanelDisplayMode: this.getTopPanelDisplayMode(),
+            topPanelIndicatorIcon: this.getTopPanelIndicatorIcon(),
             backgroundRefreshIntervalMinutes,
             backgroundRefreshIntervalSeconds:
                 backgroundRefreshIntervalMinutes * 60,
@@ -47,8 +47,8 @@ export class SettingsService {
         return this.settings.get_boolean(SETTINGS_SHOW_SECONDARY);
     }
 
-    getTopBarDisplayMode(): TopBarDisplayMode {
-        const value = this.settings.get_string(SETTINGS_TOP_BAR_DISPLAY_MODE);
+    getTopPanelDisplayMode(): TopPanelDisplayMode {
+        const value = this.settings.get_string(SETTINGS_TOP_PANEL_DISPLAY_MODE);
 
         if (value === "bars" || value === "unified") {
             return value;
@@ -57,8 +57,8 @@ export class SettingsService {
         return "percentages";
     }
 
-    getTopBarIndicatorIcon(): TopBarIndicatorIcon {
-        const value = this.settings.get_string(SETTINGS_TOP_BAR_INDICATOR_ICON);
+    getTopPanelIndicatorIcon(): TopPanelIndicatorIcon {
+        const value = this.settings.get_string(SETTINGS_TOP_PANEL_INDICATOR_ICON);
 
         if (value === "codex" || value === "openai") {
             return value;

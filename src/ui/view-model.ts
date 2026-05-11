@@ -36,11 +36,11 @@ export type MenuViewModel = {
 export function createPanelBarViewModel(settings, snapshot, errorMessage) {
     const showPrimary = settings.showPrimary;
     const showSecondary = settings.showSecondary;
-    const displayMode = settings.topBarDisplayMode;
-    const hasTopBarUsage = showPrimary || showSecondary;
+    const displayMode = settings.topPanelDisplayMode;
+    const hasTopPanelUsage = showPrimary || showSecondary;
     const includePrimary = showPrimary;
-    const showUnifiedBar = displayMode === "unified" && hasTopBarUsage;
-    const showSplitBars = displayMode === "bars" && hasTopBarUsage;
+    const showUnifiedBar = displayMode === "unified" && hasTopPanelUsage;
+    const showSplitBars = displayMode === "bars" && hasTopPanelUsage;
 
     const viewModel: PanelBarViewModel = {
         primaryVisible: includePrimary,
@@ -94,7 +94,7 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
 
     if (!viewModel.showLabel) return viewModel;
 
-    if (!hasTopBarUsage) return viewModel;
+    if (!hasTopPanelUsage) return viewModel;
 
     if (!snapshot) {
         viewModel.label = errorMessage ? "!" : "--";

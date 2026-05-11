@@ -9,7 +9,7 @@
       <default>true</default>
       <summary>Show weekly usage</summary>
     </key>
-    <key name="top-bar-display-mode" type="s">
+    <key name="top-panel-display-mode" type="s">
       <default>'unified'</default>
       <summary>Usage indicator style</summary>
       <choices>
@@ -18,7 +18,7 @@
         <choice value='unified'/>
       </choices>
     </key>
-    <key name="top-bar-indicator-icon" type="s">
+    <key name="top-panel-indicator-icon" type="s">
       <default>'codex'</default>
       <summary>Icon</summary>
       <choices>

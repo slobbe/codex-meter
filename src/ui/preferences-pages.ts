@@ -8,10 +8,10 @@ import {
     SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES,
     SETTINGS_SHOW_PRIMARY,
     SETTINGS_SHOW_SECONDARY,
-    SETTINGS_TOP_BAR_DISPLAY_MODE,
-    SETTINGS_TOP_BAR_INDICATOR_ICON,
-    type TopBarIndicatorIcon,
-    type TopBarDisplayMode,
+    SETTINGS_TOP_PANEL_DISPLAY_MODE,
+    SETTINGS_TOP_PANEL_INDICATOR_ICON,
+    type TopPanelIndicatorIcon,
+    type TopPanelDisplayMode,
 } from "../app/settings.js";
 
 type Metadata = Record<string, any>;
@@ -25,7 +25,7 @@ export const DisplayPage = GObject.registerClass(
                 icon_name: "preferences-system-symbolic",
             });
 
-            this.add(createTopBarGroup(settings));
+            this.add(createTopPanelGroup(settings));
             this.add(createRefreshGroup(settings));
         }
     },
@@ -46,14 +46,14 @@ export const AboutPage = GObject.registerClass(
     },
 );
 
-function createTopBarGroup(settings: Gio.Settings) {
+function createTopPanelGroup(settings: Gio.Settings) {
     const group = new Adw.PreferencesGroup({
         title: "Top Panel",
         description: "Choose what the top panel shows.",
     });
 
-    group.add(createTopBarIndicatorIconRow(settings));
-    group.add(createTopBarStyleRow(settings));
+    group.add(createTopPanelIndicatorIconRow(settings));
+    group.add(createTopPanelStyleRow(settings));
     group.add(
         createBoundSwitchRow({
             settings,
@@ -83,7 +83,7 @@ function createRefreshGroup(settings: Gio.Settings) {
     return group;
 }
 
-function createTopBarStyleRow(settings: Gio.Settings) {
+function createTopPanelStyleRow(settings: Gio.Settings) {
     const row = new Adw.ComboRow({
         title: "Usage indicator style",
         model: Gtk.StringList.new([
@@ -91,46 +91,46 @@ function createTopBarStyleRow(settings: Gio.Settings) {
             "Progress bars",
             "Unified bar",
         ]),
-        selected: getTopBarDisplayModeIndex(
-            settings.get_string(SETTINGS_TOP_BAR_DISPLAY_MODE),
+        selected: getTopPanelDisplayModeIndex(
+            settings.get_string(SETTINGS_TOP_PANEL_DISPLAY_MODE),
         ),
     });
 
     row.connect("notify::selected", () => {
         settings.set_string(
-            SETTINGS_TOP_BAR_DISPLAY_MODE,
-            getTopBarDisplayModeValue(row.selected),
+            SETTINGS_TOP_PANEL_DISPLAY_MODE,
+            getTopPanelDisplayModeValue(row.selected),
         );
     });
 
-    settings.connect(`changed::${SETTINGS_TOP_BAR_DISPLAY_MODE}`, () => {
-        row.selected = getTopBarDisplayModeIndex(
-            settings.get_string(SETTINGS_TOP_BAR_DISPLAY_MODE),
+    settings.connect(`changed::${SETTINGS_TOP_PANEL_DISPLAY_MODE}`, () => {
+        row.selected = getTopPanelDisplayModeIndex(
+            settings.get_string(SETTINGS_TOP_PANEL_DISPLAY_MODE),
         );
     });
 
     return row;
 }
 
-function createTopBarIndicatorIconRow(settings: Gio.Settings) {
+function createTopPanelIndicatorIconRow(settings: Gio.Settings) {
     const row = new Adw.ComboRow({
         title: "Icon",
         model: Gtk.StringList.new(["Shortcode", "Codex icon", "OpenAI icon"]),
-        selected: getTopBarIndicatorIconIndex(
-            settings.get_string(SETTINGS_TOP_BAR_INDICATOR_ICON),
+        selected: getTopPanelIndicatorIconIndex(
+            settings.get_string(SETTINGS_TOP_PANEL_INDICATOR_ICON),
         ),
     });
 
     row.connect("notify::selected", () => {
         settings.set_string(
-            SETTINGS_TOP_BAR_INDICATOR_ICON,
-            getTopBarIndicatorIconValue(row.selected),
+            SETTINGS_TOP_PANEL_INDICATOR_ICON,
+            getTopPanelIndicatorIconValue(row.selected),
         );
     });
 
-    settings.connect(`changed::${SETTINGS_TOP_BAR_INDICATOR_ICON}`, () => {
-        row.selected = getTopBarIndicatorIconIndex(
-            settings.get_string(SETTINGS_TOP_BAR_INDICATOR_ICON),
+    settings.connect(`changed::${SETTINGS_TOP_PANEL_INDICATOR_ICON}`, () => {
+        row.selected = getTopPanelIndicatorIconIndex(
+            settings.get_string(SETTINGS_TOP_PANEL_INDICATOR_ICON),
         );
     });
 
@@ -321,8 +321,8 @@ function formatShellVersions(versions: ShellVersions) {
     return versions.join(", ");
 }
 
-function getTopBarDisplayModeIndex(value: string) {
-    switch (value as TopBarDisplayMode) {
+function getTopPanelDisplayModeIndex(value: string) {
+    switch (value as TopPanelDisplayMode) {
         case "bars":
             return 1;
         case "unified":
@@ -332,7 +332,7 @@ function getTopBarDisplayModeIndex(value: string) {
     }
 }
 
-function getTopBarDisplayModeValue(selected: number): TopBarDisplayMode {
+function getTopPanelDisplayModeValue(selected: number): TopPanelDisplayMode {
     switch (selected) {
         case 1:
             return "bars";
@@ -343,14 +343,14 @@ function getTopBarDisplayModeValue(selected: number): TopBarDisplayMode {
     }
 }
 
-function getTopBarIndicatorIconIndex(value: string) {
+function getTopPanelIndicatorIconIndex(value: string) {
     if (value === "codex" || value === "icon") return 1;
     if (value === "openai") return 2;
 
     return 0;
 }
 
-function getTopBarIndicatorIconValue(selected: number): TopBarIndicatorIcon {
+function getTopPanelIndicatorIconValue(selected: number): TopPanelIndicatorIcon {
     if (selected === 1) return "codex";
     if (selected === 2) return "openai";
 
