@@ -1,5 +1,7 @@
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
+
+import { RefreshFailureError } from "../../domain/refresh-failure.js";
 // The GIRS package set used by this project does not ship Soup typings.
 // @ts-ignore
 import Soup from "gi://Soup?version=3.0";
@@ -90,13 +92,19 @@ function parseApiResponse(text: string, url: string): ApiResponse {
         const message =
             error instanceof Error ? error.message : "Unknown JSON parse error";
 
-        throw new Error(
+        throw new RefreshFailureError(
+            "malformed-response",
+            "Codex returned a malformed response.",
             `Failed to parse JSON response from ${url}: ${message}`,
         );
     }
 
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-        throw new Error(`Expected JSON object response from ${url}`);
+        throw new RefreshFailureError(
+            "malformed-response",
+            "Codex returned an unexpected response format.",
+            `Expected JSON object response from ${url}`,
+        );
     }
 
     return parsed as ApiResponse;
@@ -116,24 +124,54 @@ export async function fetchUsage(
     message.request_headers.append("Authorization", `Bearer ${accessToken}`);
     message.request_headers.append("Accept", "application/json");
 
-    const bytes = await session.send_and_read_async(
-        message,
-        GLib.PRIORITY_DEFAULT,
-        options.cancellable ?? null,
-    );
+    let bytes;
+
+    try {
+        bytes = await session.send_and_read_async(
+            message,
+            GLib.PRIORITY_DEFAULT,
+            options.cancellable ?? null,
+        );
+    } catch (error) {
+        const message =
+            error instanceof Error ? error.message : String(error);
+
+        throw new RefreshFailureError(
+            "network",
+            "Codex usage could not be reached. Check your network and try again.",
+            `Request to ${url} failed before receiving a response: ${message}`,
+        );
+    }
+
     const data = bytes.get_data();
 
     if (!data) {
-        throw new Error(`Received empty response body from ${url}`);
+        throw new RefreshFailureError(
+            "malformed-response",
+            "Codex returned an empty response.",
+            `Received empty response body from ${url}`,
+        );
     }
 
     const text = new TextDecoder("utf-8").decode(data);
 
     if (message.statusCode < 200 || message.statusCode >= 300) {
         const errorBody = formatErrorBody(text);
+        const technicalMessage =
+            `Request to ${url} failed with HTTP ${message.statusCode}: ${errorBody}`;
 
-        throw new Error(
-            `Request to ${url} failed with HTTP ${message.statusCode}: ${errorBody}`,
+        if (message.statusCode === 401 || message.statusCode === 403) {
+            throw new RefreshFailureError(
+                "unauthorized",
+                "Codex authentication expired. Run `codex login` and try again.",
+                technicalMessage,
+            );
+        }
+
+        throw new RefreshFailureError(
+            "network",
+            "Codex usage refresh failed. Try again later.",
+            technicalMessage,
         );
     }
 

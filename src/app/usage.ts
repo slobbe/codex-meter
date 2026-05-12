@@ -14,28 +14,13 @@ export class UsageService {
 
     async refresh(): Promise<UsageSnapshot> {
         const token = await getAccessToken();
+        const apiResponse = await fetchUsage(token);
+        const snapshot = toUsageSnapshot(apiResponse);
 
-        if (!token) {
-            throw new Error("No Codex access token found. Run `codex login` and try again.");
-        }
+        await writeSnapshot(snapshot);
+        await appendHistory(toHistoryEntry(snapshot));
 
-        try {
-            const apiResponse = await fetchUsage(token);
-            const snapshot = toUsageSnapshot(apiResponse);
-
-            await writeSnapshot(snapshot);
-            await appendHistory(toHistoryEntry(snapshot));
-
-            return snapshot;
-        } catch (error) {
-            const snapshot = await readSnapshot();
-
-            if (snapshot) {
-                return snapshot;
-            }
-
-            throw error;
-        }
+        return snapshot;
     }
 
     async predict(snapshot?: UsageSnapshot): Promise<UsagePrediction> {

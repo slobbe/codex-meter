@@ -9,6 +9,7 @@ import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
 import { SettingsService } from "../app/settings.js";
 import { Scheduler } from "../app/scheduler.js";
 import { UsageService } from "../app/usage.js";
+import { isRefreshFailureError } from "../domain/refresh-failure.js";
 import { CodexMeterPopupMenu } from "./popup-menu.js";
 import {
     calculateBarFillWidth,
@@ -249,12 +250,11 @@ export class CodexMeterIndicator extends PanelMenu.Button {
                 console.error("Unable to predict Codex usage", error);
             }
         } catch (error) {
-            this._errorMessage =
-                error?.message ?? "Unable to load Codex usage.";
+            this._errorMessage = formatRefreshFailure(error);
             console.error("Unable to refresh Codex usage", error);
 
-            if (this._snapshot) {
-                this._errorMessage = null;
+            if (!this._snapshot) {
+                await this._loadCachedSnapshotAfterFailure();
             }
         } finally {
             this._syncLabel();
@@ -283,6 +283,25 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             this._syncMenu();
         } catch (error) {
             console.error("Unable to load cached Codex usage", error);
+        }
+    }
+
+    async _loadCachedSnapshotAfterFailure() {
+        try {
+            const snapshot = await this._usageService.readCachedSnapshot();
+
+            if (!snapshot || this._snapshot) return;
+
+            this._snapshot = snapshot;
+
+            try {
+                this._prediction = await this._usageService.predict(snapshot);
+            } catch (error) {
+                this._prediction = null;
+                console.error("Unable to predict cached Codex usage", error);
+            }
+        } catch (error) {
+            console.error("Unable to load cached Codex usage after refresh failure", error);
         }
     }
 
@@ -396,4 +415,16 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             getUsageBarColorStyleClass(item.percentValue),
         );
     }
+}
+
+function formatRefreshFailure(error: unknown): string {
+    if (isRefreshFailureError(error)) {
+        return `${error.message}\n\nDetails: ${error.technicalMessage}`;
+    }
+
+    const message = error instanceof Error && error.message
+        ? error.message
+        : "Unknown refresh failure";
+
+    return `Codex usage refresh failed.\n\nDetails: ${message}`;
 }
