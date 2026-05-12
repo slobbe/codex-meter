@@ -21,7 +21,7 @@ export const DisplayPage = GObject.registerClass(
     class DisplayPage extends Adw.PreferencesPage {
         _init(settings: Gio.Settings) {
             super._init({
-                title: "Preferences",
+                title: "Options",
                 icon_name: "preferences-system-symbolic",
             });
 
