@@ -5,3 +5,5 @@ dist
 *.zip
 
 node_modules
+
+PLAN.md

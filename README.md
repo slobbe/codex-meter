@@ -1,9 +1,18 @@
-# Codex Meter
-
-Monitor your Codex usage from the GNOME top panel.
-
-[![GitHub Release](https://img.shields.io/github/v/release/slobbe/codex-meter?style=flat-square&color=royalblue)](https://github.com/slobbe/codex-meter/releases/latest)
-[![GitHub License](https://img.shields.io/github/license/slobbe/codex-meter?style=flat-square&color=teal)](/LICENSE)
+<div align="center">
+  <h1>Codex Meter</h1>
+  <p><strong>Monitor your Codex usage from the GNOME top panel.</strong></p>
+  <p>
+    <a href="https://github.com/slobbe/codex-meter/releases/latest">
+      <img src="https://img.shields.io/github/v/release/slobbe/codex-meter?style=flat-square&color=royalblue">
+    </a>
+    <a href="LICENSE">
+      <img src="https://img.shields.io/github/license/slobbe/codex-meter?style=flat-square&color=teal">
+    </a>
+  </p>
+  <p>
+    <img src="docs/screens/popup.png" width="371" alt="Codex Meter popup preview">
+  </p>
+</div>
 
 > Inspired by [CodexBar](https://github.com/steipete/CodexBar) by [Peter Steinberger](https://github.com/steipete), adapted for GNOME.
 
