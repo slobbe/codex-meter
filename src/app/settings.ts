@@ -10,7 +10,7 @@ export const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES =
 
 export const MIN_REFRESH_INTERVAL_MINUTES = 0;
 
-export type TopPanelDisplayMode = "percentages" | "bars" | "unified";
+export type TopPanelDisplayMode = "percentages" | "bars";
 export type TopPanelIndicatorIcon = "text" | "codex" | "openai";
 export type PercentDisplayMode = "used" | "left";
 
@@ -54,7 +54,7 @@ export class SettingsService {
     getTopPanelDisplayMode(): TopPanelDisplayMode {
         const value = this.settings.get_string(SETTINGS_TOP_PANEL_DISPLAY_MODE);
 
-        if (value === "bars" || value === "unified") {
+        if (value === "bars") {
             return value;
         }
 

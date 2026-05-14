@@ -20,7 +20,7 @@
 
 - Displays current 5-hour session and weekly Codex usage.
 - Predicts whether current usage trends will hit the session or weekly limit before reset.
-- Choose between raw percentages, progress bars, or unified _combined-pressure_ bar in the panel indicator.
+- Choose between raw percentages or progress bars in the panel indicator.
 - Show percentages as usage consumed or capacity left.
 - Supports manual refresh and configurable background refresh intervals.
 

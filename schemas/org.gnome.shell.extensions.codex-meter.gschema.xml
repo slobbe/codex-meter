@@ -7,7 +7,6 @@
       <choices>
         <choice value='percentages'/>
         <choice value='bars'/>
-        <choice value='unified'/>
       </choices>
     </key>
     <key name="top-panel-indicator-icon" type="s">

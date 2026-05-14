@@ -92,7 +92,6 @@ function createTopPanelStyleRow(settings: Gio.Settings) {
         model: Gtk.StringList.new([
             "Percentages",
             "Progress bars",
-            "Unified bar",
         ]),
         selected: getTopPanelDisplayModeIndex(
             settings.get_string(SETTINGS_TOP_PANEL_DISPLAY_MODE),
@@ -353,8 +352,6 @@ function getTopPanelDisplayModeIndex(value: string) {
     switch (value as TopPanelDisplayMode) {
         case "bars":
             return 1;
-        case "unified":
-            return 2;
         default:
             return 0;
     }
@@ -364,8 +361,6 @@ function getTopPanelDisplayModeValue(selected: number): TopPanelDisplayMode {
     switch (selected) {
         case 1:
             return "bars";
-        case 2:
-            return "unified";
         default:
             return "percentages";
     }

@@ -46,7 +46,6 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
     const displayMode = settings.topPanelDisplayMode;
     const hasTopPanelUsage = showPrimary || showSecondary;
     const includePrimary = showPrimary;
-    const showUnifiedBar = displayMode === "unified" && hasTopPanelUsage;
     const showSplitBars = displayMode === "bars" && hasTopPanelUsage;
     const percentDisplayMode = settings.percentDisplayMode;
 
@@ -57,8 +56,8 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
         secondaryPercent: 0,
         primaryDisplayPercent: 0,
         secondaryDisplayPercent: 0,
-        showBars: Boolean(showSplitBars || showUnifiedBar),
-        showLabel: !showSplitBars && !showUnifiedBar,
+        showBars: Boolean(showSplitBars),
+        showLabel: !showSplitBars,
         label: "",
     };
 
@@ -71,35 +70,13 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
         return viewModel;
     }
 
-    if (showUnifiedBar) {
-        viewModel.primaryVisible = true;
-        viewModel.secondaryVisible = false;
-    }
-
     if (snapshot) {
-        if (showUnifiedBar) {
-            if (showPrimary && showSecondary) {
-                viewModel.primaryPercent = calculateUnifiedPercent(
-                    snapshot.rateLimit.primary?.usedPercent,
-                    snapshot.rateLimit.secondary?.usedPercent,
-                );
-            } else if (showPrimary) {
-                viewModel.primaryPercent = normalizePercent(
-                    snapshot.rateLimit.primary?.usedPercent,
-                );
-            } else {
-                viewModel.primaryPercent = normalizePercent(
-                    snapshot.rateLimit.secondary?.usedPercent,
-                );
-            }
-        } else {
-            viewModel.primaryPercent = normalizePercent(
-                snapshot.rateLimit.primary?.usedPercent,
-            );
-            viewModel.secondaryPercent = normalizePercent(
-                snapshot.rateLimit.secondary?.usedPercent,
-            );
-        }
+        viewModel.primaryPercent = normalizePercent(
+            snapshot.rateLimit.primary?.usedPercent,
+        );
+        viewModel.secondaryPercent = normalizePercent(
+            snapshot.rateLimit.secondary?.usedPercent,
+        );
 
         viewModel.primaryDisplayPercent = convertPercentForDisplay(
             viewModel.primaryPercent,
@@ -469,21 +446,6 @@ export function formatPlan(value) {
         .filter(Boolean)
         .map((part) => `${part[0].toUpperCase()}${part.slice(1)}`)
         .join(" ");
-}
-
-export function calculateUnifiedPercent(...values) {
-    const normalizedValues = values
-        .filter(Number.isFinite)
-        .map((value) => normalizePercent(value) / 100);
-
-    if (normalizedValues.length === 0) return 0;
-
-    const remainingCapacity = normalizedValues.reduce(
-        (remaining, value) => remaining * (1 - value),
-        1,
-    );
-
-    return Math.round((1 - remainingCapacity) * 100);
 }
 
 export function normalizePercent(value: number): number {
