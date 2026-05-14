@@ -10,8 +10,6 @@ import {
 } from "./view-model.js";
 
 const BASELINE_MARKER_WIDTH = 3;
-const BASELINE_MARKER_VERTICAL_INSET = 1;
-
 export class CodexMeterPopupMenu {
     headerItem: any;
     errorItem: any;
@@ -353,17 +351,15 @@ export class CodexMeterPopupMenu {
             item.barOverlay.width,
             item.displayPercentValue,
         );
-        item.barMarker.height = Math.max(
-            0,
-            item.barOverlay.height - BASELINE_MARKER_VERTICAL_INSET * 2,
-        );
+        item.barMarker.width = BASELINE_MARKER_WIDTH;
+        item.barMarker.height = item.barOverlay.height;
         item.barMarker.visible = Number.isFinite(item.baselinePercentValue);
         item.barMarker.x = calculateBarMarkerPosition(
             item.barOverlay.width,
             item.barMarker.width,
             item.displayBaselinePercentValue,
         );
-        item.barMarker.y = BASELINE_MARKER_VERTICAL_INSET + 1;
+        item.barMarker.y = 1;
     }
 
     private _updateUsageBarColor(item) {
