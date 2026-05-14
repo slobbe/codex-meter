@@ -5,8 +5,12 @@ import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 
 import {
     calculateBarFillWidth,
+    calculateBarMarkerPosition,
     getUsageBarColorStyleClass,
 } from "./view-model.js";
+
+const BASELINE_MARKER_WIDTH = 3;
+const BASELINE_MARKER_VERTICAL_INSET = 1;
 
 export class CodexMeterPopupMenu {
     headerItem: any;
@@ -50,6 +54,7 @@ export class CodexMeterPopupMenu {
         item.resetLabel.text = viewModel.reset;
         setPredictionStyleClass(item.predictionLabel, viewModel.predictionStyle);
         item.percentValue = viewModel.percentValue;
+        item.baselinePercentValue = viewModel.baselinePercentValue;
         this._updateUsageBarColor(item);
         this._updateUsageBar(item);
     }
@@ -100,6 +105,13 @@ export class CodexMeterPopupMenu {
             style_class: "cx-usage-bar-track",
         });
 
+        const barOverlay = new St.Widget({
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: "cx-usage-bar-overlay",
+            layout_manager: new Clutter.FixedLayout(),
+        });
+
         const barFill = new St.Widget({
             y_expand: true,
             style_class: "cx-usage-bar-fill",
@@ -107,10 +119,25 @@ export class CodexMeterPopupMenu {
         const barSpacer = new St.Widget({
             x_expand: true,
         });
+
+        const barMarker = new St.Widget({
+            x_align: Clutter.ActorAlign.START,
+            y_align: Clutter.ActorAlign.FILL,
+            y_expand: true,
+            style_class: "cx-usage-bar-marker",
+        });
+
         barFill.width = 0;
+        barMarker.width = BASELINE_MARKER_WIDTH;
+        barMarker.visible = false;
         barTrack.add_child(barFill);
         barTrack.add_child(barSpacer);
-        barTrack.connect("notify::width", () => {
+        barOverlay.add_child(barTrack);
+        barOverlay.add_child(barMarker);
+        barOverlay.connect("notify::width", () => {
+            this._updateUsageBar(item);
+        });
+        barOverlay.connect("notify::height", () => {
             this._updateUsageBar(item);
         });
 
@@ -137,14 +164,17 @@ export class CodexMeterPopupMenu {
         headingBox.add_child(valueLabel);
 
         box.add_child(headingBox);
-        box.add_child(barTrack);
+        box.add_child(barOverlay);
         box.add_child(detailBox);
         item.add_child(box);
         item.titleLabel = titleLabel;
         item.valueLabel = valueLabel;
+        item.barOverlay = barOverlay;
         item.barTrack = barTrack;
         item.barFill = barFill;
+        item.barMarker = barMarker;
         item.percentValue = 0;
+        item.baselinePercentValue = null;
         item.predictionLabel = predictionLabel;
         item.resetLabel = resetLabel;
 
@@ -313,10 +343,23 @@ export class CodexMeterPopupMenu {
     }
 
     private _updateUsageBar(item) {
+        item.barTrack.height = item.barOverlay.height;
+        item.barTrack.width = item.barOverlay.width;
         item.barFill.width = calculateBarFillWidth(
-            item.barTrack.width,
+            item.barOverlay.width,
             item.percentValue,
         );
+        item.barMarker.height = Math.max(
+            0,
+            item.barOverlay.height - BASELINE_MARKER_VERTICAL_INSET * 2,
+        );
+        item.barMarker.visible = Number.isFinite(item.baselinePercentValue);
+        item.barMarker.x = calculateBarMarkerPosition(
+            item.barOverlay.width,
+            item.barMarker.width,
+            item.baselinePercentValue,
+        );
+        item.barMarker.y = BASELINE_MARKER_VERTICAL_INSET + 1;
     }
 
     private _updateUsageBarColor(item) {

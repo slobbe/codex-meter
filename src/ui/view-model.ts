@@ -11,6 +11,7 @@ export type UsageItemViewModel = {
     prediction: string;
     reset: string;
     percentValue: number;
+    baselinePercentValue: number | null;
     predictionStyle: PredictionStyle;
 };
 
@@ -161,6 +162,9 @@ export function createMenuViewModel(snapshot: UsageSnapshot, prediction: UsagePr
             prediction: formatLimitPrediction(prediction?.primary, "primary"),
             reset: formatReset(snapshot.rateLimit.primary, "primary"),
             percentValue: snapshot.rateLimit.primary?.usedPercent,
+            baselinePercentValue: calculateBaselinePercent(
+                snapshot.rateLimit.primary,
+            ),
             predictionStyle: getPredictionStyleClass(prediction?.primary),
         }),
         secondary: createUsageItemViewModel({
@@ -169,6 +173,9 @@ export function createMenuViewModel(snapshot: UsageSnapshot, prediction: UsagePr
             prediction: formatLimitPrediction(prediction?.secondary, "secondary"),
             reset: formatReset(snapshot.rateLimit.secondary, "secondary"),
             percentValue: snapshot.rateLimit.secondary?.usedPercent,
+            baselinePercentValue: calculateBaselinePercent(
+                snapshot.rateLimit.secondary,
+            ),
             predictionStyle: getPredictionStyleClass(prediction?.secondary),
         }),
         plan: formatPlan(snapshot.planType),
@@ -181,6 +188,7 @@ export function createUsageItemViewModel({
     prediction = "Trend: --",
     reset = "resets in --",
     percentValue = null,
+    baselinePercentValue = null,
     predictionStyle = "muted" as PredictionStyle,
 }): UsageItemViewModel {
     return {
@@ -189,6 +197,9 @@ export function createUsageItemViewModel({
         prediction,
         reset,
         percentValue: normalizePercent(percentValue),
+        baselinePercentValue: Number.isFinite(baselinePercentValue)
+            ? normalizePercent(baselinePercentValue)
+            : null,
         predictionStyle,
     };
 }
@@ -197,6 +208,36 @@ export function calculateBarFillWidth(trackWidth: number, percentValue: number):
     if (trackWidth <= 0) return 0;
 
     return Math.round(trackWidth * (normalizePercent(percentValue) / 100));
+}
+
+export function calculateBarMarkerPosition(
+    trackWidth: number,
+    markerWidth: number,
+    percentValue: number | null,
+): number {
+    if (trackWidth <= 0 || !Number.isFinite(percentValue)) return 0;
+
+    const usableWidth = Math.max(0, trackWidth - Math.max(0, markerWidth));
+
+    return Math.round(usableWidth * (normalizePercent(percentValue) / 100));
+}
+
+export function calculateBaselinePercent(window: UsageWindow): number | null {
+    if (!window) return null;
+
+    const { limitWindowSeconds, resetAfterSeconds } = window;
+
+    if (
+        !Number.isFinite(limitWindowSeconds) ||
+        !Number.isFinite(resetAfterSeconds) ||
+        limitWindowSeconds <= 0
+    ) {
+        return null;
+    }
+
+    return normalizePercent(
+        ((limitWindowSeconds - resetAfterSeconds) / limitWindowSeconds) * 100,
+    );
 }
 
 export function getUsageBarColorStyleClass(percentValue: number): string {

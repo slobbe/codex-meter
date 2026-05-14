@@ -45,7 +45,8 @@
 .cx-panel-bar-track,
 .cx-panel-bar-fill,
 .cx-usage-bar-track,
-.cx-usage-bar-fill {
+.cx-usage-bar-fill,
+.cx-usage-bar-marker {
     border-radius: 999px;
 }
 
@@ -99,10 +100,19 @@
     text-align: left;
 }
 
+.cx-usage-bar-overlay,
 .cx-usage-bar-track {
     margin-top: 2px;
     height: 0.7em;
+}
+
+.cx-usage-bar-track {
     background-color: rgba(255, 255, 255, 0.12);
+}
+
+.cx-usage-bar-marker {
+    background-color: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
 }
 
 .cx-usage-value {
