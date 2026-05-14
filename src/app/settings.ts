@@ -4,6 +4,7 @@ export const SETTINGS_SHOW_PRIMARY = "show-primary";
 export const SETTINGS_SHOW_SECONDARY = "show-secondary";
 export const SETTINGS_TOP_PANEL_DISPLAY_MODE = "top-panel-display-mode";
 export const SETTINGS_TOP_PANEL_INDICATOR_ICON = "top-panel-indicator-icon";
+export const SETTINGS_PERCENT_DISPLAY_MODE = "percent-display-mode";
 export const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES =
     "background-refresh-interval-minutes";
 
@@ -11,12 +12,14 @@ export const MIN_REFRESH_INTERVAL_MINUTES = 0;
 
 export type TopPanelDisplayMode = "percentages" | "bars" | "unified";
 export type TopPanelIndicatorIcon = "text" | "codex" | "openai";
+export type PercentDisplayMode = "used" | "left";
 
 export type ExtensionSettings = {
     showPrimary: boolean;
     showSecondary: boolean;
     topPanelDisplayMode: TopPanelDisplayMode;
     topPanelIndicatorIcon: TopPanelIndicatorIcon;
+    percentDisplayMode: PercentDisplayMode;
     backgroundRefreshIntervalMinutes: number;
     backgroundRefreshIntervalSeconds: number;
 };
@@ -33,6 +36,7 @@ export class SettingsService {
             showSecondary: this.getShowSecondary(),
             topPanelDisplayMode: this.getTopPanelDisplayMode(),
             topPanelIndicatorIcon: this.getTopPanelIndicatorIcon(),
+            percentDisplayMode: this.getPercentDisplayMode(),
             backgroundRefreshIntervalMinutes,
             backgroundRefreshIntervalSeconds:
                 backgroundRefreshIntervalMinutes * 60,
@@ -69,6 +73,16 @@ export class SettingsService {
         }
 
         return "text";
+    }
+
+    getPercentDisplayMode(): PercentDisplayMode {
+        const value = this.settings.get_string(SETTINGS_PERCENT_DISPLAY_MODE);
+
+        if (value === "left") {
+            return value;
+        }
+
+        return "used";
     }
 
     getBackgroundRefreshIntervalMinutes(): number {

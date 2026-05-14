@@ -1,5 +1,6 @@
 import { UsagePrediction, WindowPrediction } from "../domain/prediction.js";
 import { UsageSnapshot, UsageWindow } from "../domain/usage-snapshot.js";
+import { type PercentDisplayMode } from "../app/settings.js";
 
 export type UsageWindowType = "primary" | "secondary";
 
@@ -11,7 +12,10 @@ export type UsageItemViewModel = {
     prediction: string;
     reset: string;
     percentValue: number;
+    displayPercentValue: number;
     baselinePercentValue: number | null;
+    displayBaselinePercentValue: number | null;
+    percentLabel: PercentDisplayMode;
     predictionStyle: PredictionStyle;
 };
 
@@ -20,6 +24,8 @@ export type PanelBarViewModel = {
     secondaryVisible: boolean;
     primaryPercent: number;
     secondaryPercent: number;
+    primaryDisplayPercent: number;
+    secondaryDisplayPercent: number;
     showBars: boolean;
     showLabel: boolean;
     label: string;
@@ -42,12 +48,15 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
     const includePrimary = showPrimary;
     const showUnifiedBar = displayMode === "unified" && hasTopPanelUsage;
     const showSplitBars = displayMode === "bars" && hasTopPanelUsage;
+    const percentDisplayMode = settings.percentDisplayMode;
 
     const viewModel: PanelBarViewModel = {
         primaryVisible: includePrimary,
         secondaryVisible: showSecondary,
         primaryPercent: 0,
         secondaryPercent: 0,
+        primaryDisplayPercent: 0,
+        secondaryDisplayPercent: 0,
         showBars: Boolean(showSplitBars || showUnifiedBar),
         showLabel: !showSplitBars && !showUnifiedBar,
         label: "",
@@ -91,6 +100,15 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
                 snapshot.rateLimit.secondary?.usedPercent,
             );
         }
+
+        viewModel.primaryDisplayPercent = convertPercentForDisplay(
+            viewModel.primaryPercent,
+            percentDisplayMode,
+        );
+        viewModel.secondaryDisplayPercent = convertPercentForDisplay(
+            viewModel.secondaryPercent,
+            percentDisplayMode,
+        );
     }
 
     if (!viewModel.showLabel) return viewModel;
@@ -105,11 +123,17 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
     const parts = [];
 
     if (includePrimary) {
-        parts.push(formatPercent(snapshot.rateLimit.primary?.usedPercent));
+        parts.push(formatPercentForDisplay(
+            snapshot.rateLimit.primary?.usedPercent,
+            percentDisplayMode,
+        ));
     }
 
     if (showSecondary) {
-        parts.push(formatPercent(snapshot.rateLimit.secondary?.usedPercent));
+        parts.push(formatPercentForDisplay(
+            snapshot.rateLimit.secondary?.usedPercent,
+            percentDisplayMode,
+        ));
     }
 
     viewModel.label = parts.join("/");
@@ -117,7 +141,9 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
     return viewModel;
 }
 
-export function createMenuViewModel(snapshot: UsageSnapshot, prediction: UsagePrediction, errorMessage) {
+export function createMenuViewModel(settings, snapshot: UsageSnapshot, prediction: UsagePrediction, errorMessage) {
+    const percentDisplayMode = settings.percentDisplayMode;
+
     if (errorMessage) {
         return {
             updatedAt: "--",
@@ -126,10 +152,12 @@ export function createMenuViewModel(snapshot: UsageSnapshot, prediction: UsagePr
             primary: createUsageItemViewModel({
                 title: "Session (5h)",
                 value: "--",
+                percentDisplayMode,
             }),
             secondary: createUsageItemViewModel({
                 title: "Week",
                 value: "--",
+                percentDisplayMode,
             }),
             plan: "--",
         };
@@ -143,10 +171,12 @@ export function createMenuViewModel(snapshot: UsageSnapshot, prediction: UsagePr
             primary: createUsageItemViewModel({
                 title: "Session (5h)",
                 value: "Loading...",
+                percentDisplayMode,
             }),
             secondary: createUsageItemViewModel({
                 title: "Week",
                 value: "--",
+                percentDisplayMode,
             }),
             plan: "--",
         };
@@ -158,24 +188,32 @@ export function createMenuViewModel(snapshot: UsageSnapshot, prediction: UsagePr
         hasError: false,
         primary: createUsageItemViewModel({
             title: "Session (5h)",
-            value: formatPercent(snapshot.rateLimit.primary?.usedPercent),
+            value: formatPercentForDisplay(
+                snapshot.rateLimit.primary?.usedPercent,
+                percentDisplayMode,
+            ),
             prediction: formatLimitPrediction(prediction?.primary, "primary"),
             reset: formatReset(snapshot.rateLimit.primary, "primary"),
             percentValue: snapshot.rateLimit.primary?.usedPercent,
             baselinePercentValue: calculateBaselinePercent(
                 snapshot.rateLimit.primary,
             ),
+            percentDisplayMode,
             predictionStyle: getPredictionStyleClass(prediction?.primary),
         }),
         secondary: createUsageItemViewModel({
             title: "Week",
-            value: formatPercent(snapshot.rateLimit.secondary?.usedPercent),
+            value: formatPercentForDisplay(
+                snapshot.rateLimit.secondary?.usedPercent,
+                percentDisplayMode,
+            ),
             prediction: formatLimitPrediction(prediction?.secondary, "secondary"),
             reset: formatReset(snapshot.rateLimit.secondary, "secondary"),
             percentValue: snapshot.rateLimit.secondary?.usedPercent,
             baselinePercentValue: calculateBaselinePercent(
                 snapshot.rateLimit.secondary,
             ),
+            percentDisplayMode,
             predictionStyle: getPredictionStyleClass(prediction?.secondary),
         }),
         plan: formatPlan(snapshot.planType),
@@ -189,17 +227,32 @@ export function createUsageItemViewModel({
     reset = "resets in --",
     percentValue = null,
     baselinePercentValue = null,
+    percentDisplayMode = "used" as PercentDisplayMode,
     predictionStyle = "muted" as PredictionStyle,
 }): UsageItemViewModel {
+    const normalizedPercentValue = normalizePercent(percentValue);
+    const normalizedBaselinePercentValue = Number.isFinite(baselinePercentValue)
+        ? normalizePercent(baselinePercentValue)
+        : null;
+
     return {
         title,
         value,
         prediction,
         reset,
-        percentValue: normalizePercent(percentValue),
-        baselinePercentValue: Number.isFinite(baselinePercentValue)
-            ? normalizePercent(baselinePercentValue)
-            : null,
+        percentValue: normalizedPercentValue,
+        displayPercentValue: convertPercentForDisplay(
+            normalizedPercentValue,
+            percentDisplayMode,
+        ),
+        baselinePercentValue: normalizedBaselinePercentValue,
+        displayBaselinePercentValue: normalizedBaselinePercentValue === null
+            ? null
+            : convertPercentForDisplay(
+                normalizedBaselinePercentValue,
+                percentDisplayMode,
+            ),
+        percentLabel: percentDisplayMode,
         predictionStyle,
     };
 }
@@ -252,6 +305,24 @@ export function getUsageBarColorStyleClass(percentValue: number): string {
 
 export function formatPercent(value: number): string {
     return Number.isFinite(value) ? `${value}%` : "--";
+}
+
+export function formatPercentForDisplay(
+    value: number,
+    displayMode: PercentDisplayMode,
+): string {
+    if (!Number.isFinite(value)) return "--";
+
+    return formatPercent(convertPercentForDisplay(value, displayMode));
+}
+
+export function convertPercentForDisplay(
+    value: number,
+    displayMode: PercentDisplayMode,
+): number {
+    const percent = normalizePercent(value);
+
+    return displayMode === "left" ? 100 - percent : percent;
 }
 
 export function formatReset(window: UsageWindow, windowType: UsageWindowType) {

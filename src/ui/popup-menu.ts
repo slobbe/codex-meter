@@ -49,12 +49,14 @@ export class CodexMeterPopupMenu {
 
     setUsageItem(item, viewModel) {
         item.titleLabel.text = viewModel.title;
-        item.valueLabel.text = `${viewModel.value} used`;
+        item.valueLabel.text = `${viewModel.value} ${viewModel.percentLabel}`;
         item.predictionLabel.text = viewModel.prediction;
         item.resetLabel.text = viewModel.reset;
         setPredictionStyleClass(item.predictionLabel, viewModel.predictionStyle);
         item.percentValue = viewModel.percentValue;
+        item.displayPercentValue = viewModel.displayPercentValue;
         item.baselinePercentValue = viewModel.baselinePercentValue;
+        item.displayBaselinePercentValue = viewModel.displayBaselinePercentValue;
         this._updateUsageBarColor(item);
         this._updateUsageBar(item);
     }
@@ -174,7 +176,9 @@ export class CodexMeterPopupMenu {
         item.barFill = barFill;
         item.barMarker = barMarker;
         item.percentValue = 0;
+        item.displayPercentValue = 0;
         item.baselinePercentValue = null;
+        item.displayBaselinePercentValue = null;
         item.predictionLabel = predictionLabel;
         item.resetLabel = resetLabel;
 
@@ -347,7 +351,7 @@ export class CodexMeterPopupMenu {
         item.barTrack.width = item.barOverlay.width;
         item.barFill.width = calculateBarFillWidth(
             item.barOverlay.width,
-            item.percentValue,
+            item.displayPercentValue,
         );
         item.barMarker.height = Math.max(
             0,
@@ -357,7 +361,7 @@ export class CodexMeterPopupMenu {
         item.barMarker.x = calculateBarMarkerPosition(
             item.barOverlay.width,
             item.barMarker.width,
-            item.baselinePercentValue,
+            item.displayBaselinePercentValue,
         );
         item.barMarker.y = BASELINE_MARKER_VERTICAL_INSET + 1;
     }

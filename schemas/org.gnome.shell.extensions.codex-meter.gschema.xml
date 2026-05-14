@@ -27,6 +27,14 @@
         <choice value='openai'/>
       </choices>
     </key>
+    <key name="percent-display-mode" type="s">
+      <default>'used'</default>
+      <summary>Percentage display</summary>
+      <choices>
+        <choice value='used'/>
+        <choice value='left'/>
+      </choices>
+    </key>
     <key name="background-refresh-interval-minutes" type="u">
       <default>1</default>
       <summary>Refresh interval (min)</summary>

@@ -6,10 +6,12 @@ import Gtk from "gi://Gtk";
 import {
     MIN_REFRESH_INTERVAL_MINUTES,
     SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES,
+    SETTINGS_PERCENT_DISPLAY_MODE,
     SETTINGS_SHOW_PRIMARY,
     SETTINGS_SHOW_SECONDARY,
     SETTINGS_TOP_PANEL_DISPLAY_MODE,
     SETTINGS_TOP_PANEL_INDICATOR_ICON,
+    type PercentDisplayMode,
     type TopPanelIndicatorIcon,
     type TopPanelDisplayMode,
 } from "../app/settings.js";
@@ -54,6 +56,7 @@ function createTopPanelGroup(settings: Gio.Settings) {
 
     group.add(createTopPanelIndicatorIconRow(settings));
     group.add(createTopPanelStyleRow(settings));
+    group.add(createPercentDisplayModeRow(settings));
     group.add(
         createBoundSwitchRow({
             settings,
@@ -106,6 +109,31 @@ function createTopPanelStyleRow(settings: Gio.Settings) {
     settings.connect(`changed::${SETTINGS_TOP_PANEL_DISPLAY_MODE}`, () => {
         row.selected = getTopPanelDisplayModeIndex(
             settings.get_string(SETTINGS_TOP_PANEL_DISPLAY_MODE),
+        );
+    });
+
+    return row;
+}
+
+function createPercentDisplayModeRow(settings: Gio.Settings) {
+    const row = new Adw.ComboRow({
+        title: "Percentage display",
+        model: Gtk.StringList.new(["Used", "Left"]),
+        selected: getPercentDisplayModeIndex(
+            settings.get_string(SETTINGS_PERCENT_DISPLAY_MODE),
+        ),
+    });
+
+    row.connect("notify::selected", () => {
+        settings.set_string(
+            SETTINGS_PERCENT_DISPLAY_MODE,
+            getPercentDisplayModeValue(row.selected),
+        );
+    });
+
+    settings.connect(`changed::${SETTINGS_PERCENT_DISPLAY_MODE}`, () => {
+        row.selected = getPercentDisplayModeIndex(
+            settings.get_string(SETTINGS_PERCENT_DISPLAY_MODE),
         );
     });
 
@@ -355,4 +383,12 @@ function getTopPanelIndicatorIconValue(selected: number): TopPanelIndicatorIcon 
     if (selected === 2) return "openai";
 
     return "text";
+}
+
+function getPercentDisplayModeIndex(value: string) {
+    return value === "left" ? 1 : 0;
+}
+
+function getPercentDisplayModeValue(selected: number): PercentDisplayMode {
+    return selected === 1 ? "left" : "used";
 }

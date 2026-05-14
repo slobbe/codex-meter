@@ -183,6 +183,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             barTrack,
             barFill,
             percentValue: 0,
+            displayPercentValue: 0,
         };
 
         barTrack.connect("notify::width", () => {
@@ -202,6 +203,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
 
         this._settingsChangedId = this._settings.connectChanged(() => {
             this._syncLabel();
+            this._syncMenu();
         });
 
         this._refreshIntervalChangedId =
@@ -347,6 +349,8 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._panelSecondaryBar.barTrack.visible = viewModel.secondaryVisible;
         this._panelPrimaryBar.percentValue = viewModel.primaryPercent;
         this._panelSecondaryBar.percentValue = viewModel.secondaryPercent;
+        this._panelPrimaryBar.displayPercentValue = viewModel.primaryDisplayPercent;
+        this._panelSecondaryBar.displayPercentValue = viewModel.secondaryDisplayPercent;
         this._panelBars.visible = viewModel.showBars;
         if (viewModel.primaryVisible && viewModel.secondaryVisible) {
             this._panelBars.add_style_class_name("cx-panel-bars-stacked");
@@ -372,6 +376,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
 
     _syncMenu() {
         const viewModel = createMenuViewModel(
+            this._settings.getAll(),
             this._snapshot,
             this._prediction,
             this._errorMessage,
@@ -401,7 +406,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
     _updateUsageBar(item) {
         item.barFill.width = calculateBarFillWidth(
             item.barTrack.width,
-            item.percentValue,
+            item.displayPercentValue,
         );
     }
 
