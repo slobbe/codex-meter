@@ -1,14 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
   <schema id="org.gnome.shell.extensions.codex-meter" path="/org/gnome/shell/extensions/codex-meter/">
-    <key name="show-primary" type="b">
-      <default>true</default>
-      <summary>Show session (5h) usage</summary>
-    </key>
-    <key name="show-secondary" type="b">
-      <default>true</default>
-      <summary>Show weekly usage</summary>
-    </key>
     <key name="top-panel-display-mode" type="s">
       <default>'bars'</default>
       <summary>Usage indicator style</summary>
@@ -26,6 +18,14 @@
         <choice value='codex'/>
         <choice value='openai'/>
       </choices>
+    </key>
+    <key name="show-primary" type="b">
+      <default>true</default>
+      <summary>Show session (5h) usage</summary>
+    </key>
+    <key name="show-secondary" type="b">
+      <default>true</default>
+      <summary>Show weekly usage</summary>
     </key>
     <key name="percent-display-mode" type="s">
       <default>'used'</default>

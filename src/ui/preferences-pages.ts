@@ -27,8 +27,8 @@ export const DisplayPage = GObject.registerClass(
                 icon_name: "preferences-system-symbolic",
             });
 
+            this.add(createBehaviorGroup(settings));
             this.add(createTopPanelGroup(settings));
-            this.add(createRefreshGroup(settings));
         }
     },
 );
@@ -56,7 +56,6 @@ function createTopPanelGroup(settings: Gio.Settings) {
 
     group.add(createTopPanelIndicatorIconRow(settings));
     group.add(createTopPanelStyleRow(settings));
-    group.add(createPercentDisplayModeRow(settings));
     group.add(
         createBoundSwitchRow({
             settings,
@@ -75,12 +74,13 @@ function createTopPanelGroup(settings: Gio.Settings) {
     return group;
 }
 
-function createRefreshGroup(settings: Gio.Settings) {
+function createBehaviorGroup(settings: Gio.Settings) {
     const group = new Adw.PreferencesGroup({
-        title: "Background Refresh",
-        description: "Control how often the extension refreshes usage data.",
+        title: "Behavior",
+        description: "Control percentage display and automatic refresh behavior.",
     });
 
+    group.add(createPercentDisplayModeRow(settings));
     group.add(createRefreshIntervalRow(settings));
 
     return group;
