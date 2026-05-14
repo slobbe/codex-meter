@@ -1,6 +1,12 @@
 import { getHistoryPath } from "../paths.js";
 import { HistoryEntry } from "../../domain/usage-history.js";
-import { readCsvFile, writeCsvFile } from "../filesystem.js";
+import { appendCsvFile, readCsvFile } from "../filesystem.js";
+
+const HISTORY_HEADERS = [
+    "timestamp",
+    "session_used_percent",
+    "weekly_used_percent",
+];
 
 export async function readHistory(): Promise<HistoryEntry[]> {
     let rows: Record<string, string>[];
@@ -19,19 +25,20 @@ export async function readHistory(): Promise<HistoryEntry[]> {
             secondaryUsedPercent: Number(row.weekly_used_percent),
         }))
         .filter((row) =>
-            row.timestamp &&
+            isValidTimestamp(row.timestamp) &&
             Number.isFinite(row.primaryUsedPercent) &&
             Number.isFinite(row.secondaryUsedPercent),
         );
 }
 
 export async function appendHistory(row: HistoryEntry): Promise<void> {
-    await writeCsvFile(getHistoryPath(), [
-        ...await readHistory(),
-        {
-            timestamp: row.timestamp,
-            session_used_percent: row.primaryUsedPercent,
-            weekly_used_percent: row.secondaryUsedPercent,
-        },
-    ]);
+    await appendCsvFile(getHistoryPath(), [{
+        timestamp: row.timestamp,
+        session_used_percent: row.primaryUsedPercent,
+        weekly_used_percent: row.secondaryUsedPercent,
+    }], HISTORY_HEADERS);
+}
+
+function isValidTimestamp(value: string): boolean {
+    return value.length > 0 && Number.isFinite(new Date(value).getTime());
 }

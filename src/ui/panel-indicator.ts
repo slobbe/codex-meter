@@ -41,6 +41,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._snapshot = null;
         this._prediction = null;
         this._errorMessage = null;
+        this._destroyed = false;
 
         this._panelBox = new St.BoxLayout({
             y_align: Clutter.ActorAlign.CENTER,
@@ -91,11 +92,14 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._syncLabel();
         this._syncMenu();
         void this._loadCachedSnapshot().finally(() => {
+            if (this._destroyed) return;
+
             this._scheduler.start({ runImmediately: true });
         });
     }
 
     destroy() {
+        this._destroyed = true;
         this._scheduler.stop();
 
         if (this._refreshSpinId) {
@@ -217,13 +221,15 @@ export class CodexMeterIndicator extends PanelMenu.Button {
     }
 
     async _refreshUsage({ manual = false } = {}) {
+        if (this._destroyed) return;
+
         if (manual) this._startRefreshSpin();
 
         if (this._refreshPromise) {
             try {
                 await this._refreshPromise;
             } finally {
-                if (manual) this._stopRefreshSpin();
+                if (manual && !this._destroyed) this._stopRefreshSpin();
             }
             return;
         }
@@ -234,13 +240,18 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             await this._refreshPromise;
         } finally {
             this._refreshPromise = null;
-            if (manual) this._stopRefreshSpin();
+            if (manual && !this._destroyed) this._stopRefreshSpin();
         }
     }
 
     async _refreshUsageOnce() {
         try {
+            if (this._destroyed) return;
+
             this._snapshot = await this._usageService.refresh();
+
+            if (this._destroyed) return;
+
             this._errorMessage = null;
 
             try {
@@ -255,22 +266,31 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             this._errorMessage = formatRefreshFailure(error);
             console.error("Unable to refresh Codex usage", error);
 
-            if (!this._snapshot) {
+            if (!this._destroyed && !this._snapshot) {
                 await this._loadCachedSnapshotAfterFailure();
             }
         } finally {
+            if (this._destroyed) return;
+
             this._syncLabel();
             this._syncMenu();
         }
     }
 
     async _loadCachedSnapshot() {
-        if (this._snapshot || this._errorMessage) return;
+        if (this._destroyed || this._snapshot || this._errorMessage) return;
 
         try {
             const snapshot = await this._usageService.readCachedSnapshot();
 
-            if (!snapshot || this._snapshot || this._errorMessage) return;
+            if (
+                this._destroyed ||
+                !snapshot ||
+                this._snapshot ||
+                this._errorMessage
+            ) {
+                return;
+            }
 
             this._snapshot = snapshot;
 
@@ -281,6 +301,8 @@ export class CodexMeterIndicator extends PanelMenu.Button {
                 console.error("Unable to predict cached Codex usage", error);
             }
 
+            if (this._destroyed) return;
+
             this._syncLabel();
             this._syncMenu();
         } catch (error) {
@@ -289,10 +311,12 @@ export class CodexMeterIndicator extends PanelMenu.Button {
     }
 
     async _loadCachedSnapshotAfterFailure() {
+        if (this._destroyed) return;
+
         try {
             const snapshot = await this._usageService.readCachedSnapshot();
 
-            if (!snapshot || this._snapshot) return;
+            if (this._destroyed || !snapshot || this._snapshot) return;
 
             this._snapshot = snapshot;
 
@@ -317,6 +341,8 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             GLib.PRIORITY_DEFAULT,
             30,
             () => {
+                if (this._destroyed) return GLib.SOURCE_REMOVE;
+
                 this._headerItem.refreshIcon.rotation_angle_z =
                     (this._headerItem.refreshIcon.rotation_angle_z + 18) % 360;
                 return GLib.SOURCE_CONTINUE;

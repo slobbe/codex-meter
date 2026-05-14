@@ -144,16 +144,7 @@ export async function fetchUsage(
     }
 
     const data = bytes.get_data();
-
-    if (!data) {
-        throw new RefreshFailureError(
-            "malformed-response",
-            "Codex returned an empty response.",
-            `Received empty response body from ${url}`,
-        );
-    }
-
-    const text = new TextDecoder("utf-8").decode(data);
+    const text = data ? new TextDecoder("utf-8").decode(data) : "";
 
     if (message.statusCode < 200 || message.statusCode >= 300) {
         const errorBody = formatErrorBody(text);
@@ -172,6 +163,14 @@ export async function fetchUsage(
             "network",
             "Codex usage refresh failed. Try again later.",
             technicalMessage,
+        );
+    }
+
+    if (!data) {
+        throw new RefreshFailureError(
+            "malformed-response",
+            "Codex returned an empty response.",
+            `Received empty response body from ${url}`,
         );
     }
 

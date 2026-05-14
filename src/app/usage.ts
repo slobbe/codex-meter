@@ -17,8 +17,17 @@ export class UsageService {
         const apiResponse = await fetchUsage(token);
         const snapshot = toUsageSnapshot(apiResponse);
 
-        await writeSnapshot(snapshot);
-        await appendHistory(toHistoryEntry(snapshot));
+        try {
+            await writeSnapshot(snapshot);
+        } catch (error) {
+            console.error("Unable to write Codex usage snapshot cache", error);
+        }
+
+        try {
+            await appendHistory(toHistoryEntry(snapshot));
+        } catch (error) {
+            console.error("Unable to append Codex usage history", error);
+        }
 
         return snapshot;
     }

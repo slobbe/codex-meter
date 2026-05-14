@@ -28,7 +28,7 @@ function isUsageSnapshot(value: unknown): value is UsageSnapshot {
     const snapshot = value as Record<string, unknown>;
 
     return (
-        typeof snapshot.fetchedAt === "number" &&
+        isFiniteNumber(snapshot.fetchedAt) &&
         typeof snapshot.planType === "string" &&
         isRateLimit(snapshot.rateLimit)
     );
@@ -56,9 +56,15 @@ function isUsageWindow(value: unknown): boolean {
     const window = value as Record<string, unknown>;
 
     return (
-        typeof window.usedPercent === "number" &&
-        typeof window.limitWindowSeconds === "number" &&
-        typeof window.resetAfterSeconds === "number" &&
-        typeof window.resetAt === "number"
+        isFiniteNumber(window.usedPercent) &&
+        isFiniteNumber(window.limitWindowSeconds) &&
+        window.limitWindowSeconds > 0 &&
+        isFiniteNumber(window.resetAfterSeconds) &&
+        window.resetAfterSeconds >= 0 &&
+        isFiniteNumber(window.resetAt)
     );
+}
+
+function isFiniteNumber(value: unknown): value is number {
+    return typeof value === "number" && Number.isFinite(value);
 }

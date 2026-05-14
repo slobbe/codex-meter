@@ -147,12 +147,13 @@ export async function writeCsvFile(
 export async function appendCsvFile(
     path: string,
     rows: Record<string, string | number | boolean | null>[],
+    headers?: string[],
 ): Promise<void> {
     if (rows.length === 0) {
         return;
     }
 
-    const nextHeaders = Array.from(
+    const nextHeaders = headers ?? Array.from(
         new Set(rows.flatMap((row) => Object.keys(row))),
     );
 
