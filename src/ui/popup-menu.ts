@@ -10,6 +10,7 @@ import {
 } from "./view-model.js";
 
 const BASELINE_MARKER_WIDTH = 3;
+const POPUP_CONTENT_WIDTH = 285;
 export class CodexMeterPopupMenu {
     headerItem: any;
     errorItem: any;
@@ -191,9 +192,9 @@ export class CodexMeterPopupMenu {
 
         const box = new St.BoxLayout({
             vertical: true,
-            x_expand: true,
             style_class: "cx-error-menu-item",
         });
+        box.width = POPUP_CONTENT_WIDTH;
 
         const headingBox = new St.BoxLayout({
             x_expand: true,
@@ -233,6 +234,7 @@ export class CodexMeterPopupMenu {
             x_expand: true,
             style_class: "cx-error-message",
         });
+        messageLabel.width = POPUP_CONTENT_WIDTH;
         messageLabel.clutter_text.line_wrap = true;
         messageLabel.clutter_text.ellipsize = 0;
 
