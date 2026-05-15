@@ -1,4 +1,7 @@
 <div align="center">
+    <p>
+      <img src="docs/assets/logo/logo.svg" width="128" alt="Codex Meter logo">
+    </p>
   <h1>Codex Meter</h1>
   <p><strong>Monitor your Codex usage from the GNOME top panel.</strong></p>
   <p>
@@ -10,7 +13,7 @@
     </a>
   </p>
   <p>
-    <img src="docs/screens/popup_used.png" width="325" alt="Codex Meter popup preview">
+    <img src="docs/assets/screens/popup_used.png" width="325" alt="Codex Meter popup preview">
   </p>
 </div>
 
