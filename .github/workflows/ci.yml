@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y jq libglib2.0-bin unzip zip
+          sudo apt-get install -y gjs jq libglib2.0-bin unzip zip
 
       - name: Install Node.js dependencies
         run: npm ci
@@ -58,8 +58,8 @@ jobs:
             exit 1
           fi
 
-      - name: Type-check and build
-        run: npm run build
+      - name: Run tests
+        run: npm test
 
       - name: Validate schemas
         shell: bash
