@@ -7,8 +7,9 @@ import { RefreshFailureError } from "../../domain/refresh-failure.js";
 import Soup from "gi://Soup?version=3.0";
 
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
-const DEFAULT_TIMEOUT_SECONDS = 30;
+const DEFAULT_TIMEOUT_SECONDS = 15;
 const MAX_ERROR_BODY_LENGTH = 512;
+const MAX_RESPONSE_BYTES = 1024 * 1024;
 
 Gio._promisify(Soup.Session.prototype, "send_and_read_async");
 
@@ -133,6 +134,10 @@ export async function fetchUsage(
             options.cancellable ?? null,
         );
     } catch (error) {
+        if (isCancellationError(error)) {
+            throw error;
+        }
+
         const message =
             error instanceof Error ? error.message : String(error);
 
@@ -140,6 +145,14 @@ export async function fetchUsage(
             "network",
             "Codex usage could not be reached. Check your network and try again.",
             `Request to ${url} failed before receiving a response: ${message}`,
+        );
+    }
+
+    if (bytes.get_size() > MAX_RESPONSE_BYTES) {
+        throw new RefreshFailureError(
+            "malformed-response",
+            "Codex returned a response that is too large.",
+            `Response from ${url} exceeded ${MAX_RESPONSE_BYTES} bytes`,
         );
     }
 
@@ -175,4 +188,9 @@ export async function fetchUsage(
     }
 
     return parseApiResponse(text, url);
+}
+
+function isCancellationError(error: unknown): boolean {
+    return error instanceof GLib.Error &&
+        error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED);
 }

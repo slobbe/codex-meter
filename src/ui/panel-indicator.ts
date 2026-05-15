@@ -38,6 +38,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._refreshSpinId = 0;
         this._menuSyncId = 0;
         this._refreshPromise = null;
+        this._refreshCancellable = null;
         this._snapshot = null;
         this._prediction = null;
         this._errorMessage = null;
@@ -101,6 +102,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
     destroy() {
         this._destroyed = true;
         this._scheduler.stop();
+        this._cancelRefresh();
 
         if (this._refreshSpinId) {
             GLib.source_remove(this._refreshSpinId);
@@ -234,21 +236,30 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             return;
         }
 
-        this._refreshPromise = this._refreshUsageOnce();
+        this._refreshCancellable = new Gio.Cancellable();
+        this._refreshPromise = this._refreshUsageOnce(this._refreshCancellable);
 
         try {
             await this._refreshPromise;
         } finally {
             this._refreshPromise = null;
+            this._refreshCancellable = null;
             if (manual && !this._destroyed) this._stopRefreshSpin();
         }
     }
 
-    async _refreshUsageOnce() {
+    _cancelRefresh() {
+        if (!this._refreshCancellable) return;
+
+        this._refreshCancellable.cancel();
+        this._refreshCancellable = null;
+    }
+
+    async _refreshUsageOnce(cancellable) {
         try {
             if (this._destroyed) return;
 
-            this._snapshot = await this._usageService.refresh();
+            this._snapshot = await this._usageService.refresh({ cancellable });
 
             if (this._destroyed) return;
 
@@ -263,6 +274,8 @@ export class CodexMeterIndicator extends PanelMenu.Button {
                 console.error("Unable to predict Codex usage", error);
             }
         } catch (error) {
+            if (this._destroyed && isCancellationError(error)) return;
+
             this._errorMessage = formatRefreshFailure(error);
             console.error("Unable to refresh Codex usage", error);
 
@@ -458,4 +471,9 @@ function formatRefreshFailure(error: unknown): string {
         : "Unknown refresh failure";
 
     return `Codex usage refresh failed.\n\nDetails: ${message}`;
+}
+
+function isCancellationError(error: unknown): boolean {
+    return error instanceof GLib.Error &&
+        error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED);
 }

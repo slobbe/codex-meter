@@ -29,10 +29,6 @@ export async function getAccessToken(path: string = getCodexAuthPath()): Promise
 
     const auth = await readLocalAuth(path);
 
-    if (!auth) {
-        return null;
-    }
-
     return parseAccessToken(auth);
 }
 
@@ -57,7 +53,7 @@ function parseAccessToken(auth: CodexAuth): string {
         );
     }
 
-    if (!isNonEmptyString(token)) {
+    if (!isUsableAccessToken(token)) {
         console.error("Codex auth data does not contain a valid access token");
         throw new RefreshFailureError(
             "missing-auth",
@@ -111,6 +107,10 @@ function isCodexAuth(value: unknown): value is CodexAuth {
 
 function isNonEmptyString(value: unknown): value is string {
     return typeof value === "string" && value.trim().length > 0;
+}
+
+function isUsableAccessToken(value: unknown): value is string {
+    return isNonEmptyString(value) && !/\s/.test(value.trim());
 }
 
 function formatError(err: unknown): string {

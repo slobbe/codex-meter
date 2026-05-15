@@ -1,3 +1,5 @@
+import Gio from "gi://Gio";
+
 import { predict, UsagePrediction } from "../domain/prediction.js";
 import { toHistoryEntry } from "../domain/usage-history.js";
 import { UsageSnapshot } from "../domain/usage-snapshot.js";
@@ -7,14 +9,20 @@ import { getAccessToken } from "../infra/auth/codex.js";
 import { appendHistory, readHistory } from "../infra/storage/history.js";
 import { readSnapshot, writeSnapshot } from "../infra/storage/snapshot-cache.js";
 
+export type RefreshOptions = {
+    cancellable?: Gio.Cancellable | null;
+};
+
 export class UsageService {
     async readCachedSnapshot(): Promise<UsageSnapshot | null> {
         return await readSnapshot();
     }
 
-    async refresh(): Promise<UsageSnapshot> {
+    async refresh(options: RefreshOptions = {}): Promise<UsageSnapshot> {
         const token = await getAccessToken();
-        const apiResponse = await fetchUsage(token);
+        const apiResponse = await fetchUsage(token, undefined, {
+            cancellable: options.cancellable ?? null,
+        });
         const snapshot = toUsageSnapshot(apiResponse);
 
         try {

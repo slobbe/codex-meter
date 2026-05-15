@@ -7,9 +7,13 @@ Gio._promisify(Gio.File.prototype, "append_to_async");
 Gio._promisify(Gio.OutputStream.prototype, "write_all_async");
 Gio._promisify(Gio.OutputStream.prototype, "close_async");
 
+const PRIVATE_DIR_MODE = 0o700;
+const PRIVATE_FILE_MODE = 0o600;
+
 function ensureParentDir(path: string) {
     const dir = GLib.path_get_dirname(path);
-    GLib.mkdir_with_parents(dir, 0o755);
+    GLib.mkdir_with_parents(dir, PRIVATE_DIR_MODE);
+    GLib.chmod(dir, PRIVATE_DIR_MODE);
 }
 
 function fileExists(path: string): boolean {
@@ -43,6 +47,7 @@ async function writeFile(path: string, text: string): Promise<void> {
             Gio.FileCreateFlags.REPLACE_DESTINATION,
             null,
         );
+        GLib.chmod(path, PRIVATE_FILE_MODE);
     } catch (error) {
         throw new Error(
             `Failed to write file "${path}": ${error instanceof Error ? error.message : String(error)}`,
@@ -72,6 +77,7 @@ export async function appendFile(path: string, line: string): Promise<void> {
             ioPriority: number,
             cancellable: Gio.Cancellable | null,
         ) => Promise<[boolean, number]>)(bytes, GLib.PRIORITY_DEFAULT, null);
+        GLib.chmod(path, PRIVATE_FILE_MODE);
     } catch (error) {
         throw new Error(
             `Failed to append file "${path}": ${error instanceof Error ? error.message : String(error)}`,
