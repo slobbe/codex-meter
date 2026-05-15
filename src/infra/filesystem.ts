@@ -3,9 +3,6 @@ import GLib from "gi://GLib";
 
 Gio._promisify(Gio.File.prototype, "load_contents_async");
 Gio._promisify(Gio.File.prototype, "replace_contents_async");
-Gio._promisify(Gio.File.prototype, "append_to_async");
-Gio._promisify(Gio.OutputStream.prototype, "write_all_async");
-Gio._promisify(Gio.OutputStream.prototype, "close_async");
 
 const PRIVATE_DIR_MODE = 0o700;
 const PRIVATE_FILE_MODE = 0o600;
@@ -56,39 +53,17 @@ async function writeFile(path: string, text: string): Promise<void> {
 }
 
 export async function appendFile(path: string, line: string): Promise<void> {
-    let stream: Gio.OutputStream | null = null;
-
     try {
         ensureParentDir(path);
 
-        const file = Gio.File.new_for_path(path);
-
-        stream = (await (file.append_to_async as unknown as (
-            flags: Gio.FileCreateFlags,
-            ioPriority: number,
-            cancellable: Gio.Cancellable | null,
-        ) => Promise<Gio.OutputStream>)(Gio.FileCreateFlags.NONE, GLib.PRIORITY_DEFAULT, null)) as Gio.OutputStream;
-
+        const existingText = fileExists(path) ? await readFile(path) : "";
         const text = line.endsWith("\n") ? line : `${line}\n`;
-        const bytes = new TextEncoder().encode(text);
 
-        await (stream.write_all_async as unknown as (
-            buffer: Uint8Array,
-            ioPriority: number,
-            cancellable: Gio.Cancellable | null,
-        ) => Promise<[boolean, number]>)(bytes, GLib.PRIORITY_DEFAULT, null);
-        GLib.chmod(path, PRIVATE_FILE_MODE);
+        await writeFile(path, `${existingText}${text}`);
     } catch (error) {
         throw new Error(
             `Failed to append file "${path}": ${error instanceof Error ? error.message : String(error)}`,
         );
-    } finally {
-        if (stream) {
-            await (stream.close_async as unknown as (
-                ioPriority: number,
-                cancellable: Gio.Cancellable | null,
-            ) => Promise<void>)(GLib.PRIORITY_DEFAULT, null).catch(() => {});
-        }
     }
 }
 

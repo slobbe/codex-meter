@@ -61,7 +61,7 @@ function predictWindow(windowHistory: HistoryEntrySlice[], windowStartedAt: numb
     }
     const history = windowHistory.toSorted((a, b) => a.timestamp - b.timestamp);
 
-    if (history.length === 1 && history[0].usedPercent > 0 && history[0].timestamp > windowStartedAt) {
+    if (history[0].usedPercent > 0 && history[0].timestamp > windowStartedAt) {
         history.unshift({
             timestamp: windowStartedAt,
             usedPercent: 0

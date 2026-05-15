@@ -25,8 +25,8 @@ export async function readHistory(): Promise<HistoryEntry[]> {
     return rows
         .map((row) => ({
             timestamp: row.timestamp,
-            primaryUsedPercent: Number(row.session_used_percent),
-            secondaryUsedPercent: Number(row.weekly_used_percent),
+            primaryUsedPercent: Number(row.session_used_percent || row.primaryUsedPercent),
+            secondaryUsedPercent: Number(row.weekly_used_percent || row.secondaryUsedPercent),
         }))
         .filter((row) =>
             isValidTimestamp(row.timestamp) &&
@@ -38,11 +38,16 @@ export async function readHistory(): Promise<HistoryEntry[]> {
 }
 
 export async function appendHistory(row: HistoryEntry): Promise<void> {
-    await appendCsvFile(getHistoryPath(), [{
-        timestamp: row.timestamp,
-        session_used_percent: row.primaryUsedPercent,
-        weekly_used_percent: row.secondaryUsedPercent,
-    }], HISTORY_HEADERS);
+    try {
+        await appendHistoryRow(row);
+    } catch (error) {
+        if (!isHeaderMismatch(error)) {
+            throw error;
+        }
+
+        await rewriteHistory(await readHistory());
+        await appendHistoryRow(row);
+    }
 
     await compactHistory();
 }
@@ -64,9 +69,25 @@ async function compactHistory(): Promise<void> {
         return;
     }
 
+    await rewriteHistory(rows);
+}
+
+async function appendHistoryRow(row: HistoryEntry): Promise<void> {
+    await appendCsvFile(getHistoryPath(), [{
+        timestamp: row.timestamp,
+        session_used_percent: row.primaryUsedPercent,
+        weekly_used_percent: row.secondaryUsedPercent,
+    }], HISTORY_HEADERS);
+}
+
+async function rewriteHistory(rows: HistoryEntry[]): Promise<void> {
     await writeCsvFile(getHistoryPath(), rows.map((row) => ({
         timestamp: row.timestamp,
         session_used_percent: row.primaryUsedPercent,
         weekly_used_percent: row.secondaryUsedPercent,
     })));
+}
+
+function isHeaderMismatch(error: unknown): boolean {
+    return error instanceof Error && error.message.includes("header mismatch");
 }
