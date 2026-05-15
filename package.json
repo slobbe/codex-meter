@@ -16,7 +16,8 @@
     "homepage": "https://github.com/slobbe/codex-meter",
     "sideEffects": false,
     "scripts": {
-        "build": "tsc"
+        "build": "tsc",
+        "test": "npm run build && node --test test/prediction.test.js && gjs -m test/history-storage.test.js"
     },
     "devDependencies": {
         "@girs/gjs": "^4.0.0-rc.9",
