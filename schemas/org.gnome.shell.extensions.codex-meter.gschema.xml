@@ -3,7 +3,7 @@
   <schema id="org.gnome.shell.extensions.codex-meter" path="/org/gnome/shell/extensions/codex-meter/">
     <key name="top-panel-display-mode" type="s">
       <default>'bars'</default>
-      <summary>Usage indicator style</summary>
+      <summary>Show percentages as</summary>
       <choices>
         <choice value='percentages'/>
         <choice value='bars'/>
@@ -20,15 +20,15 @@
     </key>
     <key name="show-primary" type="b">
       <default>true</default>
-      <summary>Show session (5h) usage</summary>
+      <summary>Display 5-hour session usage</summary>
     </key>
     <key name="show-secondary" type="b">
       <default>true</default>
-      <summary>Show weekly usage</summary>
+      <summary>Display weekly usage</summary>
     </key>
     <key name="percent-display-mode" type="s">
       <default>'used'</default>
-      <summary>Percentage display</summary>
+      <summary>Display mode</summary>
       <choices>
         <choice value='used'/>
         <choice value='left'/>
@@ -36,8 +36,8 @@
     </key>
     <key name="background-refresh-interval-minutes" type="u">
       <default>1</default>
-      <summary>Refresh interval (min)</summary>
-      <description>Set to 0 for manual refresh</description>
+      <summary>Background refresh interval (minutes)</summary>
+      <description>Set to 0 to refresh manually</description>
       <range min="0" max="60"/>
     </key>
   </schema>

@@ -50,8 +50,7 @@ export const AboutPage = GObject.registerClass(
 
 function createTopPanelGroup(settings: Gio.Settings) {
     const group = new Adw.PreferencesGroup({
-        title: "Top Panel",
-        description: "Choose what the top panel shows.",
+        title: "Top Panel Indicator",
     });
 
     group.add(createTopPanelIndicatorIconRow(settings));
@@ -60,14 +59,14 @@ function createTopPanelGroup(settings: Gio.Settings) {
         createBoundSwitchRow({
             settings,
             key: SETTINGS_SHOW_PRIMARY,
-            title: "Show session (5h) usage",
+            title: "Display 5-hour session usage",
         }),
     );
     group.add(
         createBoundSwitchRow({
             settings,
             key: SETTINGS_SHOW_SECONDARY,
-            title: "Show weekly usage",
+            title: "Display weekly usage",
         }),
     );
 
@@ -77,7 +76,6 @@ function createTopPanelGroup(settings: Gio.Settings) {
 function createBehaviorGroup(settings: Gio.Settings) {
     const group = new Adw.PreferencesGroup({
         title: "Behavior",
-        description: "Control percentage display and automatic refresh behavior.",
     });
 
     group.add(createPercentDisplayModeRow(settings));
@@ -88,10 +86,10 @@ function createBehaviorGroup(settings: Gio.Settings) {
 
 function createTopPanelStyleRow(settings: Gio.Settings) {
     const row = new Adw.ComboRow({
-        title: "Usage indicator style",
+        title: "Show percentages as",
         model: Gtk.StringList.new([
-            "Percentages",
             "Progress bars",
+            "Raw percentages",
         ]),
         selected: getTopPanelDisplayModeIndex(
             settings.get_string(SETTINGS_TOP_PANEL_DISPLAY_MODE),
@@ -116,8 +114,8 @@ function createTopPanelStyleRow(settings: Gio.Settings) {
 
 function createPercentDisplayModeRow(settings: Gio.Settings) {
     const row = new Adw.ComboRow({
-        title: "Percentage display",
-        model: Gtk.StringList.new(["Used", "Left"]),
+        title: "Display mode",
+        model: Gtk.StringList.new(["Percent used", "Percent left"]),
         selected: getPercentDisplayModeIndex(
             settings.get_string(SETTINGS_PERCENT_DISPLAY_MODE),
         ),
@@ -142,7 +140,7 @@ function createPercentDisplayModeRow(settings: Gio.Settings) {
 function createTopPanelIndicatorIconRow(settings: Gio.Settings) {
     const row = new Adw.ComboRow({
         title: "Icon",
-        model: Gtk.StringList.new(["Shortcode", "Codex icon", "OpenAI icon"]),
+        model: Gtk.StringList.new(["Codex icon", "OpenAI icon", "CX shortcode"]),
         selected: getTopPanelIndicatorIconIndex(
             settings.get_string(SETTINGS_TOP_PANEL_INDICATOR_ICON),
         ),
@@ -185,8 +183,8 @@ function createBoundSwitchRow({
 
 function createRefreshIntervalRow(settings: Gio.Settings) {
     const row = new Adw.SpinRow({
-        title: "Refresh interval (min)",
-        subtitle: "Set to 0 for manual refresh",
+        title: "Background refresh interval (minutes)",
+        subtitle: "Set to 0 to refresh manually",
         adjustment: new Gtk.Adjustment({
             lower: MIN_REFRESH_INTERVAL_MINUTES,
             upper: 60,
@@ -360,7 +358,7 @@ function formatShellVersions(versions: ShellVersions) {
 
 function getTopPanelDisplayModeIndex(value: string) {
     switch (value as TopPanelDisplayMode) {
-        case "bars":
+        case "percentages":
             return 1;
         default:
             return 0;
@@ -370,24 +368,24 @@ function getTopPanelDisplayModeIndex(value: string) {
 function getTopPanelDisplayModeValue(selected: number): TopPanelDisplayMode {
     switch (selected) {
         case 1:
-            return "bars";
-        default:
             return "percentages";
+        default:
+            return "bars";
     }
 }
 
 function getTopPanelIndicatorIconIndex(value: string) {
-    if (value === "codex" || value === "icon") return 1;
-    if (value === "openai") return 2;
+    if (value === "openai") return 1;
+    if (value === "text") return 2;
 
     return 0;
 }
 
 function getTopPanelIndicatorIconValue(selected: number): TopPanelIndicatorIcon {
-    if (selected === 1) return "codex";
-    if (selected === 2) return "openai";
+    if (selected === 1) return "openai";
+    if (selected === 2) return "text";
 
-    return "text";
+    return "codex";
 }
 
 function getPercentDisplayModeIndex(value: string) {
