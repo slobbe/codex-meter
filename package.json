@@ -1,6 +1,6 @@
 {
     "name": "codex-meter",
-    "version": "0.6.1",
+    "version": "0.6.2",
     "description": "Monitor your Codex usage from the top panel.",
     "type": "module",
     "private": true,
