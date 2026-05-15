@@ -403,7 +403,7 @@ export function secondsUntil(unixTimestamp: number): number {
 export function formatLimitPrediction(prediction: WindowPrediction, windowType: UsageWindowType) {
     if (prediction?.trend !== "unsafe") return "";
 
-    return `Limit in ~${formatDuration(
+    return `Limit in about ${formatDuration(
         secondsUntil(prediction.estimatedLimitAt),
         windowType,
     )}`;

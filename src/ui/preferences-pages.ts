@@ -50,7 +50,7 @@ export const AboutPage = GObject.registerClass(
 
 function createTopPanelGroup(settings: Gio.Settings) {
     const group = new Adw.PreferencesGroup({
-        title: "Top Panel Indicator",
+        title: "Top panel indicator",
     });
 
     group.add(createTopPanelIndicatorIconRow(settings));
@@ -272,12 +272,12 @@ function createAboutInfoGroup(metadata: Metadata) {
             metadata["version-name"] ?? `${metadata.version ?? 1}`,
         ),
     );
-    group.add(createInfoRow("Created By", "Sebastian Lobbe"));
+    group.add(createInfoRow("Created by", "Sebastian Lobbe"));
     group.add(
         createLinkRow("GitHub", metadata.url ?? "https://github.com/slobbe/codex-meter"),
     );
     group.add(
-        createLinkRow("Report a Bug", "https://github.com/slobbe/codex-meter/issues"),
+        createLinkRow("Report a bug", "https://github.com/slobbe/codex-meter/issues"),
     );
 
     return group;
