@@ -215,20 +215,6 @@ export class CodexMeterPopupMenu {
             style_class: "cx-error-title cx-color-danger",
         });
 
-        const copyButton = new St.Button({
-            child: new St.Icon({
-                icon_name: "edit-copy-symbolic",
-                style_class: "popup-menu-icon",
-            }),
-            style_class: "cx-footer-button",
-            can_focus: true,
-            x_align: Clutter.ActorAlign.END,
-            y_align: Clutter.ActorAlign.CENTER,
-        });
-        copyButton.connect("clicked", () => {
-            copyTextToClipboard(item.message);
-        });
-
         const messageLabel = new St.Label({
             text: "",
             x_expand: true,
@@ -240,14 +226,12 @@ export class CodexMeterPopupMenu {
 
         headingBox.add_child(icon);
         headingBox.add_child(titleLabel);
-        headingBox.add_child(copyButton);
         box.add_child(headingBox);
         box.add_child(messageLabel);
         item.add_child(box);
         item.visible = false;
         item.message = "";
         item.messageLabel = messageLabel;
-        item.copyButton = copyButton;
 
         return item;
     }
@@ -391,10 +375,4 @@ function removeColorStyleClasses(actor) {
     actor.remove_style_class_name("cx-color-warning");
     actor.remove_style_class_name("cx-color-danger");
     actor.remove_style_class_name("cx-muted");
-}
-
-function copyTextToClipboard(text) {
-    if (!text) return;
-
-    St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, text);
 }
