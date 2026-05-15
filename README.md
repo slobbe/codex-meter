@@ -10,7 +10,7 @@
     </a>
   </p>
   <p>
-    <img src="docs/screens/popup.png" width="371" alt="Codex Meter popup preview">
+    <img src="docs/screens/popup_used.png" width="325" alt="Codex Meter popup preview">
   </p>
 </div>
 
