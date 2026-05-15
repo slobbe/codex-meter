@@ -19,8 +19,8 @@ dist/extension.js dist/prefs.js &: node_modules/.package-lock.json $(TS_SOURCES)
 schemas/gschemas.compiled: schemas/org.gnome.shell.extensions.$(NAME).gschema.xml
 	glib-compile-schemas schemas
 
-$(ZIP): dist/extension.js dist/prefs.js schemas/gschemas.compiled metadata.json src/stylesheet.css icons/codex-symbolic.svg icons/openai-symbolic.svg
-	@cp -r schemas dist/
+$(ZIP): dist/extension.js dist/prefs.js metadata.json src/stylesheet.css icons/codex-symbolic.svg icons/openai-symbolic.svg
+	@cp -r schemas/org.gnome.shell.extensions.$(NAME).gschema.xml dist/
 	@cp -r icons dist/
 	@cp metadata.json dist/
 	@cp src/stylesheet.css dist/stylesheet.css
