@@ -35,13 +35,13 @@ export const DisplayPage = GObject.registerClass(
 
 export const AboutPage = GObject.registerClass(
     class AboutPage extends Adw.PreferencesPage {
-        _init(metadata: Metadata) {
+        _init(metadata: Metadata, extensionPath: string) {
             super._init({
                 title: "About",
                 icon_name: "help-about-symbolic",
             });
 
-            this.add(createAboutHeaderGroup(metadata));
+            this.add(createAboutHeaderGroup(metadata, extensionPath));
             this.add(createAboutInfoGroup(metadata));
             this.add(createLegalGroup(metadata));
         }
@@ -219,7 +219,7 @@ function createRefreshIntervalRow(settings: Gio.Settings) {
     return row;
 }
 
-function createAboutHeaderGroup(metadata: Metadata) {
+function createAboutHeaderGroup(metadata: Metadata, extensionPath: string) {
     const group = new Adw.PreferencesGroup();
     const box = new Gtk.Box({
         orientation: Gtk.Orientation.VERTICAL,
@@ -229,6 +229,16 @@ function createAboutHeaderGroup(metadata: Metadata) {
         valign: Gtk.Align.CENTER,
     });
 
+    box.append(
+        new Gtk.Image({
+            gicon: new Gio.FileIcon({
+                file: Gio.File.new_for_path(`${extensionPath}/assets/logo.png`),
+            }),
+            pixel_size: 256,
+            halign: Gtk.Align.CENTER,
+            margin_bottom: 12,
+        }),
+    );
     box.append(
         new Gtk.Label({
             label: `<span size="x-large"><b>${escapeMarkup(metadata.name ?? "Codex Meter")}</b></span>`,

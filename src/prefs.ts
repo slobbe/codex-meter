@@ -7,7 +7,7 @@ export default class CodexMeterPreferences extends ExtensionPreferences {
         const settings = this.getSettings();
 
         window.add(new (DisplayPage as any)(settings));
-        window.add(new (AboutPage as any)(this.metadata));
+        window.add(new (AboutPage as any)(this.metadata, this.path));
         window.set_default_size(640, 720);
     }
 }
