@@ -1,8 +1,7 @@
 import Gio from "gi://Gio";
 
 import { predict, UsagePrediction } from "../domain/prediction.js";
-import { toHistoryEntry } from "../domain/usage-history.js";
-import { UsageSnapshot } from "../domain/usage-snapshot.js";
+import { UsageSnapshot, toHistoryEntry } from "../domain/usage.js";
 import { fetchUsage } from "../infra/api/client.js";
 import { toUsageSnapshot } from "../infra/api/mapper.js";
 import { getAccessToken } from "../infra/auth/codex.js";

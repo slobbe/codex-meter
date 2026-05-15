@@ -1,5 +1,5 @@
 import { getSnapshotPath } from "../paths.js";
-import { UsageSnapshot } from "../../domain/usage-snapshot.js";
+import { UsageSnapshot } from "../../domain/usage.js";
 import { readJsonFile, writeJsonFile } from "../filesystem.js";
 
 export async function writeSnapshot(snapshot: UsageSnapshot): Promise<void> {

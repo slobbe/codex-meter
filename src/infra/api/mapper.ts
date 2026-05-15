@@ -1,5 +1,5 @@
 import { RefreshFailureError } from "../../domain/refresh-failure.js";
-import { UsageSnapshot } from "../../domain/usage-snapshot.js";
+import { UsageSnapshot } from "../../domain/usage.js";
 import { ApiResponse } from "./client.js";
 
 export function toUsageSnapshot(api: ApiResponse): UsageSnapshot {

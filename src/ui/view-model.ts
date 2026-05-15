@@ -1,5 +1,5 @@
 import { UsagePrediction, WindowPrediction } from "../domain/prediction.js";
-import { UsageSnapshot, UsageWindow } from "../domain/usage-snapshot.js";
+import { UsageSnapshot, UsageWindow } from "../domain/usage.js";
 import { type PercentDisplayMode } from "../app/settings.js";
 
 export type UsageWindowType = "primary" | "secondary";

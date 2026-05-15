@@ -1,5 +1,5 @@
 import { getHistoryPath } from "../paths.js";
-import { HistoryEntry } from "../../domain/usage-history.js";
+import { HistoryEntry } from "../../domain/usage.js";
 import { appendCsvFile, readCsvFile, writeCsvFile } from "../filesystem.js";
 
 const HISTORY_HEADERS = [
