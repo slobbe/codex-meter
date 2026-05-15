@@ -99,7 +99,6 @@ jobs:
             prefs.js \
             stylesheet.css \
             schemas/org.gnome.shell.extensions.codex-meter.gschema.xml \
-            schemas/gschemas.compiled
           do
             unzip -Z1 "${ZIP}" | grep -Fx "${file}"
           done
