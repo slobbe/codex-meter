@@ -14,15 +14,12 @@
   </p>
 </div>
 
-> Inspired by [CodexBar](https://github.com/steipete/CodexBar) by [Peter Steinberger](https://github.com/steipete), adapted for GNOME.
-
 ## Features
 
 - Displays current 5-hour session and weekly Codex usage.
 - Predicts whether current usage trends will hit the session or weekly limit before reset.
-- Choose between raw percentages or progress bars in the panel indicator.
 - Show percentages as usage consumed or capacity left.
-- Supports manual refresh and configurable background refresh intervals.
+- Choose between raw percentages or progress bars in the panel indicator.
 
 ## Install
 
