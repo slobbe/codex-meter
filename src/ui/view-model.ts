@@ -200,7 +200,7 @@ export function createMenuViewModel(settings, snapshot: UsageSnapshot, predictio
 export function createUsageItemViewModel({
     title,
     value,
-    prediction = "Trend: --",
+    prediction = "",
     reset = "resets in --",
     percentValue = null,
     baselinePercentValue = null,
@@ -401,27 +401,12 @@ export function secondsUntil(unixTimestamp: number): number {
 }
 
 export function formatLimitPrediction(prediction: WindowPrediction, windowType: UsageWindowType) {
-    let trend: string;
-    
-    switch (prediction?.trend) {
-        case "limit reached":
-            trend = "Limit reached";
-            break;
-        case "unsafe":
-            trend = `Limit in ~${formatDuration(
-                secondsUntil(prediction.estimatedLimitAt),
-                windowType,
-            )}`;
-            break;
-        case "safe":
-            trend = "Safe";
-            break;
-        default:
-            trend = "--";
-            break;
-    }
+    if (prediction?.trend !== "unsafe") return "";
 
-    return `Trend: ${trend}`;
+    return `Limit in ~${formatDuration(
+        secondsUntil(prediction.estimatedLimitAt),
+        windowType,
+    )}`;
 }
 
 export function getPredictionStyleClass(prediction: WindowPrediction): PredictionStyle {

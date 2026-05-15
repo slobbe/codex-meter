@@ -152,7 +152,7 @@ export class CodexMeterPopupMenu {
             style_class: "cx-usage-detail-muted",
         });
         const predictionLabel = new St.Label({
-            text: "Trend: --",
+            text: "",
             y_align: Clutter.ActorAlign.CENTER,
             style_class: "cx-usage-prediction",
         });
