@@ -21,15 +21,23 @@ type HistoryEntrySlice = {
 export function predict(history: HistoryEntry[], snapshot: UsageSnapshot): UsagePrediction {   
     const primaryStartedAt = snapshot.fetchedAt - (snapshot.rateLimit.primary.limitWindowSeconds - snapshot.rateLimit.primary.resetAfterSeconds);
     const secondaryStartedAt = snapshot.fetchedAt - (snapshot.rateLimit.secondary.limitWindowSeconds - snapshot.rateLimit.secondary.resetAfterSeconds);
+    const historyWithSnapshot = [
+        ...history,
+        {
+            timestamp: new Date(snapshot.fetchedAt * 1000).toISOString(),
+            primaryUsedPercent: snapshot.rateLimit.primary.usedPercent,
+            secondaryUsedPercent: snapshot.rateLimit.secondary.usedPercent
+        }
+    ];
     
-    const primaryHistory = history.map(h => {
+    const primaryHistory = historyWithSnapshot.map(h => {
         return {
             timestamp: new Date(h.timestamp).getTime() / 1000,
             usedPercent: h.primaryUsedPercent
         }
     }).toSorted((a, b) => b.timestamp - a.timestamp).filter(h => h.timestamp >= primaryStartedAt);
 
-    const secondaryHistory = history.map(h => {
+    const secondaryHistory = historyWithSnapshot.map(h => {
         return {
             timestamp: new Date(h.timestamp).getTime() / 1000,
             usedPercent: h.secondaryUsedPercent
@@ -37,21 +45,36 @@ export function predict(history: HistoryEntry[], snapshot: UsageSnapshot): Usage
     }).toSorted((a, b) => b.timestamp - a.timestamp).filter(h => h.timestamp >= secondaryStartedAt);
 
     return {
-        primary: predictWindow(primaryHistory, snapshot.rateLimit.primary.resetAt),
-        secondary: predictWindow(secondaryHistory, snapshot.rateLimit.secondary.resetAt)
+        primary: predictWindow(primaryHistory, primaryStartedAt, snapshot.rateLimit.primary.resetAt),
+        secondary: predictWindow(secondaryHistory, secondaryStartedAt, snapshot.rateLimit.secondary.resetAt)
     }
     
 }
 
-function predictWindow(windowHistory: HistoryEntrySlice[], resetAt: number): WindowPrediction { 
+function predictWindow(windowHistory: HistoryEntrySlice[], windowStartedAt: number, resetAt: number): WindowPrediction { 
 
-    if (windowHistory.length < 2) {
+    if (windowHistory.length < 1) {
         return {
             estimatedLimitAt: null,
             trend: "unknown"
         };
     }
     const history = windowHistory.toSorted((a, b) => a.timestamp - b.timestamp);
+
+    if (history.length === 1 && history[0].usedPercent > 0 && history[0].timestamp > windowStartedAt) {
+        history.unshift({
+            timestamp: windowStartedAt,
+            usedPercent: 0
+        });
+    }
+
+    if (history.length < 2) {
+        return {
+            estimatedLimitAt: null,
+            trend: "unknown"
+        };
+    }
+
     const oldest = history[0];
     const latest = history[history.length - 1];
     
