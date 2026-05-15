@@ -2,7 +2,7 @@
     "name": "Codex Meter",
     "description": "Monitor your Codex usage from the top panel.",
     "uuid": "codex-meter@slobbe.github.io",
-    "shell-version": ["49", "50"],
+    "shell-version": ["45", "46", "47", "48", "49", "50"],
     "settings-schema": "org.gnome.shell.extensions.codex-meter",
     "url": "https://github.com/slobbe/codex-meter",
     "license": "GPL-3.0-or-later",
