@@ -98,7 +98,7 @@ jobs:
             extension.js \
             prefs.js \
             stylesheet.css \
-            schemas/org.gnome.shell.extensions.codex-meter.gschema.xml \
+            schemas/org.gnome.shell.extensions.codex-meter.gschema.xml
           do
             unzip -Z1 "${ZIP}" | grep -Fx "${file}"
           done
