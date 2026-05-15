@@ -20,7 +20,9 @@ schemas/gschemas.compiled: schemas/org.gnome.shell.extensions.$(NAME).gschema.xm
 	glib-compile-schemas schemas
 
 $(ZIP): dist/extension.js dist/prefs.js metadata.json src/stylesheet.css icons/codex-symbolic.svg icons/openai-symbolic.svg
-	@cp -r schemas/org.gnome.shell.extensions.$(NAME).gschema.xml dist/
+	@mkdir -p dist/schemas
+	@cp schemas/org.gnome.shell.extensions.$(NAME).gschema.xml dist/schemas/
+	@rm -f dist/schemas/gschemas.compiled
 	@cp -r icons dist/
 	@cp metadata.json dist/
 	@cp src/stylesheet.css dist/stylesheet.css
