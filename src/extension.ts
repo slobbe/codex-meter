@@ -26,6 +26,7 @@ export default class CodexMeterExtension extends Extension {
     enable() {
         this._indicator = new CodexMeterIndicator(this);
         Main.panel.addToStatusArea(this.uuid, this._indicator);
+        this._indicator.start();
     }
 
     disable() {

@@ -89,6 +89,10 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this.add_child(this._panelBox);
         this._buildMenu();
         this._connectSignals();
+    }
+
+    start() {
+        if (this._destroyed) return;
 
         this._syncLabel();
         this._syncMenu();
