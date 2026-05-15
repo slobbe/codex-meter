@@ -149,6 +149,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._footerItem = this._popupMenu.footerItem;
 
         this._popupMenu.addToMenu(this.menu);
+        (this.menu as any).setSourceAlignment(0.0);
     }
 
     _createPanelBars() {
