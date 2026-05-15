@@ -19,7 +19,6 @@ type CodexAuth = {
 
 export async function getAccessToken(path: string = getCodexAuthPath()): Promise<string> {
     if (!isNonEmptyString(path)) {
-        console.error("Codex auth path must be a non-empty string");
         throw new RefreshFailureError(
             "missing-auth",
             "Codex auth is unavailable. Run `codex login` and try again.",
@@ -34,7 +33,6 @@ export async function getAccessToken(path: string = getCodexAuthPath()): Promise
 
 function parseAccessToken(auth: CodexAuth): string {
     if (!isCodexAuth(auth)) {
-        console.error("Codex auth data is malformed: expected an object");
         throw new RefreshFailureError(
             "missing-auth",
             "Codex auth is malformed. Run `codex login` and try again.",
@@ -45,7 +43,6 @@ function parseAccessToken(auth: CodexAuth): string {
     const token = auth.tokens?.access_token;
 
     if (!auth.tokens || typeof auth.tokens !== "object") {
-        console.error("Codex auth data is missing the tokens object");
         throw new RefreshFailureError(
             "missing-auth",
             "Codex access token is missing. Run `codex login` and try again.",
@@ -54,7 +51,6 @@ function parseAccessToken(auth: CodexAuth): string {
     }
 
     if (!isUsableAccessToken(token)) {
-        console.error("Codex auth data does not contain a valid access token");
         throw new RefreshFailureError(
             "missing-auth",
             "Codex access token is missing. Run `codex login` and try again.",
@@ -78,7 +74,6 @@ async function readLocalAuth(path: string): Promise<CodexAuth> {
         const raw = await readJsonFile(path);
 
         if (!isCodexAuth(raw)) {
-            console.error(`Codex auth file at "${path}" does not contain a valid JSON object`);
             throw new RefreshFailureError(
                 "missing-auth",
                 "Codex auth file is malformed. Run `codex login` and try again.",
@@ -92,7 +87,6 @@ async function readLocalAuth(path: string): Promise<CodexAuth> {
             throw err;
         }
 
-        console.error(`Failed to read Codex auth file at "${path}": ${formatError(err)}`);
         throw new RefreshFailureError(
             "missing-auth",
             "Codex auth file could not be read. Run `codex login` and try again.",

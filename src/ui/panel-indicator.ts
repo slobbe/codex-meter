@@ -218,13 +218,11 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         });
 
         this._refreshIntervalChangedId =
-            this._settings.connectBackgroundRefreshIntervalChanged(
-            () => {
+            this._settings.connectBackgroundRefreshIntervalChanged(() => {
                 this._scheduler.setIntervalSeconds(
                     this._settings.getBackgroundRefreshIntervalSeconds(),
                 );
-            },
-            );
+            });
     }
 
     async _refreshUsage({ manual = false } = {}) {
@@ -276,13 +274,11 @@ export class CodexMeterIndicator extends PanelMenu.Button {
                 );
             } catch (error) {
                 this._prediction = null;
-                console.error("Unable to predict Codex usage", error);
             }
         } catch (error) {
             if (this._destroyed && isCancellationError(error)) return;
 
             this._errorMessage = formatRefreshFailure(error);
-            console.error("Unable to refresh Codex usage", error);
 
             if (!this._destroyed && !this._snapshot) {
                 await this._loadCachedSnapshotAfterFailure();
@@ -316,16 +312,13 @@ export class CodexMeterIndicator extends PanelMenu.Button {
                 this._prediction = await this._usageService.predict(snapshot);
             } catch (error) {
                 this._prediction = null;
-                console.error("Unable to predict cached Codex usage", error);
             }
 
             if (this._destroyed) return;
 
             this._syncLabel();
             this._syncMenu();
-        } catch (error) {
-            console.error("Unable to load cached Codex usage", error);
-        }
+        } catch (error) {}
     }
 
     async _loadCachedSnapshotAfterFailure() {
@@ -342,11 +335,8 @@ export class CodexMeterIndicator extends PanelMenu.Button {
                 this._prediction = await this._usageService.predict(snapshot);
             } catch (error) {
                 this._prediction = null;
-                console.error("Unable to predict cached Codex usage", error);
             }
-        } catch (error) {
-            console.error("Unable to load cached Codex usage after refresh failure", error);
-        }
+        } catch (error) {}
     }
 
     _startRefreshSpin() {
@@ -393,8 +383,10 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._panelSecondaryBar.barTrack.visible = viewModel.secondaryVisible;
         this._panelPrimaryBar.percentValue = viewModel.primaryPercent;
         this._panelSecondaryBar.percentValue = viewModel.secondaryPercent;
-        this._panelPrimaryBar.displayPercentValue = viewModel.primaryDisplayPercent;
-        this._panelSecondaryBar.displayPercentValue = viewModel.secondaryDisplayPercent;
+        this._panelPrimaryBar.displayPercentValue =
+            viewModel.primaryDisplayPercent;
+        this._panelSecondaryBar.displayPercentValue =
+            viewModel.secondaryDisplayPercent;
         this._panelBars.visible = viewModel.showBars;
         if (viewModel.primaryVisible && viewModel.secondaryVisible) {
             this._panelBars.add_style_class_name("cx-panel-bars-stacked");
@@ -471,14 +463,17 @@ function formatRefreshFailure(error: unknown): string {
         return `${error.message}\n\nDetails: ${error.technicalMessage}`;
     }
 
-    const message = error instanceof Error && error.message
-        ? error.message
-        : "Unknown refresh failure";
+    const message =
+        error instanceof Error && error.message
+            ? error.message
+            : "Unknown refresh failure";
 
     return `Codex usage refresh failed.\n\nDetails: ${message}`;
 }
 
 function isCancellationError(error: unknown): boolean {
-    return error instanceof GLib.Error &&
-        error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED);
+    return (
+        error instanceof GLib.Error &&
+        error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)
+    );
 }
