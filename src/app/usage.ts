@@ -1,6 +1,6 @@
 import Gio from "gi://Gio";
 
-import { createUnknownUsagePrediction, predict, UsagePrediction } from "../domain/prediction.js";
+import { predict, UsagePrediction } from "../domain/prediction.js";
 import { UsageSnapshot, toHistoryEntry } from "../domain/usage.js";
 import { getUsageProvider, UsageProvider } from "../infra/providers/index.js";
 import { appendHistory, readHistory } from "../infra/storage/history.js";
@@ -18,7 +18,7 @@ export class UsageService {
     }
 
     async readCachedSnapshot(): Promise<UsageSnapshot | null> {
-        return await readSnapshot(this.provider.id);
+        return await readSnapshot(this.provider.info.id);
     }
 
     async refresh(options: RefreshOptions = {}): Promise<UsageSnapshot> {
@@ -27,32 +27,28 @@ export class UsageService {
         });
 
         try {
-            await writeSnapshot(this.provider.id, snapshot);
+            await writeSnapshot(this.provider.info.id, snapshot);
         } catch (error) {
-            console.error(`Unable to write ${this.provider.displayName} usage snapshot cache`, error);
+            console.error(`Unable to write ${this.provider.info.displayName} usage snapshot cache`, error);
         }
 
         try {
-            await appendHistory(this.provider.id, toHistoryEntry(snapshot));
+            await appendHistory(this.provider.info.id, toHistoryEntry(snapshot));
         } catch (error) {
-            console.error(`Unable to append ${this.provider.displayName} usage history`, error);
+            console.error(`Unable to append ${this.provider.info.displayName} usage history`, error);
         }
 
         return snapshot;
     }
 
     async predict(snapshot?: UsageSnapshot): Promise<UsagePrediction> {
-        const currentSnapshot = snapshot ?? await readSnapshot(this.provider.id);
+        const currentSnapshot = snapshot ?? await readSnapshot(this.provider.info.id);
 
         if (!currentSnapshot) {
             throw new Error("No snapshot available");
         }
 
-        if (!this.provider.metadata.supportsPrediction) {
-            return createUnknownUsagePrediction(currentSnapshot);
-        }
-
-        const history = await readHistory(this.provider.id);
+        const history = await readHistory(this.provider.info.id);
         return predict(history, currentSnapshot);
     }
 }
