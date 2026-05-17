@@ -2,9 +2,7 @@ import Gio from "gi://Gio";
 
 import { predict, UsagePrediction } from "../domain/prediction.js";
 import { UsageSnapshot, toHistoryEntry } from "../domain/usage.js";
-import { fetchUsage } from "../infra/api/client.js";
-import { toUsageSnapshot } from "../infra/api/mapper.js";
-import { getAccessToken } from "../infra/auth/codex.js";
+import { getUsageProvider, UsageProvider } from "../infra/providers/index.js";
 import { appendHistory, readHistory } from "../infra/storage/history.js";
 import { readSnapshot, writeSnapshot } from "../infra/storage/snapshot-cache.js";
 
@@ -13,27 +11,31 @@ export type RefreshOptions = {
 };
 
 export class UsageService {
+    private readonly provider: UsageProvider;
+
+    constructor(provider: UsageProvider = getUsageProvider()) {
+        this.provider = provider;
+    }
+
     async readCachedSnapshot(): Promise<UsageSnapshot | null> {
         return await readSnapshot();
     }
 
     async refresh(options: RefreshOptions = {}): Promise<UsageSnapshot> {
-        const token = await getAccessToken();
-        const apiResponse = await fetchUsage(token, undefined, {
+        const snapshot = await this.provider.refreshUsage({
             cancellable: options.cancellable ?? null,
         });
-        const snapshot = toUsageSnapshot(apiResponse);
 
         try {
             await writeSnapshot(snapshot);
         } catch (error) {
-            console.error("Unable to write Codex usage snapshot cache", error);
+            console.error(`Unable to write ${this.provider.displayName} usage snapshot cache`, error);
         }
 
         try {
             await appendHistory(toHistoryEntry(snapshot));
         } catch (error) {
-            console.error("Unable to append Codex usage history", error);
+            console.error(`Unable to append ${this.provider.displayName} usage history`, error);
         }
 
         return snapshot;

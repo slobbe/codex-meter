@@ -1,72 +1,33 @@
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
 
-import { RefreshFailureError } from "../../domain/refresh-failure.js";
+import { RefreshFailureError } from "../domain/refresh-failure.js";
 // The GIRS package set used by this project does not ship Soup typings.
 // @ts-ignore
 import Soup from "gi://Soup?version=3.0";
 
-const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const DEFAULT_TIMEOUT_SECONDS = 15;
 const MAX_ERROR_BODY_LENGTH = 512;
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 
 Gio._promisify(Soup.Session.prototype, "send_and_read_async");
 
-export type ApiResponse = {
-    user_id: string;
-    account_id: string;
-    email: string;
-    plan_type: "free" | "plus" | "pro" | string;
+export type JsonObject = Record<string, unknown>;
 
-    rate_limit: {
-        allowed: boolean;
-        limit_reached: boolean;
-
-        primary_window: RateLimitWindow;
-        secondary_window: RateLimitWindow;
-    };
-
-    code_review_rate_limit: RateLimit | null;
-    additional_rate_limits: unknown | null;
-
-    credits: {
-        has_credits: boolean;
-        unlimited: boolean;
-        overage_limit_reached: boolean;
-
-        // API returns this as a string
-        balance: string;
-
-        approx_local_messages: [number, number];
-        approx_cloud_messages: [number, number];
-    };
-
-    spend_control: {
-        reached: boolean;
-        individual_limit: number | null;
-    };
-
-    rate_limit_reached_type: string | null;
-    promo: unknown | null;
-    referral_beacon: unknown | null;
+export type UsageApiClientMessages = {
+    malformedResponse: string;
+    unexpectedResponseFormat: string;
+    networkUnavailable: string;
+    responseTooLarge: string;
+    unauthorized: string;
+    refreshFailed: string;
+    emptyResponse: string;
 };
 
-type RateLimitWindow = {
-    used_percent: number;
-    limit_window_seconds: number;
-    reset_after_seconds: number;
-
-    // unix timestamp
-    reset_at: number;
-};
-
-type RateLimit = {
-    allowed: boolean;
-    limit_reached: boolean;
-
-    primary_window: RateLimitWindow;
-    secondary_window: RateLimitWindow;
+export type UsageApiClientConfig = {
+    providerName: string;
+    usageUrl: string;
+    messages: UsageApiClientMessages;
 };
 
 export type FetchUsageOptions = {
@@ -84,7 +45,11 @@ function formatErrorBody(text: string): string {
     return `${normalized.slice(0, MAX_ERROR_BODY_LENGTH)}...`;
 }
 
-function parseApiResponse(text: string, url: string): ApiResponse {
+function parseApiResponse(
+    text: string,
+    url: string,
+    config: UsageApiClientConfig,
+): JsonObject {
     let parsed: unknown;
 
     try {
@@ -95,7 +60,7 @@ function parseApiResponse(text: string, url: string): ApiResponse {
 
         throw new RefreshFailureError(
             "malformed-response",
-            "Codex returned a malformed response.",
+            config.messages.malformedResponse,
             `Failed to parse JSON response from ${url}: ${message}`,
         );
     }
@@ -103,19 +68,20 @@ function parseApiResponse(text: string, url: string): ApiResponse {
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
         throw new RefreshFailureError(
             "malformed-response",
-            "Codex returned an unexpected response format.",
+            config.messages.unexpectedResponseFormat,
             `Expected JSON object response from ${url}`,
         );
     }
 
-    return parsed as ApiResponse;
+    return parsed as JsonObject;
 }
 
-export async function fetchUsage(
+export async function fetchProviderUsage(
     accessToken: string,
-    url: string = CODEX_USAGE_URL,
+    config: UsageApiClientConfig,
     options: FetchUsageOptions = {},
-): Promise<ApiResponse> {
+    url: string = config.usageUrl,
+): Promise<JsonObject> {
     const session = new Soup.Session();
     const message = Soup.Message.new("GET", url);
     const timeoutSeconds = options.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS;
@@ -143,7 +109,7 @@ export async function fetchUsage(
 
         throw new RefreshFailureError(
             "network",
-            "Codex usage could not be reached. Check your network and try again.",
+            config.messages.networkUnavailable,
             `Request to ${url} failed before receiving a response: ${message}`,
         );
     }
@@ -151,7 +117,7 @@ export async function fetchUsage(
     if (bytes.get_size() > MAX_RESPONSE_BYTES) {
         throw new RefreshFailureError(
             "malformed-response",
-            "Codex returned a response that is too large.",
+            config.messages.responseTooLarge,
             `Response from ${url} exceeded ${MAX_RESPONSE_BYTES} bytes`,
         );
     }
@@ -167,14 +133,14 @@ export async function fetchUsage(
         if (message.statusCode === 401 || message.statusCode === 403) {
             throw new RefreshFailureError(
                 "unauthorized",
-                "Codex authentication expired. Run `codex login` and try again.",
+                config.messages.unauthorized,
                 technicalMessage,
             );
         }
 
         throw new RefreshFailureError(
             "network",
-            "Codex usage refresh failed. Try again later.",
+            config.messages.refreshFailed,
             technicalMessage,
         );
     }
@@ -182,12 +148,12 @@ export async function fetchUsage(
     if (!data) {
         throw new RefreshFailureError(
             "malformed-response",
-            "Codex returned an empty response.",
+            config.messages.emptyResponse,
             `Received empty response body from ${url}`,
         );
     }
 
-    return parseApiResponse(text, url);
+    return parseApiResponse(text, url, config);
 }
 
 function isCancellationError(error: unknown): boolean {
