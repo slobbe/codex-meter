@@ -1,6 +1,9 @@
-import { getHistoryPath } from "../paths.js";
+import GLib from "gi://GLib";
+
 import { HistoryEntry } from "../../domain/usage.js";
+import { STATE_DIR } from "../config.js";
 import { appendCsvFile, readCsvFile, writeCsvFile } from "../filesystem.js";
+import { ProviderId } from "../providers/types.js";
 
 const HISTORY_HEADERS = [
     "timestamp",
@@ -10,8 +13,12 @@ const HISTORY_HEADERS = [
 const MAX_HISTORY_ENTRIES = 25_000;
 const MAX_HISTORY_AGE_SECONDS = 21 * 24 * 60 * 60;
 
-export async function readHistory(): Promise<HistoryEntry[]> {
-    return readHistoryFromPath(getHistoryPath());
+function getHistoryPath(providerId: ProviderId) {
+    return GLib.build_filenamev([STATE_DIR, providerId, "usage-history.csv"]);
+}
+
+export async function readHistory(providerId: ProviderId): Promise<HistoryEntry[]> {
+    return readHistoryFromPath(getHistoryPath(providerId));
 }
 
 export async function readHistoryFromPath(path: string): Promise<HistoryEntry[]> {
@@ -20,7 +27,7 @@ export async function readHistoryFromPath(path: string): Promise<HistoryEntry[]>
     try {
         rows = await readCsvFile(path);
     } catch (error) {
-        console.error("Unable to read Codex usage history", error);
+        console.error("Unable to read usage history", error);
         return [];
     }
 
@@ -41,8 +48,11 @@ export async function readHistoryFromPath(path: string): Promise<HistoryEntry[]>
         .slice(-MAX_HISTORY_ENTRIES);
 }
 
-export async function appendHistory(row: HistoryEntry): Promise<void> {
-    return appendHistoryToPath(getHistoryPath(), row);
+export async function appendHistory(
+    providerId: ProviderId,
+    row: HistoryEntry,
+): Promise<void> {
+    return appendHistoryToPath(getHistoryPath(providerId), row);
 }
 
 export async function appendHistoryToPath(path: string, row: HistoryEntry): Promise<void> {
