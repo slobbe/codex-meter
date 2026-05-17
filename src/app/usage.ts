@@ -1,6 +1,6 @@
 import Gio from "gi://Gio";
 
-import { predict, UsagePrediction } from "../domain/prediction.js";
+import { createUnknownUsagePrediction, predict, UsagePrediction } from "../domain/prediction.js";
 import { UsageSnapshot, toHistoryEntry } from "../domain/usage.js";
 import { getUsageProvider, UsageProvider } from "../infra/providers/index.js";
 import { appendHistory, readHistory } from "../infra/storage/history.js";
@@ -46,6 +46,10 @@ export class UsageService {
 
         if (!currentSnapshot) {
             throw new Error("No snapshot available");
+        }
+
+        if (!this.provider.metadata.supportsPrediction) {
+            return createUnknownUsagePrediction(currentSnapshot);
         }
 
         const history = await readHistory(this.provider.id);
