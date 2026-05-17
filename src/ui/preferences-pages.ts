@@ -7,6 +7,7 @@ import {
     MIN_REFRESH_INTERVAL_MINUTES,
     SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES,
     SETTINGS_PERCENT_DISPLAY_MODE,
+    SETTINGS_USAGE_PROVIDER,
     SETTINGS_SHOW_PRIMARY,
     SETTINGS_SHOW_SECONDARY,
     SETTINGS_TOP_PANEL_DISPLAY_MODE,
@@ -14,6 +15,7 @@ import {
     type PercentDisplayMode,
     type TopPanelIndicatorIcon,
     type TopPanelDisplayMode,
+    type UsageProviderSetting,
 } from "../app/settings.js";
 
 type Metadata = Record<string, any>;
@@ -78,10 +80,36 @@ function createBehaviorGroup(settings: Gio.Settings) {
         title: "Behavior",
     });
 
+    group.add(createUsageProviderRow(settings));
     group.add(createPercentDisplayModeRow(settings));
     group.add(createRefreshIntervalRow(settings));
 
     return group;
+}
+
+function createUsageProviderRow(settings: Gio.Settings) {
+    const row = new Adw.ComboRow({
+        title: "Usage provider",
+        model: Gtk.StringList.new(["Codex", "GitHub Copilot", "Zed AI"]),
+        selected: getUsageProviderIndex(
+            settings.get_string(SETTINGS_USAGE_PROVIDER),
+        ),
+    });
+
+    row.connect("notify::selected", () => {
+        settings.set_string(
+            SETTINGS_USAGE_PROVIDER,
+            getUsageProviderValue(row.selected),
+        );
+    });
+
+    settings.connect(`changed::${SETTINGS_USAGE_PROVIDER}`, () => {
+        row.selected = getUsageProviderIndex(
+            settings.get_string(SETTINGS_USAGE_PROVIDER),
+        );
+    });
+
+    return row;
 }
 
 function createTopPanelStyleRow(settings: Gio.Settings) {
@@ -354,6 +382,20 @@ function formatShellVersions(versions: ShellVersions) {
     if (!Array.isArray(versions) || versions.length === 0) return "--";
 
     return versions.join(", ");
+}
+
+function getUsageProviderIndex(value: string) {
+    if (value === "copilot") return 1;
+    if (value === "zed") return 2;
+
+    return 0;
+}
+
+function getUsageProviderValue(selected: number): UsageProviderSetting {
+    if (selected === 1) return "copilot";
+    if (selected === 2) return "zed";
+
+    return "codex";
 }
 
 function getTopPanelDisplayModeIndex(value: string) {

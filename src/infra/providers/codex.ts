@@ -102,6 +102,19 @@ const CODEX_API_CONFIG: UsageApiClientConfig = {
 export class CodexUsageProvider implements UsageProvider {
     readonly id = "codex";
     readonly displayName = "Codex";
+    readonly metadata = {
+        dashboardUrl: "https://chatgpt.com/codex",
+        loginInstructions: "Run `codex login` and try again.",
+        quotas: [
+            { id: "session", label: "Session (5h)" },
+            { id: "weekly", label: "Week" },
+        ],
+        supportsPrediction: true,
+        supportsResetTimes: true,
+        supportsRawUsageLimits: false,
+        experimental: false,
+        authMode: "Codex CLI local auth",
+    };
 
     async refreshUsage(options: UsageProviderRefreshOptions = {}) {
         const token = await getLocalAccessToken(CODEX_AUTH_CONFIG);
@@ -118,27 +131,32 @@ function toUsageSnapshot(api: JsonObject): UsageSnapshot {
 
     return {
         fetchedAt: Math.floor(Date.now() / 1000),
+        providerId: "codex",
         planType: codexApi.plan_type,
-
-        rateLimit: {
-            limitReached: codexApi.rate_limit.limit_reached,
-            primary: {
+        quotas: [
+            {
+                id: "session",
+                label: "Session (5h)",
                 usedPercent: codexApi.rate_limit.primary_window.used_percent,
                 limitWindowSeconds:
                     codexApi.rate_limit.primary_window.limit_window_seconds,
                 resetAfterSeconds:
                     codexApi.rate_limit.primary_window.reset_after_seconds,
                 resetAt: codexApi.rate_limit.primary_window.reset_at,
+                limitReached: codexApi.rate_limit.limit_reached,
             },
-            secondary: {
+            {
+                id: "weekly",
+                label: "Week",
                 usedPercent: codexApi.rate_limit.secondary_window.used_percent,
                 limitWindowSeconds:
                     codexApi.rate_limit.secondary_window.limit_window_seconds,
                 resetAfterSeconds:
                     codexApi.rate_limit.secondary_window.reset_after_seconds,
                 resetAt: codexApi.rate_limit.secondary_window.reset_at,
+                limitReached: codexApi.rate_limit.limit_reached,
             },
-        },
+        ],
     };
 }
 

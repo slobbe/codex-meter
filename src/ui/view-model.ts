@@ -1,5 +1,5 @@
 import { UsagePrediction, WindowPrediction } from "../domain/prediction.js";
-import { UsageSnapshot, UsageWindow } from "../domain/usage.js";
+import { getPrimaryQuota, getSecondaryQuota, UsageQuota, UsageSnapshot } from "../domain/usage.js";
 import { type PercentDisplayMode } from "../app/settings.js";
 
 export type UsageWindowType = "primary" | "secondary";
@@ -72,10 +72,10 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
 
     if (snapshot) {
         viewModel.primaryPercent = normalizePercent(
-            snapshot.rateLimit.primary?.usedPercent,
+            getPrimaryQuota(snapshot)?.usedPercent,
         );
         viewModel.secondaryPercent = normalizePercent(
-            snapshot.rateLimit.secondary?.usedPercent,
+            getSecondaryQuota(snapshot)?.usedPercent,
         );
 
         viewModel.primaryDisplayPercent = convertPercentForDisplay(
@@ -101,14 +101,14 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
 
     if (includePrimary) {
         parts.push(formatPercentForDisplay(
-            snapshot.rateLimit.primary?.usedPercent,
+            getPrimaryQuota(snapshot)?.usedPercent,
             percentDisplayMode,
         ));
     }
 
     if (showSecondary) {
         parts.push(formatPercentForDisplay(
-            snapshot.rateLimit.secondary?.usedPercent,
+            getSecondaryQuota(snapshot)?.usedPercent,
             percentDisplayMode,
         ));
     }
@@ -159,39 +159,48 @@ export function createMenuViewModel(settings, snapshot: UsageSnapshot, predictio
         };
     }
 
+    const primaryQuota = getPrimaryQuota(snapshot);
+    const secondaryQuota = getSecondaryQuota(snapshot);
+
     return {
         updatedAt: "Updated at " + formatUnixTimestamp(snapshot.fetchedAt, false),
         errorMessage: null,
         hasError: false,
         primary: createUsageItemViewModel({
-            title: "Session (5h)",
+            title: primaryQuota?.label ?? "Primary",
             value: formatPercentForDisplay(
-                snapshot.rateLimit.primary?.usedPercent,
+                primaryQuota?.usedPercent,
                 percentDisplayMode,
             ),
-            prediction: formatLimitPrediction(prediction?.primary, "primary"),
-            reset: formatReset(snapshot.rateLimit.primary, "primary"),
-            percentValue: snapshot.rateLimit.primary?.usedPercent,
-            baselinePercentValue: calculateBaselinePercent(
-                snapshot.rateLimit.primary,
+            prediction: formatLimitPrediction(
+                primaryQuota ? prediction?.quotas?.[primaryQuota.id] : prediction?.primary,
+                "primary",
             ),
+            reset: formatReset(primaryQuota, "primary"),
+            percentValue: primaryQuota?.usedPercent,
+            baselinePercentValue: calculateBaselinePercent(primaryQuota),
             percentDisplayMode,
-            predictionStyle: getPredictionStyleClass(prediction?.primary),
+            predictionStyle: getPredictionStyleClass(
+                primaryQuota ? prediction?.quotas?.[primaryQuota.id] : prediction?.primary,
+            ),
         }),
         secondary: createUsageItemViewModel({
-            title: "Week",
+            title: secondaryQuota?.label ?? "Secondary",
             value: formatPercentForDisplay(
-                snapshot.rateLimit.secondary?.usedPercent,
+                secondaryQuota?.usedPercent,
                 percentDisplayMode,
             ),
-            prediction: formatLimitPrediction(prediction?.secondary, "secondary"),
-            reset: formatReset(snapshot.rateLimit.secondary, "secondary"),
-            percentValue: snapshot.rateLimit.secondary?.usedPercent,
-            baselinePercentValue: calculateBaselinePercent(
-                snapshot.rateLimit.secondary,
+            prediction: formatLimitPrediction(
+                secondaryQuota ? prediction?.quotas?.[secondaryQuota.id] : prediction?.secondary,
+                "secondary",
             ),
+            reset: formatReset(secondaryQuota, "secondary"),
+            percentValue: secondaryQuota?.usedPercent,
+            baselinePercentValue: calculateBaselinePercent(secondaryQuota),
             percentDisplayMode,
-            predictionStyle: getPredictionStyleClass(prediction?.secondary),
+            predictionStyle: getPredictionStyleClass(
+                secondaryQuota ? prediction?.quotas?.[secondaryQuota.id] : prediction?.secondary,
+            ),
         }),
         plan: formatPlan(snapshot.planType),
     };
@@ -252,10 +261,10 @@ export function calculateBarMarkerPosition(
     return Math.round(usableWidth * (normalizePercent(percentValue) / 100));
 }
 
-export function calculateBaselinePercent(window: UsageWindow): number | null {
-    if (!window) return null;
+export function calculateBaselinePercent(quota: UsageQuota | null): number | null {
+    if (!quota) return null;
 
-    const { limitWindowSeconds, resetAfterSeconds } = window;
+    const { limitWindowSeconds, resetAfterSeconds } = quota;
 
     if (
         !Number.isFinite(limitWindowSeconds) ||
@@ -302,13 +311,15 @@ export function convertPercentForDisplay(
     return displayMode === "left" ? 100 - percent : percent;
 }
 
-export function formatReset(window: UsageWindow, windowType: UsageWindowType) {
-    if (!window) return "resets in --";
+export function formatReset(quota: UsageQuota | null, windowType: UsageWindowType) {
+    if (!quota) return "resets in --";
+
+    if (quota.resetDescription) return quota.resetDescription;
 
     const useDate = windowType === "secondary" ? true : false;
     
-    const relative = formatDuration(window.resetAfterSeconds, windowType);
-    const absolute = formatUnixTimestamp(window.resetAt, useDate);
+    const relative = formatDuration(quota.resetAfterSeconds, windowType);
+    const absolute = formatUnixTimestamp(quota.resetAt, useDate);
 
     if (relative === "--" && absolute === "--") return "resets in --";
 

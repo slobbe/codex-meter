@@ -7,8 +7,7 @@ import { ProviderId } from "../providers/types.js";
 
 const HISTORY_HEADERS = [
     "timestamp",
-    "session_used_percent",
-    "weekly_used_percent",
+    "quotas_json",
 ];
 const MAX_HISTORY_ENTRIES = 25_000;
 const MAX_HISTORY_AGE_SECONDS = 21 * 24 * 60 * 60;
@@ -34,15 +33,14 @@ export async function readHistoryFromPath(path: string): Promise<HistoryEntry[]>
     const minTimestamp = Date.now() - (MAX_HISTORY_AGE_SECONDS * 1000);
 
     return rows
-        .map((row) => ({
-            timestamp: row.timestamp,
-            primaryUsedPercent: Number(row.session_used_percent || row.primaryUsedPercent),
-            secondaryUsedPercent: Number(row.weekly_used_percent || row.secondaryUsedPercent),
-        }))
-        .filter((row) =>
+        .map(rowToHistoryEntry)
+        .filter((row): row is HistoryEntry =>
+            row !== null &&
             isValidTimestamp(row.timestamp) &&
-            Number.isFinite(row.primaryUsedPercent) &&
-            Number.isFinite(row.secondaryUsedPercent),
+            row.quotas.length > 0 &&
+            row.quotas.every((quota) =>
+                quota.id.length > 0 && Number.isFinite(quota.usedPercent),
+            ),
         )
         .filter((row) => new Date(row.timestamp).getTime() >= minTimestamp)
         .slice(-MAX_HISTORY_ENTRIES);
@@ -91,19 +89,59 @@ async function compactHistory(path: string): Promise<void> {
 }
 
 async function appendHistoryRow(path: string, row: HistoryEntry): Promise<void> {
-    await appendCsvFile(path, [{
-        timestamp: row.timestamp,
-        session_used_percent: row.primaryUsedPercent,
-        weekly_used_percent: row.secondaryUsedPercent,
-    }], HISTORY_HEADERS);
+    await appendCsvFile(path, [historyEntryToRow(row)], HISTORY_HEADERS);
 }
 
 async function rewriteHistory(path: string, rows: HistoryEntry[]): Promise<void> {
-    await writeCsvFile(path, rows.map((row) => ({
+    await writeCsvFile(path, rows.map(historyEntryToRow));
+}
+
+function historyEntryToRow(row: HistoryEntry): Record<string, string> {
+    return {
         timestamp: row.timestamp,
-        session_used_percent: row.primaryUsedPercent,
-        weekly_used_percent: row.secondaryUsedPercent,
-    })));
+        quotas_json: JSON.stringify(row.quotas),
+    };
+}
+
+function rowToHistoryEntry(row: Record<string, string>): HistoryEntry | null {
+    if (row.quotas_json) {
+        try {
+            const quotas = JSON.parse(row.quotas_json);
+
+            if (Array.isArray(quotas)) {
+                return {
+                    timestamp: row.timestamp,
+                    quotas: quotas.map((quota) => ({
+                        id: `${quota.id ?? ""}`,
+                        usedPercent: Number(quota.usedPercent),
+                    })),
+                };
+            }
+        } catch (_error) {
+            return null;
+        }
+    }
+
+    const primaryUsedPercent = Number(
+        row.session_used_percent || row.primaryUsedPercent,
+    );
+    const secondaryUsedPercent = Number(
+        row.weekly_used_percent || row.secondaryUsedPercent,
+    );
+    const quotas = [];
+
+    if (Number.isFinite(primaryUsedPercent)) {
+        quotas.push({ id: "session", usedPercent: primaryUsedPercent });
+    }
+
+    if (Number.isFinite(secondaryUsedPercent)) {
+        quotas.push({ id: "weekly", usedPercent: secondaryUsedPercent });
+    }
+
+    return {
+        timestamp: row.timestamp,
+        quotas,
+    };
 }
 
 function isHeaderMismatch(error: unknown): boolean {
