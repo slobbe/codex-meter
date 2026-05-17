@@ -40,41 +40,35 @@ function isUsageSnapshot(value: unknown): value is UsageSnapshot {
     return (
         isFiniteNumber(snapshot.fetchedAt) &&
         typeof snapshot.planType === "string" &&
-        isRateLimit(snapshot.rateLimit)
+        Array.isArray(snapshot.quotas) &&
+        snapshot.quotas.length > 0 &&
+        snapshot.quotas.every(isUsageQuota)
     );
 }
 
-function isRateLimit(value: unknown): boolean {
+function isUsageQuota(value: unknown): boolean {
     if (!value || typeof value !== "object") {
         return false;
     }
 
-    const rateLimit = value as Record<string, unknown>;
+    const quota = value as Record<string, unknown>;
 
     return (
-        typeof rateLimit.limitReached === "boolean" &&
-        isUsageWindow(rateLimit.primary) &&
-        isUsageWindow(rateLimit.secondary)
-    );
-}
-
-function isUsageWindow(value: unknown): boolean {
-    if (!value || typeof value !== "object") {
-        return false;
-    }
-
-    const window = value as Record<string, unknown>;
-
-    return (
-        isFiniteNumber(window.usedPercent) &&
-        isFiniteNumber(window.limitWindowSeconds) &&
-        window.limitWindowSeconds > 0 &&
-        isFiniteNumber(window.resetAfterSeconds) &&
-        window.resetAfterSeconds >= 0 &&
-        isFiniteNumber(window.resetAt)
+        typeof quota.id === "string" &&
+        quota.id.length > 0 &&
+        typeof quota.label === "string" &&
+        quota.label.length > 0 &&
+        isFiniteNumber(quota.usedPercent) &&
+        isOptionalFiniteNumber(quota.limitWindowSeconds) &&
+        isOptionalFiniteNumber(quota.resetAfterSeconds) &&
+        isOptionalFiniteNumber(quota.resetAt)
     );
 }
 
 function isFiniteNumber(value: unknown): value is number {
     return typeof value === "number" && Number.isFinite(value);
+}
+
+function isOptionalFiniteNumber(value: unknown): boolean {
+    return value === undefined || value === null || isFiniteNumber(value);
 }

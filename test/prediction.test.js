@@ -9,23 +9,28 @@ function createSnapshot(overrides = {}) {
     return {
         fetchedAt,
         planType: "plus",
-        rateLimit: {
-            limitReached: false,
-            primary: {
+        quotas: [
+            {
+                id: "session",
+                label: "Session (5h)",
                 usedPercent: 16,
                 limitWindowSeconds: 18_000,
                 resetAfterSeconds: 16_200,
                 resetAt: fetchedAt + 16_200,
+                limitReached: false,
                 ...overrides.primary,
             },
-            secondary: {
+            {
+                id: "weekly",
+                label: "Week",
                 usedPercent: 54,
                 limitWindowSeconds: 604_800,
                 resetAfterSeconds: 345_600,
                 resetAt: fetchedAt + 345_600,
+                limitReached: false,
                 ...overrides.secondary,
             },
-        },
+        ],
     };
 }
 
@@ -47,8 +52,10 @@ test("anchors nonzero in-window history to the window start", () => {
     const history = [
         {
             timestamp: new Date((fetchedAt - 120) * 1000).toISOString(),
-            primaryUsedPercent: 14,
-            secondaryUsedPercent: 54,
+            quotas: [
+                { id: "session", usedPercent: 14 },
+                { id: "weekly", usedPercent: 54 },
+            ],
         },
     ];
 
@@ -68,8 +75,10 @@ test("uses the current snapshot when persisted history is stale", () => {
     const history = [
         {
             timestamp: new Date((fetchedAt - 600) * 1000).toISOString(),
-            primaryUsedPercent: 1,
-            secondaryUsedPercent: 1,
+            quotas: [
+                { id: "session", usedPercent: 1 },
+                { id: "weekly", usedPercent: 1 },
+            ],
         },
     ];
 

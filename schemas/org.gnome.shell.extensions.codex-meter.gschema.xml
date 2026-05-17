@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
   <schema id="org.gnome.shell.extensions.codex-meter" path="/org/gnome/shell/extensions/codex-meter/">
+    <key name="usage-provider" type="s">
+      <default>'codex'</default>
+      <summary>Usage provider</summary>
+      <choices>
+        <choice value='codex'/>
+        <choice value='copilot'/>
+        <choice value='zed'/>
+      </choices>
+    </key>
     <key name="top-panel-display-mode" type="s">
       <default>'bars'</default>
       <summary>Show percentages as</summary>

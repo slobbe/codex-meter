@@ -64,8 +64,10 @@ async function testDuplicateHeaderMigration() {
 
         await appendHistoryToPath(path, {
             timestamp: thirdTimestamp,
-            primaryUsedPercent: 10,
-            secondaryUsedPercent: 53,
+            quotas: [
+                { id: "session", usedPercent: 10 },
+                { id: "weekly", usedPercent: 53 },
+            ],
         });
 
         const text = await readText(path);
@@ -73,13 +75,13 @@ async function testDuplicateHeaderMigration() {
 
         assertEqual(
             lines[0],
-            "timestamp,session_used_percent,weekly_used_percent",
+            "timestamp,quotas_json",
             "history header should be canonical after migration",
         );
         assertDeepEqual(lines.slice(1), [
-            `${firstTimestamp},8,51`,
-            `${secondTimestamp},9,52`,
-            `${thirdTimestamp},10,53`,
+            `${firstTimestamp},"[{""id"":""session"",""usedPercent"":8},{""id"":""weekly"",""usedPercent"":51}]"`,
+            `${secondTimestamp},"[{""id"":""session"",""usedPercent"":9},{""id"":""weekly"",""usedPercent"":52}]"`,
+            `${thirdTimestamp},"[{""id"":""session"",""usedPercent"":10},{""id"":""weekly"",""usedPercent"":53}]"`,
         ], "history rows should preserve old and new usage columns");
     } finally {
         removeFile(path);
@@ -94,21 +96,25 @@ async function testAppendWritesUtf8() {
     try {
         await appendHistoryToPath(path, {
             timestamp: firstTimestamp,
-            primaryUsedPercent: 14,
-            secondaryUsedPercent: 54,
+            quotas: [
+                { id: "session", usedPercent: 14 },
+                { id: "weekly", usedPercent: 54 },
+            ],
         });
         await appendHistoryToPath(path, {
             timestamp: secondTimestamp,
-            primaryUsedPercent: 15,
-            secondaryUsedPercent: 55,
+            quotas: [
+                { id: "session", usedPercent: 15 },
+                { id: "weekly", usedPercent: 55 },
+            ],
         });
 
         const text = await readText(path);
 
         assertDeepEqual(text.trim().split(/\r?\n/), [
-            "timestamp,session_used_percent,weekly_used_percent",
-            `${firstTimestamp},14,54`,
-            `${secondTimestamp},15,55`,
+            "timestamp,quotas_json",
+            `${firstTimestamp},"[{""id"":""session"",""usedPercent"":14},{""id"":""weekly"",""usedPercent"":54}]"`,
+            `${secondTimestamp},"[{""id"":""session"",""usedPercent"":15},{""id"":""weekly"",""usedPercent"":55}]"`,
         ], "history append should write valid UTF-8 CSV rows");
     } finally {
         removeFile(path);
@@ -128,8 +134,10 @@ async function testLegacyColumnsAreReadable() {
         const history = await readHistoryFromPath(path);
 
         assertEqual(history.length, 1, "legacy history row should be read");
-        assertEqual(history[0].primaryUsedPercent, 11, "legacy session usage should be read");
-        assertEqual(history[0].secondaryUsedPercent, 56, "legacy weekly usage should be read");
+        assertDeepEqual(history[0].quotas, [
+            { id: "session", usedPercent: 11 },
+            { id: "weekly", usedPercent: 56 },
+        ], "legacy usage quotas should be read");
     } finally {
         removeFile(path);
     }

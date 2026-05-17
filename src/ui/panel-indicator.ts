@@ -9,6 +9,7 @@ import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
 import { SettingsService } from "../app/settings.js";
 import { Scheduler } from "../app/scheduler.js";
 import { UsageService } from "../app/usage.js";
+import { getUsageProvider } from "../infra/providers/index.js";
 import { isRefreshFailureError } from "../domain/refresh-failure.js";
 import { CodexMeterPopupMenu } from "./popup-menu.js";
 import {
@@ -30,7 +31,8 @@ export class CodexMeterIndicator extends PanelMenu.Button {
 
         this._extension = extension;
         this._settings = new SettingsService(extension.getSettings());
-        this._usageService = new UsageService();
+        this._providerId = this._settings.getUsageProvider();
+        this._usageService = new UsageService(getUsageProvider(this._providerId));
         this._scheduler = new Scheduler(
             this._settings.getBackgroundRefreshIntervalSeconds(),
             () => this._refreshUsage(),
@@ -213,6 +215,17 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         );
 
         this._settingsChangedId = this._settings.connectChanged(() => {
+            const providerId = this._settings.getUsageProvider();
+
+            if (providerId !== this._providerId) {
+                this._providerId = providerId;
+                this._usageService = new UsageService(getUsageProvider(providerId));
+                this._snapshot = null;
+                this._prediction = null;
+                this._errorMessage = null;
+                void this._loadCachedSnapshot();
+            }
+
             this._syncLabel();
             this._syncMenu();
         });

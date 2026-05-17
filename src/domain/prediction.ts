@@ -1,4 +1,4 @@
-import { UsageSnapshot, HistoryEntry } from "./usage.js";
+import { UsageSnapshot, HistoryEntry, UsageQuota } from "./usage.js";
 
 type Trend = "safe" | "unsafe" | "limit reached" | "unknown";
 
@@ -8,6 +8,7 @@ export type WindowPrediction = {
 };
 
 export type UsagePrediction = {
+    quotas: Record<string, WindowPrediction>;
     primary: WindowPrediction;
     secondary: WindowPrediction;
 };
@@ -21,54 +22,73 @@ export function predict(
     history: HistoryEntry[],
     snapshot: UsageSnapshot,
 ): UsagePrediction {
-    const primaryStartedAt =
-        snapshot.fetchedAt -
-        (snapshot.rateLimit.primary.limitWindowSeconds -
-            snapshot.rateLimit.primary.resetAfterSeconds);
-    const secondaryStartedAt =
-        snapshot.fetchedAt -
-        (snapshot.rateLimit.secondary.limitWindowSeconds -
-            snapshot.rateLimit.secondary.resetAfterSeconds);
+    const quotas: Record<string, WindowPrediction> = {};
+
+    for (const quota of snapshot.quotas) {
+        quotas[quota.id] = predictQuota(history, snapshot, quota);
+    }
+
+    return {
+        quotas,
+        primary: quotas[snapshot.quotas[0]?.id] ?? unknownPrediction(),
+        secondary: quotas[snapshot.quotas[1]?.id] ?? unknownPrediction(),
+    };
+}
+
+function predictQuota(
+    history: HistoryEntry[],
+    snapshot: UsageSnapshot,
+    quota: UsageQuota,
+): WindowPrediction {
+    if (!hasPredictionMetadata(quota)) {
+        return unknownPrediction();
+    }
+
+    const startedAt = snapshot.fetchedAt -
+        (quota.limitWindowSeconds - quota.resetAfterSeconds);
     const historyWithSnapshot = [
         ...history,
         {
             timestamp: new Date(snapshot.fetchedAt * 1000).toISOString(),
-            primaryUsedPercent: snapshot.rateLimit.primary.usedPercent,
-            secondaryUsedPercent: snapshot.rateLimit.secondary.usedPercent,
+            quotas: [{ id: quota.id, usedPercent: quota.usedPercent }],
         },
     ];
 
-    const primaryHistory = historyWithSnapshot
-        .map((h) => {
+    const quotaHistory = historyWithSnapshot
+        .map((entry) => {
+            const quotaEntry = entry.quotas.find((item) => item.id === quota.id);
+
             return {
-                timestamp: new Date(h.timestamp).getTime() / 1000,
-                usedPercent: h.primaryUsedPercent,
+                timestamp: new Date(entry.timestamp).getTime() / 1000,
+                usedPercent: quotaEntry?.usedPercent,
             };
         })
+        .filter((entry) => Number.isFinite(entry.usedPercent))
+        .map((entry) => ({
+            timestamp: entry.timestamp,
+            usedPercent: entry.usedPercent as number,
+        }))
         .toSorted((a, b) => b.timestamp - a.timestamp)
-        .filter((h) => h.timestamp >= primaryStartedAt);
+        .filter((entry) => entry.timestamp >= startedAt);
 
-    const secondaryHistory = historyWithSnapshot
-        .map((h) => {
-            return {
-                timestamp: new Date(h.timestamp).getTime() / 1000,
-                usedPercent: h.secondaryUsedPercent,
-            };
-        })
-        .toSorted((a, b) => b.timestamp - a.timestamp)
-        .filter((h) => h.timestamp >= secondaryStartedAt);
+    return predictWindow(quotaHistory, startedAt, quota.resetAt);
+}
 
+function hasPredictionMetadata(quota: UsageQuota): quota is UsageQuota & {
+    limitWindowSeconds: number;
+    resetAfterSeconds: number;
+    resetAt: number;
+} {
+    return Number.isFinite(quota.limitWindowSeconds) &&
+        Number.isFinite(quota.resetAfterSeconds) &&
+        Number.isFinite(quota.resetAt) &&
+        (quota.limitWindowSeconds ?? 0) > 0;
+}
+
+function unknownPrediction(): WindowPrediction {
     return {
-        primary: predictWindow(
-            primaryHistory,
-            primaryStartedAt,
-            snapshot.rateLimit.primary.resetAt,
-        ),
-        secondary: predictWindow(
-            secondaryHistory,
-            secondaryStartedAt,
-            snapshot.rateLimit.secondary.resetAt,
-        ),
+        estimatedLimitAt: null,
+        trend: "unknown",
     };
 }
 

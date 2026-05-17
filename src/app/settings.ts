@@ -1,5 +1,6 @@
 import Gio from "gi://Gio";
 
+export const SETTINGS_USAGE_PROVIDER = "usage-provider";
 export const SETTINGS_SHOW_PRIMARY = "show-primary";
 export const SETTINGS_SHOW_SECONDARY = "show-secondary";
 export const SETTINGS_TOP_PANEL_DISPLAY_MODE = "top-panel-display-mode";
@@ -10,11 +11,13 @@ export const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES =
 
 export const MIN_REFRESH_INTERVAL_MINUTES = 0;
 
+export type UsageProviderSetting = "codex" | "copilot" | "zed";
 export type TopPanelDisplayMode = "percentages" | "bars";
 export type TopPanelIndicatorIcon = "text" | "codex" | "openai";
 export type PercentDisplayMode = "used" | "left";
 
 export type ExtensionSettings = {
+    usageProvider: UsageProviderSetting;
     showPrimary: boolean;
     showSecondary: boolean;
     topPanelDisplayMode: TopPanelDisplayMode;
@@ -32,6 +35,7 @@ export class SettingsService {
             this.getBackgroundRefreshIntervalMinutes();
 
         return {
+            usageProvider: this.getUsageProvider(),
             showPrimary: this.getShowPrimary(),
             showSecondary: this.getShowSecondary(),
             topPanelDisplayMode: this.getTopPanelDisplayMode(),
@@ -41,6 +45,16 @@ export class SettingsService {
             backgroundRefreshIntervalSeconds:
                 backgroundRefreshIntervalMinutes * 60,
         };
+    }
+
+    getUsageProvider(): UsageProviderSetting {
+        const value = this.settings.get_string(SETTINGS_USAGE_PROVIDER);
+
+        if (value === "copilot" || value === "zed") {
+            return value;
+        }
+
+        return "codex";
     }
 
     getShowPrimary(): boolean {
