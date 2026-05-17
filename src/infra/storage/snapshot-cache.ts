@@ -1,14 +1,24 @@
-import { getSnapshotPath } from "../paths.js";
-import { UsageSnapshot } from "../../domain/usage.js";
-import { readJsonFile, writeJsonFile } from "../filesystem.js";
+import GLib from "gi://GLib";
 
-export async function writeSnapshot(snapshot: UsageSnapshot): Promise<void> {
-    await writeJsonFile(getSnapshotPath(), snapshot);
+import { UsageSnapshot } from "../../domain/usage.js";
+import { CACHE_DIR } from "../config.js";
+import { readJsonFile, writeJsonFile } from "../filesystem.js";
+import { ProviderId } from "../providers/types.js";
+
+function getSnapshotPath(providerId: ProviderId) {
+    return GLib.build_filenamev([CACHE_DIR, providerId, "snapshot.json"]);
 }
 
-export async function readSnapshot(): Promise<UsageSnapshot | null> {
+export async function writeSnapshot(
+    providerId: ProviderId,
+    snapshot: UsageSnapshot,
+): Promise<void> {
+    await writeJsonFile(getSnapshotPath(providerId), snapshot);
+}
+
+export async function readSnapshot(providerId: ProviderId): Promise<UsageSnapshot | null> {
     try {
-        const raw = await readJsonFile<unknown>(getSnapshotPath());
+        const raw = await readJsonFile<unknown>(getSnapshotPath(providerId));
 
         if (!isUsageSnapshot(raw)) {
             return null;

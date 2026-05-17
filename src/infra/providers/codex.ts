@@ -2,7 +2,7 @@ import { fetchProviderUsage, JsonObject, UsageApiClientConfig } from "../api_cli
 import { RefreshFailureError } from "../../domain/refresh-failure.js";
 import { UsageSnapshot } from "../../domain/usage.js";
 import { getLocalAccessToken, LocalTokenAuthConfig } from "./auth.js";
-import { getCodexAuthPath } from "../paths.js";
+import GLib from "gi://GLib";
 import { UsageProvider, UsageProviderRefreshOptions } from "./types.js";
 
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
@@ -67,6 +67,10 @@ type CodexRateLimit = {
     primary_window: CodexRateLimitWindow;
     secondary_window: CodexRateLimitWindow;
 };
+
+function getCodexAuthPath() {
+    return GLib.build_filenamev([GLib.get_home_dir(), ".codex", "auth.json"]);
+}
 
 const CODEX_AUTH_CONFIG: LocalTokenAuthConfig<CodexAuth> = {
     providerName: "Codex",

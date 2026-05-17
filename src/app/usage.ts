@@ -18,7 +18,7 @@ export class UsageService {
     }
 
     async readCachedSnapshot(): Promise<UsageSnapshot | null> {
-        return await readSnapshot();
+        return await readSnapshot(this.provider.id);
     }
 
     async refresh(options: RefreshOptions = {}): Promise<UsageSnapshot> {
@@ -27,13 +27,13 @@ export class UsageService {
         });
 
         try {
-            await writeSnapshot(snapshot);
+            await writeSnapshot(this.provider.id, snapshot);
         } catch (error) {
             console.error(`Unable to write ${this.provider.displayName} usage snapshot cache`, error);
         }
 
         try {
-            await appendHistory(toHistoryEntry(snapshot));
+            await appendHistory(this.provider.id, toHistoryEntry(snapshot));
         } catch (error) {
             console.error(`Unable to append ${this.provider.displayName} usage history`, error);
         }
@@ -42,13 +42,13 @@ export class UsageService {
     }
 
     async predict(snapshot?: UsageSnapshot): Promise<UsagePrediction> {
-        const currentSnapshot = snapshot ?? await readSnapshot();
+        const currentSnapshot = snapshot ?? await readSnapshot(this.provider.id);
 
         if (!currentSnapshot) {
             throw new Error("No snapshot available");
         }
 
-        const history = await readHistory();
+        const history = await readHistory(this.provider.id);
         return predict(history, currentSnapshot);
     }
 }
