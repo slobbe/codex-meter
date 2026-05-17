@@ -13,6 +13,7 @@ const MAX_RESPONSE_BYTES = 1024 * 1024;
 Gio._promisify(Soup.Session.prototype, "send_and_read_async");
 
 export type JsonObject = Record<string, unknown>;
+export type JsonValue = JsonObject | unknown[];
 
 export type UsageApiClientMessages = {
     malformedResponse: string;
@@ -35,6 +36,14 @@ export type FetchUsageOptions = {
     timeoutSeconds?: number;
 };
 
+export type FetchJsonOptions = FetchUsageOptions & {
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+    headers?: Record<string, string>;
+    body?: string | null;
+    bodyContentType?: string;
+    allowArrayResponse?: boolean;
+};
+
 function formatErrorBody(text: string): string {
     const normalized = text.trim().replace(/\s+/g, " ");
 
@@ -49,7 +58,8 @@ function parseApiResponse(
     text: string,
     url: string,
     config: UsageApiClientConfig,
-): JsonObject {
+    allowArrayResponse = false,
+): JsonValue {
     let parsed: unknown;
 
     try {
@@ -65,31 +75,47 @@ function parseApiResponse(
         );
     }
 
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    const isObject = typeof parsed === "object" && parsed !== null;
+    const isArray = Array.isArray(parsed);
+
+    if (!isObject || (isArray && !allowArrayResponse)) {
         throw new RefreshFailureError(
             "malformed-response",
             config.messages.unexpectedResponseFormat,
-            `Expected JSON object response from ${url}`,
+            `Expected JSON ${allowArrayResponse ? "object or array" : "object"} response from ${url}`,
         );
     }
 
-    return parsed as JsonObject;
+    return parsed as JsonValue;
 }
 
-export async function fetchProviderUsage(
-    accessToken: string,
+export async function fetchJson(
+    url: string,
     config: UsageApiClientConfig,
-    options: FetchUsageOptions = {},
-    url: string = config.usageUrl,
-): Promise<JsonObject> {
+    options: FetchJsonOptions = {},
+): Promise<JsonValue> {
     const session = new Soup.Session();
-    const message = Soup.Message.new("GET", url);
+    const message = Soup.Message.new(options.method ?? "GET", url);
     const timeoutSeconds = options.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS;
 
     session.timeout = timeoutSeconds;
 
-    message.request_headers.append("Authorization", `Bearer ${accessToken}`);
-    message.request_headers.append("Accept", "application/json");
+    const headers = {
+        Accept: "application/json",
+        ...options.headers,
+    };
+
+    for (const [key, value] of Object.entries(headers)) {
+        message.request_headers.append(key, value);
+    }
+
+    if (options.body !== undefined && options.body !== null) {
+        const contentType = options.bodyContentType ?? "application/json";
+        const bytes = new GLib.Bytes(new TextEncoder().encode(options.body));
+        // The GIRS package set currently lacks this Soup binding in typings.
+        // @ts-ignore
+        message.set_request_body_from_bytes(contentType, bytes);
+    }
 
     let bytes;
 
@@ -153,7 +179,21 @@ export async function fetchProviderUsage(
         );
     }
 
-    return parseApiResponse(text, url, config);
+    return parseApiResponse(text, url, config, options.allowArrayResponse ?? false);
+}
+
+export async function fetchProviderUsage(
+    accessToken: string,
+    config: UsageApiClientConfig,
+    options: FetchUsageOptions = {},
+    url: string = config.usageUrl,
+): Promise<JsonObject> {
+    return await fetchJson(url, config, {
+        ...options,
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+        },
+    }) as JsonObject;
 }
 
 function isCancellationError(error: unknown): boolean {

@@ -18,6 +18,20 @@ type HistoryEntrySlice = {
     usedPercent: number;
 };
 
+export function createUnknownUsagePrediction(snapshot?: UsageSnapshot | null): UsagePrediction {
+    const quotas: Record<string, WindowPrediction> = {};
+
+    for (const quota of snapshot?.quotas ?? []) {
+        quotas[quota.id] = unknownPrediction();
+    }
+
+    return {
+        quotas,
+        primary: quotas[snapshot?.quotas[0]?.id] ?? unknownPrediction(),
+        secondary: quotas[snapshot?.quotas[1]?.id] ?? unknownPrediction(),
+    };
+}
+
 export function predict(
     history: HistoryEntry[],
     snapshot: UsageSnapshot,
