@@ -15,8 +15,8 @@ import {
     type PercentDisplayMode,
     type TopPanelIndicatorIcon,
     type TopPanelDisplayMode,
-    type UsageProviderSetting,
 } from "../app/settings.js";
+import { type ProviderId } from "../infra/providers/index.js";
 
 type Metadata = Record<string, any>;
 type ShellVersions = unknown;
@@ -391,7 +391,7 @@ function getUsageProviderIndex(value: string) {
     return 0;
 }
 
-function getUsageProviderValue(selected: number): UsageProviderSetting {
+function getUsageProviderValue(selected: number): ProviderId {
     if (selected === 1) return "copilot";
     if (selected === 2) return "zed";
 

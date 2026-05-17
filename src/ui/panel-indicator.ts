@@ -9,7 +9,7 @@ import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
 import { SettingsService } from "../app/settings.js";
 import { Scheduler } from "../app/scheduler.js";
 import { UsageService } from "../app/usage.js";
-import { getUsageProvider } from "../infra/providers/index.js";
+import { DEFAULT_PROVIDER_ID, getUsageProvider, type ProviderId } from "../infra/providers/index.js";
 import { isRefreshFailureError } from "../domain/refresh-failure.js";
 import { CodexMeterPopupMenu } from "./popup-menu.js";
 import {
@@ -32,7 +32,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._extension = extension;
         this._settings = new SettingsService(extension.getSettings());
         this._providerId = this._settings.getUsageProvider();
-        this._usageService = new UsageService(getUsageProvider(this._providerId));
+        this._usageService = createUsageService(this._providerId);
         this._scheduler = new Scheduler(
             this._settings.getBackgroundRefreshIntervalSeconds(),
             () => this._refreshUsage(),
@@ -219,7 +219,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
 
             if (providerId !== this._providerId) {
                 this._providerId = providerId;
-                this._usageService = new UsageService(getUsageProvider(providerId));
+                this._usageService = createUsageService(providerId);
                 this._snapshot = null;
                 this._prediction = null;
                 this._errorMessage = null;
@@ -468,6 +468,18 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         item.barFill.add_style_class_name(
             getUsageBarColorStyleClass(item.percentValue),
         );
+    }
+}
+
+function createUsageService(providerId: ProviderId): UsageService {
+    try {
+        return new UsageService(getUsageProvider(providerId));
+    } catch (error) {
+        console.warn(
+            `Usage provider "${providerId}" is not supported yet; falling back to ${DEFAULT_PROVIDER_ID}.`,
+            error,
+        );
+        return new UsageService(getUsageProvider(DEFAULT_PROVIDER_ID));
     }
 }
 

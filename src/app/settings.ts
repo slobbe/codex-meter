@@ -1,5 +1,7 @@
 import Gio from "gi://Gio";
 
+import { type ProviderId } from "../infra/providers/index.js";
+
 export const SETTINGS_USAGE_PROVIDER = "usage-provider";
 export const SETTINGS_SHOW_PRIMARY = "show-primary";
 export const SETTINGS_SHOW_SECONDARY = "show-secondary";
@@ -11,13 +13,13 @@ export const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES =
 
 export const MIN_REFRESH_INTERVAL_MINUTES = 0;
 
-export type UsageProviderSetting = "codex" | "copilot" | "zed";
+
 export type TopPanelDisplayMode = "percentages" | "bars";
 export type TopPanelIndicatorIcon = "text" | "codex" | "openai";
 export type PercentDisplayMode = "used" | "left";
 
 export type ExtensionSettings = {
-    usageProvider: UsageProviderSetting;
+    usageProvider: ProviderId;
     showPrimary: boolean;
     showSecondary: boolean;
     topPanelDisplayMode: TopPanelDisplayMode;
@@ -47,7 +49,7 @@ export class SettingsService {
         };
     }
 
-    getUsageProvider(): UsageProviderSetting {
+    getUsageProvider(): ProviderId {
         const value = this.settings.get_string(SETTINGS_USAGE_PROVIDER);
 
         if (value === "copilot" || value === "zed") {

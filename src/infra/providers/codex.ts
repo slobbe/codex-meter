@@ -100,21 +100,7 @@ const CODEX_API_CONFIG: UsageApiClientConfig = {
 };
 
 export class CodexUsageProvider implements UsageProvider {
-    readonly id = "codex";
-    readonly displayName = "Codex";
-    readonly metadata = {
-        dashboardUrl: "https://chatgpt.com/codex",
-        loginInstructions: "Run `codex login` and try again.",
-        quotas: [
-            { id: "session", label: "Session (5h)" },
-            { id: "weekly", label: "Week" },
-        ],
-        supportsPrediction: true,
-        supportsResetTimes: true,
-        supportsRawUsageLimits: false,
-        experimental: false,
-        authMode: "Codex CLI local auth",
-    };
+    readonly info = { id: "codex", displayName: "Codex" } as const;
 
     async refreshUsage(options: UsageProviderRefreshOptions = {}) {
         const token = await getLocalAccessToken(CODEX_AUTH_CONFIG);
