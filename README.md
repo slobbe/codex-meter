@@ -58,7 +58,3 @@ To build a release bundle locally:
 ```sh
 make clean pack
 ```
-
-## License
-
-[GPL-3.0-or-later](/LICENSE)
