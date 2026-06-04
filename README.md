@@ -8,8 +8,9 @@
     <a href="https://github.com/slobbe/codex-meter/releases/latest">
       <img src="https://img.shields.io/github/v/release/slobbe/codex-meter?style=flat-square&color=royalblue">
     </a>
-    <a href="LICENSE">
-      <img src="https://img.shields.io/github/license/slobbe/codex-meter?style=flat-square&color=teal">
+    <img src="https://img.shields.io/badge/GNOME-45+-4A86CF?style=flat-square">
+    <a href="https://github.com/slobbe/codex-meter/blob/main/LICENSE">
+      <img src="https://img.shields.io/badge/license-GPL--3.0-teal?style=flat-square">
     </a>
   </p>
   <p>
