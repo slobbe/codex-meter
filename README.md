@@ -6,11 +6,11 @@
   <p><strong>Monitor your Codex usage from the GNOME top panel.</strong></p>
   <p>
     <a href="https://github.com/slobbe/codex-meter/releases/latest">
-      <img src="https://www.shieldcn.dev/github/release/slobbe/codex-meter.svg?size=sm" alt="Release" />
+      <img src="https://www.shieldcn.dev/github/release/slobbe/codex-meter.svg?variant=secondary&size=sm" alt="Release" />
     </a>
     <img alt="badge" src="https://shieldcn.dev/badge/GNOME-45+-4A86CF.svg?logo=gnome">
     <a href="https://github.com/slobbe/codex-meter/blob/main/LICENSE">
-        <img src="https://www.shieldcn.dev/github/license/slobbe/codex-meter.svg?variant=ghost&size=sm" alt="License" />
+        <img src="https://www.shieldcn.dev/github/license/slobbe/codex-meter.svg?variant=secondary&size=sm" alt="License" />
     </a>
   </p>
   <p>
