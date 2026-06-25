@@ -17,7 +17,7 @@
     "sideEffects": false,
     "scripts": {
         "build": "tsc",
-        "test": "npm run build && node --test test/prediction.test.js test/usage-trend.test.js && gjs -m test/history-storage.test.js"
+        "test": "npm run build && node --test test/prediction.test.js test/usage-trend.test.js test/view-model.test.js && gjs -m test/history-storage.test.js"
     },
     "devDependencies": {
         "@girs/gjs": "^4.0.0-rc.9",

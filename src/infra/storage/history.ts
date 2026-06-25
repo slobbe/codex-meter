@@ -2,7 +2,7 @@ import GLib from "gi://GLib";
 
 import { HistoryEntry, HistoryQuotaEntry } from "../../domain/usage.js";
 import { STATE_DIR } from "../config.js";
-import { appendFile, readCsvFile, readTextFile, writeTextFile } from "../filesystem.js";
+import { appendFile, readTextFile, writeTextFile } from "../filesystem.js";
 import { ProviderId } from "../providers/types.js";
 
 const MAX_HISTORY_ENTRIES = 25_000;
@@ -12,16 +12,8 @@ function getHistoryPath(providerId: ProviderId) {
     return GLib.build_filenamev([STATE_DIR, providerId, "usage-history.jsonl"]);
 }
 
-function getLegacyHistoryPath(providerId: ProviderId) {
-    return GLib.build_filenamev([STATE_DIR, providerId, "usage-history.csv"]);
-}
-
 export async function readHistory(providerId: ProviderId): Promise<HistoryEntry[]> {
-    const rows = await readHistoryFromPath(getHistoryPath(providerId));
-
-    if (rows.length > 0) return rows;
-
-    return readLegacyHistoryFromPath(getLegacyHistoryPath(providerId));
+    return readHistoryFromPath(getHistoryPath(providerId));
 }
 
 export async function readHistoryFromPath(path: string): Promise<HistoryEntry[]> {
@@ -35,33 +27,13 @@ export async function readHistoryFromPath(path: string): Promise<HistoryEntry[]>
     }
 }
 
-export async function readLegacyHistoryFromPath(path: string): Promise<HistoryEntry[]> {
-    if (!fileExists(path)) return [];
 
-    let rows: Record<string, string>[];
-
-    try {
-        rows = await readCsvFile(path);
-    } catch (error) {
-        console.error("Unable to read legacy usage history", error);
-        return [];
-    }
-
-    return normalizeHistoryEntries(
-        rows
-            .map(rowToHistoryEntry)
-            .filter((row): row is HistoryEntry => row !== null),
-    );
-}
 
 export async function appendHistory(
     providerId: ProviderId,
     row: HistoryEntry,
 ): Promise<void> {
-    const path = getHistoryPath(providerId);
-    const existingRows = await readHistory(providerId);
-
-    return appendHistoryToPath(path, row, existingRows);
+    return appendHistoryToPath(getHistoryPath(providerId), row);
 }
 
 export async function appendHistoryToPath(
@@ -185,44 +157,6 @@ async function rewriteHistory(path: string, rows: HistoryEntry[]): Promise<void>
         path,
         rows.map((row) => JSON.stringify(row)).join("\n") + (rows.length ? "\n" : ""),
     );
-}
-
-function rowToHistoryEntry(row: Record<string, string>): HistoryEntry | null {
-    if (row.quotas_json) {
-        try {
-            const quotas = JSON.parse(row.quotas_json);
-
-            if (Array.isArray(quotas)) {
-                return {
-                    timestamp: row.timestamp,
-                    quotas,
-                };
-            }
-        } catch (_error) {
-            return null;
-        }
-    }
-
-    const primaryUsedPercent = Number(
-        row.session_used_percent || row.primaryUsedPercent,
-    );
-    const secondaryUsedPercent = Number(
-        row.weekly_used_percent || row.secondaryUsedPercent,
-    );
-    const quotas = [];
-
-    if (Number.isFinite(primaryUsedPercent)) {
-        quotas.push({ id: "session", usedPercent: primaryUsedPercent });
-    }
-
-    if (Number.isFinite(secondaryUsedPercent)) {
-        quotas.push({ id: "weekly", usedPercent: secondaryUsedPercent });
-    }
-
-    return {
-        timestamp: row.timestamp,
-        quotas,
-    };
 }
 
 function hasSameQuotaValues(left: HistoryEntry, right: HistoryEntry): boolean {
