@@ -1,7 +1,7 @@
 import Gio from "gi://Gio";
 
 import { predict, UsagePrediction } from "../domain/prediction.js";
-import { UsageSnapshot, toHistoryEntry } from "../domain/usage.js";
+import { HistoryEntry, UsageSnapshot, toHistoryEntry } from "../domain/usage.js";
 import { getUsageProvider, UsageProvider } from "../infra/providers/index.js";
 import { appendHistory, readHistory } from "../infra/storage/history.js";
 import { readSnapshot, writeSnapshot } from "../infra/storage/snapshot-cache.js";
@@ -41,6 +41,10 @@ export class UsageService {
         return snapshot;
     }
 
+    async readHistory(): Promise<HistoryEntry[]> {
+        return await readHistory(this.provider.info.id);
+    }
+
     async predict(snapshot?: UsageSnapshot): Promise<UsagePrediction> {
         const currentSnapshot = snapshot ?? await readSnapshot(this.provider.info.id);
 
@@ -48,7 +52,7 @@ export class UsageService {
             throw new Error("No snapshot available");
         }
 
-        const history = await readHistory(this.provider.info.id);
+        const history = await this.readHistory();
         return predict(history, currentSnapshot);
     }
 }

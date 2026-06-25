@@ -1,5 +1,5 @@
 import { UsagePrediction, WindowPrediction } from "../domain/prediction.js";
-import { getPrimaryQuota, getSecondaryQuota, UsageQuota, UsageSnapshot } from "../domain/usage.js";
+import { getPrimaryQuota, getSecondaryQuota, HistoryEntry, UsageQuota, UsageSnapshot } from "../domain/usage.js";
 import { type PercentDisplayMode } from "../app/settings.js";
 
 export type UsageWindowType = "primary" | "secondary";
@@ -31,11 +31,17 @@ export type PanelBarViewModel = {
     label: string;
 };
 
+export type UsageTrendViewModel = {
+    visible: boolean;
+    bars: number[];
+};
+
 export type MenuViewModel = {
     updatedAt: string;
     primary: UsageItemViewModel;
     secondary: UsageItemViewModel;
     plan: string;
+    trend: UsageTrendViewModel;
     errorMessage: string | null;
     hasError: boolean;
 };
@@ -118,7 +124,13 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
     return viewModel;
 }
 
-export function createMenuViewModel(settings, snapshot: UsageSnapshot, prediction: UsagePrediction, errorMessage) {
+export function createMenuViewModel(
+    settings,
+    snapshot: UsageSnapshot,
+    prediction: UsagePrediction,
+    history: HistoryEntry[] = [],
+    errorMessage = null,
+) {
     const percentDisplayMode = settings.percentDisplayMode;
 
     if (errorMessage) {
@@ -137,6 +149,7 @@ export function createMenuViewModel(settings, snapshot: UsageSnapshot, predictio
                 percentDisplayMode,
             }),
             plan: "--",
+            trend: createUsageTrendViewModel(null, []),
         };
     }
 
@@ -156,6 +169,7 @@ export function createMenuViewModel(settings, snapshot: UsageSnapshot, predictio
                 percentDisplayMode,
             }),
             plan: "--",
+            trend: createUsageTrendViewModel(null, []),
         };
     }
 
@@ -203,6 +217,7 @@ export function createMenuViewModel(settings, snapshot: UsageSnapshot, predictio
             ),
         }),
         plan: formatPlan(snapshot.planType),
+        trend: createUsageTrendViewModel(snapshot, history),
     };
 }
 
@@ -240,6 +255,71 @@ export function createUsageItemViewModel({
             ),
         percentLabel: percentDisplayMode,
         predictionStyle,
+    };
+}
+
+const TREND_LOOKBACK_SECONDS = 7 * 24 * 60 * 60;
+const TREND_BUCKET_COUNT = 56;
+const TREND_MIN_BAR_PERCENT = 12;
+
+export function createUsageTrendViewModel(
+    snapshot: UsageSnapshot | null,
+    history: HistoryEntry[] = [],
+    nowSeconds = Date.now() / 1000,
+): UsageTrendViewModel {
+    const quotaId = getPrimaryQuota(snapshot)?.id ?? "session";
+    const minTimestamp = nowSeconds - TREND_LOOKBACK_SECONDS;
+    const samples = history
+        .map((entry) => {
+            const timestamp = new Date(entry.timestamp).getTime() / 1000;
+            const quota = entry.quotas.find((item) => item.id === quotaId) ??
+                entry.quotas.find((item) => item.id === "session");
+
+            return {
+                timestamp,
+                usedPercent: quota?.usedPercent,
+            };
+        })
+        .filter((entry): entry is { timestamp: number; usedPercent: number } =>
+            Number.isFinite(entry.timestamp) &&
+            entry.timestamp >= minTimestamp &&
+            Number.isFinite(entry.usedPercent)
+        )
+        .toSorted((a, b) => a.timestamp - b.timestamp);
+
+    if (samples.length < 2) return { visible: false, bars: [] };
+
+    const bucketSize = TREND_LOOKBACK_SECONDS / TREND_BUCKET_COUNT;
+    const bucketValues = Array(TREND_BUCKET_COUNT).fill(0);
+
+    for (let index = 1; index < samples.length; index += 1) {
+        const previous = samples[index - 1];
+        const current = samples[index];
+        const delta = current.usedPercent - previous.usedPercent;
+
+        if (delta <= 0 || delta > 100) continue;
+
+        const bucketIndex = Math.min(
+            TREND_BUCKET_COUNT - 1,
+            Math.max(0, Math.floor((current.timestamp - minTimestamp) / bucketSize)),
+        );
+        bucketValues[bucketIndex] += delta;
+    }
+
+    const maxValue = Math.max(...bucketValues);
+
+    if (maxValue <= 0) return { visible: false, bars: [] };
+
+    return {
+        visible: true,
+        bars: bucketValues.map((value) => {
+            if (value <= 0) return 0;
+
+            return Math.max(
+                TREND_MIN_BAR_PERCENT,
+                Math.round((value / maxValue) * 100),
+            );
+        }),
     };
 }
 

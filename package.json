@@ -1,6 +1,6 @@
 {
     "name": "codex-meter",
-    "version": "0.6.2",
+    "version": "0.7.0",
     "description": "Monitor your Codex usage from the top panel.",
     "type": "module",
     "private": true,
@@ -17,7 +17,7 @@
     "sideEffects": false,
     "scripts": {
         "build": "tsc",
-        "test": "npm run build && node --test test/prediction.test.js && gjs -m test/history-storage.test.js"
+        "test": "npm run build && node --test test/prediction.test.js test/usage-trend.test.js && gjs -m test/history-storage.test.js"
     },
     "devDependencies": {
         "@girs/gjs": "^4.0.0-rc.9",

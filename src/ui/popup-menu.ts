@@ -11,11 +11,14 @@ import {
 
 const BASELINE_MARKER_WIDTH = 3;
 const POPUP_CONTENT_WIDTH = 285;
+const TREND_BAR_COUNT = 56;
+const TREND_BAR_MAX_HEIGHT = 28;
 export class CodexMeterPopupMenu {
     headerItem: any;
     errorItem: any;
     primaryItem: any;
     secondaryItem: any;
+    trendItem: any;
     footerItem: any;
 
     private _onRefresh: () => void;
@@ -29,6 +32,7 @@ export class CodexMeterPopupMenu {
         this.errorItem = this._createErrorItem();
         this.primaryItem = this._createUsageItem("Session (5h)");
         this.secondaryItem = this._createUsageItem("Week");
+        this.trendItem = this._createTrendItem();
         this.footerItem = this._createFooterItem();
     }
 
@@ -37,6 +41,7 @@ export class CodexMeterPopupMenu {
         menu.addMenuItem(this.errorItem);
         menu.addMenuItem(this.primaryItem);
         menu.addMenuItem(this.secondaryItem);
+        menu.addMenuItem(this.trendItem);
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         menu.addMenuItem(this.footerItem);
     }
@@ -44,6 +49,18 @@ export class CodexMeterPopupMenu {
     syncBars() {
         this._updateUsageBar(this.primaryItem);
         this._updateUsageBar(this.secondaryItem);
+    }
+
+    setTrend(viewModel) {
+        this.trendItem.visible = viewModel.visible;
+
+        for (let index = 0; index < this.trendItem.bars.length; index += 1) {
+            const bar = this.trendItem.bars[index];
+            const value = viewModel.bars[index] ?? 0;
+
+            bar.visible = value > 0;
+            bar.height = Math.round(TREND_BAR_MAX_HEIGHT * (value / 100));
+        }
     }
 
     setUsageItem(item, viewModel) {
@@ -66,6 +83,7 @@ export class CodexMeterPopupMenu {
         this.errorItem.visible = hasError;
         this.primaryItem.visible = !hasError;
         this.secondaryItem.visible = !hasError;
+        this.trendItem.visible = !hasError && this.trendItem.visible;
         this.errorItem.message = message ?? "";
         this.errorItem.messageLabel.text = message ?? "";
     }
@@ -180,6 +198,54 @@ export class CodexMeterPopupMenu {
         item.displayBaselinePercentValue = null;
         item.predictionLabel = predictionLabel;
         item.resetLabel = resetLabel;
+
+        return item;
+    }
+
+    private _createTrendItem() {
+        const item = new PopupMenu.PopupBaseMenuItem({
+            reactive: false,
+            can_focus: false,
+        }) as any;
+
+        const row = new St.BoxLayout({
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: "cx-trend-row",
+        });
+
+        const titleLabel = new St.Label({
+            text: "Usage Trend",
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: "cx-usage-heading cx-trend-title",
+        });
+
+        const sparklineBox = new St.BoxLayout({
+            y_align: Clutter.ActorAlign.END,
+            style_class: "cx-trend-sparkline",
+        });
+        const bars = [];
+
+        for (let index = 0; index < TREND_BAR_COUNT; index += 1) {
+            const bar = new St.Widget({
+                y_align: Clutter.ActorAlign.END,
+                style_class: "cx-trend-bar",
+            });
+
+            bar.height = 0;
+            bar.visible = false;
+            bars.push(bar);
+            sparklineBox.add_child(bar);
+        }
+
+        row.add_child(titleLabel);
+        row.add_child(sparklineBox);
+        item.add_child(row);
+        item.titleLabel = titleLabel;
+        item.sparklineBox = sparklineBox;
+        item.bars = bars;
+        item.visible = false;
 
         return item;
     }
