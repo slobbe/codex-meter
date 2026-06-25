@@ -158,8 +158,29 @@
 .cx-header-row,
 .cx-usage-heading-row,
 .cx-usage-detail,
+.cx-trend-row,
 .cx-footer-row {
     spacing: 12px;
+}
+
+.cx-trend-row {
+    margin-top: 8px;
+    margin-bottom: 4px;
+}
+
+.cx-trend-title {
+    text-align: left;
+}
+
+.cx-trend-sparkline {
+    min-height: 28px;
+    spacing: 2px;
+}
+
+.cx-trend-bar {
+    width: 3px;
+    border-radius: 999px;
+    background-color: #4f83ff;
 }
 
 .cx-footer-row {

@@ -43,6 +43,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._refreshCancellable = null;
         this._snapshot = null;
         this._prediction = null;
+        this._history = [];
         this._errorMessage = null;
         this._destroyed = false;
 
@@ -222,6 +223,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
                 this._usageService = createUsageService(providerId);
                 this._snapshot = null;
                 this._prediction = null;
+                this._history = [];
                 this._errorMessage = null;
                 void this._loadCachedSnapshot();
             }
@@ -279,6 +281,8 @@ export class CodexMeterIndicator extends PanelMenu.Button {
 
             if (this._destroyed) return;
 
+            await this._loadHistory();
+
             this._errorMessage = null;
 
             try {
@@ -321,6 +325,8 @@ export class CodexMeterIndicator extends PanelMenu.Button {
 
             this._snapshot = snapshot;
 
+            await this._loadHistory();
+
             try {
                 this._prediction = await this._usageService.predict(snapshot);
             } catch (error) {
@@ -344,12 +350,22 @@ export class CodexMeterIndicator extends PanelMenu.Button {
 
             this._snapshot = snapshot;
 
+            await this._loadHistory();
+
             try {
                 this._prediction = await this._usageService.predict(snapshot);
             } catch (error) {
                 this._prediction = null;
             }
         } catch (error) {}
+    }
+
+    async _loadHistory() {
+        try {
+            this._history = await this._usageService.readHistory();
+        } catch (error) {
+            this._history = [];
+        }
     }
 
     _startRefreshSpin() {
@@ -428,6 +444,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             this._settings.getAll(),
             this._snapshot,
             this._prediction,
+            this._history,
             this._errorMessage,
         );
 
@@ -435,6 +452,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._popupMenu.setError(viewModel.errorMessage);
         this._setUsageItem(this._primaryItem, viewModel.primary);
         this._setUsageItem(this._secondaryItem, viewModel.secondary);
+        this._popupMenu.setTrend(viewModel.trend);
         this._footerItem.planLabel.text = viewModel.plan;
     }
 
