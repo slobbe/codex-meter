@@ -4,7 +4,6 @@ import Gio from "gi://Gio";
 import {
     appendHistoryToPath,
     readHistoryFromPath,
-    readLegacyHistoryFromPath,
 } from "../dist/infra/storage/history.js";
 
 Gio._promisify(Gio.File.prototype, "load_contents_async");
@@ -130,32 +129,6 @@ async function testAppendSkipsDuplicateQuotaValues() {
     }
 }
 
-async function testFirstJsonlWriteMigratesExistingRows() {
-    const path = createTempPath("migrate.jsonl");
-    const firstTimestamp = new Date(Date.now() - 60_000).toISOString();
-    const secondTimestamp = new Date().toISOString();
-
-    try {
-        await appendHistoryToPath(path, {
-            timestamp: secondTimestamp,
-            quotas: [{ id: "session", usedPercent: 12 }],
-        }, [{
-            timestamp: firstTimestamp,
-            quotas: [{ id: "session", usedPercent: 10 }],
-        }]);
-
-        const lines = (await readText(path)).trim().split(/\r?\n/);
-
-        assertEqual(lines.length, 2, "first JSONL write should migrate existing history rows");
-        assertDeepEqual(lines.map(JSON.parse), [
-            { timestamp: firstTimestamp, quotas: [{ id: "session", usedPercent: 10 }] },
-            { timestamp: secondTimestamp, quotas: [{ id: "session", usedPercent: 12 }] },
-        ], "migrated JSONL should include old rows before the new row");
-    } finally {
-        removeFile(path);
-    }
-}
-
 async function testJsonlIsReadable() {
     const path = createTempPath("read.jsonl");
     const timestamp = new Date().toISOString();
@@ -181,54 +154,15 @@ async function testJsonlIsReadable() {
     }
 }
 
-async function testLegacyCsvColumnsAreReadable() {
-    const path = createTempPath("legacy-read.csv");
+async function testMissingJsonlReturnsEmptyHistory() {
+    const path = createTempPath("missing.jsonl");
 
-    try {
-        writeText(path, [
-            "timestamp,primaryUsedPercent,secondaryUsedPercent",
-            `${new Date().toISOString()},11,56`,
-            "",
-        ].join("\n"));
+    const history = await readHistoryFromPath(path);
 
-        const history = await readLegacyHistoryFromPath(path);
-
-        assertEqual(history.length, 1, "legacy history row should be read");
-        assertDeepEqual(history[0].quotas, [
-            { id: "session", usedPercent: 11 },
-            { id: "weekly", usedPercent: 56 },
-        ], "legacy usage quotas should be read");
-    } finally {
-        removeFile(path);
-    }
-}
-
-async function testLegacyCsvQuotasJsonIsReadable() {
-    const path = createTempPath("legacy-quotas-json.csv");
-    const timestamp = new Date().toISOString();
-
-    try {
-        writeText(path, [
-            "timestamp,quotas_json",
-            `${timestamp},"[{""id"":""session"",""usedPercent"":10,""used"":100},{""id"":""weekly"",""usedPercent"":53}]"`,
-            "",
-        ].join("\n"));
-
-        const history = await readLegacyHistoryFromPath(path);
-
-        assertEqual(history.length, 1, "legacy quotas_json row should be read");
-        assertDeepEqual(history[0].quotas, [
-            { id: "session", usedPercent: 10, used: 100 },
-            { id: "weekly", usedPercent: 53 },
-        ], "legacy quotas_json fields should be read");
-    } finally {
-        removeFile(path);
-    }
+    assertDeepEqual(history, [], "missing JSONL history should be empty");
 }
 
 await testAppendWritesJsonl();
 await testAppendSkipsDuplicateQuotaValues();
-await testFirstJsonlWriteMigratesExistingRows();
 await testJsonlIsReadable();
-await testLegacyCsvColumnsAreReadable();
-await testLegacyCsvQuotasJsonIsReadable();
+await testMissingJsonlReturnsEmptyHistory();

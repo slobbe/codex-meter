@@ -492,6 +492,8 @@ export function secondsUntil(unixTimestamp: number): number {
 }
 
 export function formatLimitPrediction(prediction: WindowPrediction, windowType: UsageWindowType) {
+    if (prediction?.trend === "limit reached") return "Limit reached";
+
     if (prediction?.trend !== "unsafe") return "";
 
     return `Limit in about ${formatDuration(
