@@ -45,7 +45,6 @@ export const AboutPage = GObject.registerClass(
 
             this.add(createAboutHeaderGroup(metadata, extensionPath));
             this.add(createAboutInfoGroup(metadata));
-            this.add(createLegalGroup(metadata));
         }
     },
 );
@@ -300,39 +299,21 @@ function createAboutInfoGroup(metadata: Metadata) {
             metadata["version-name"] ?? `${metadata.version ?? 1}`,
         ),
     );
-    group.add(createInfoRow("Created by", "Sebastian Lobbe"));
+    group.add(createInfoRow("Author", "Sebastian Lobbe"));
     group.add(
-        createLinkRow("GitHub", metadata.url ?? "https://github.com/slobbe/codex-meter"),
+        createLinkRow(
+            "License",
+            `${metadata.url ?? "https://github.com/slobbe/codex-meter"}/blob/main/LICENSE`,
+            metadata.license ?? "GPL-3.0-or-later",
+        ),
+    );
+    group.add(
+        createLinkRow("Source", metadata.url ?? "https://github.com/slobbe/codex-meter"),
     );
     group.add(
         createLinkRow("Report a bug", "https://github.com/slobbe/codex-meter/issues"),
     );
-
-    return group;
-}
-
-function createLegalGroup(metadata: Metadata) {
-    const group = new Adw.PreferencesGroup();
-    const box = new Gtk.Box({
-        orientation: Gtk.Orientation.VERTICAL,
-        margin_top: 6,
-        margin_bottom: 12,
-        halign: Gtk.Align.CENTER,
-        valign: Gtk.Align.END,
-        vexpand: true,
-    });
-
-    box.append(
-        new Gtk.Label({
-            label: `<span size="small">This program comes with absolutely no warranty.\nLicense: <a href="${metadata.url + "/blob/main/LICENSE"}">${metadata.license ?? "GPL-3.0-or-later"}</a></span>`,
-            use_markup: true,
-            justify: Gtk.Justification.CENTER,
-            wrap: true,
-            halign: Gtk.Align.CENTER,
-        }),
-    );
-
-    group.add(box);
+    
 
     return group;
 }
@@ -347,26 +328,47 @@ function createInfoRow(title: string, value: string) {
         new Gtk.Label({
             label: value,
             selectable: true,
+            hexpand: true,
+            halign: Gtk.Align.END,
+            xalign: 1,
         }),
     );
 
     return row;
 }
 
-function createLinkRow(title: string, url: string) {
+function createLinkRow(title: string, url: string, label?: string) {
     const row = new Adw.ActionRow({
         title,
         activatable: false,
     });
+    const buttonOptions = {
+        uri: url,
+        tooltip_text: url,
+        hexpand: true,
+        halign: Gtk.Align.END,
+        valign: Gtk.Align.CENTER,
+    };
 
-    row.add_suffix(
-        new Gtk.LinkButton({
-            icon_name: "adw-external-link-symbolic",
-            uri: url,
-            tooltip_text: url,
-            valign: Gtk.Align.CENTER,
-        }),
-    );
+    if (label) {
+        row.add_suffix(
+            new Gtk.Label({
+                label: `<a href="${escapeMarkup(url)}">${escapeMarkup(label)}</a>`,
+                use_markup: true,
+                selectable: true,
+                hexpand: true,
+                halign: Gtk.Align.END,
+                xalign: 1,
+            }),
+        );
+    } else {
+        row.add_suffix(
+            new Gtk.LinkButton({
+                ...buttonOptions,
+                icon_name: "adw-external-link-symbolic",
+            }),
+        );
+    }
 
     return row;
 }
