@@ -17,6 +17,14 @@ function fileExists(path: string): boolean {
     return GLib.file_test(path, GLib.FileTest.EXISTS);
 }
 
+export async function readTextFile(path: string): Promise<string> {
+    return readFile(path);
+}
+
+export async function writeTextFile(path: string, text: string): Promise<void> {
+    return writeFile(path, text);
+}
+
 async function readFile(path: string): Promise<string> {
     try {
         const file = Gio.File.new_for_path(path);
