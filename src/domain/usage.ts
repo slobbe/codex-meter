@@ -27,6 +27,11 @@ export type HistoryEntry = {
 export type HistoryQuotaEntry = {
     id: string;
     usedPercent: number;
+    used?: number | null;
+    limit?: number | null;
+    remaining?: number | null;
+    resetAt?: number | null;
+    limitReached?: boolean;
 };
 
 export function toHistoryEntry(snapshot: UsageSnapshot): HistoryEntry {
@@ -35,6 +40,11 @@ export function toHistoryEntry(snapshot: UsageSnapshot): HistoryEntry {
         quotas: snapshot.quotas.map((quota) => ({
             id: quota.id,
             usedPercent: quota.usedPercent,
+            used: quota.used,
+            limit: quota.limit,
+            remaining: quota.remaining,
+            resetAt: quota.resetAt,
+            limitReached: quota.limitReached,
         })),
     };
 }

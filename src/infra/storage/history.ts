@@ -1,106 +1,190 @@
 import GLib from "gi://GLib";
 
-import { HistoryEntry } from "../../domain/usage.js";
+import { HistoryEntry, HistoryQuotaEntry } from "../../domain/usage.js";
 import { STATE_DIR } from "../config.js";
-import { appendCsvFile, readCsvFile, writeCsvFile } from "../filesystem.js";
+import { appendFile, readCsvFile, readTextFile, writeTextFile } from "../filesystem.js";
 import { ProviderId } from "../providers/types.js";
 
-const HISTORY_HEADERS = [
-    "timestamp",
-    "quotas_json",
-];
 const MAX_HISTORY_ENTRIES = 25_000;
 const MAX_HISTORY_AGE_SECONDS = 21 * 24 * 60 * 60;
 
 function getHistoryPath(providerId: ProviderId) {
+    return GLib.build_filenamev([STATE_DIR, providerId, "usage-history.jsonl"]);
+}
+
+function getLegacyHistoryPath(providerId: ProviderId) {
     return GLib.build_filenamev([STATE_DIR, providerId, "usage-history.csv"]);
 }
 
 export async function readHistory(providerId: ProviderId): Promise<HistoryEntry[]> {
-    return readHistoryFromPath(getHistoryPath(providerId));
+    const rows = await readHistoryFromPath(getHistoryPath(providerId));
+
+    if (rows.length > 0) return rows;
+
+    return readLegacyHistoryFromPath(getLegacyHistoryPath(providerId));
 }
 
 export async function readHistoryFromPath(path: string): Promise<HistoryEntry[]> {
+    if (!fileExists(path)) return [];
+
+    try {
+        return normalizeHistoryEntries(parseJsonlHistory(await readTextFile(path)));
+    } catch (error) {
+        console.error("Unable to read usage history", error);
+        return [];
+    }
+}
+
+export async function readLegacyHistoryFromPath(path: string): Promise<HistoryEntry[]> {
+    if (!fileExists(path)) return [];
+
     let rows: Record<string, string>[];
 
     try {
         rows = await readCsvFile(path);
     } catch (error) {
-        console.error("Unable to read usage history", error);
+        console.error("Unable to read legacy usage history", error);
         return [];
     }
 
-    const minTimestamp = Date.now() - (MAX_HISTORY_AGE_SECONDS * 1000);
-
-    return rows
-        .map(rowToHistoryEntry)
-        .filter((row): row is HistoryEntry =>
-            row !== null &&
-            isValidTimestamp(row.timestamp) &&
-            row.quotas.length > 0 &&
-            row.quotas.every((quota) =>
-                quota.id.length > 0 && Number.isFinite(quota.usedPercent),
-            ),
-        )
-        .filter((row) => new Date(row.timestamp).getTime() >= minTimestamp)
-        .slice(-MAX_HISTORY_ENTRIES);
+    return normalizeHistoryEntries(
+        rows
+            .map(rowToHistoryEntry)
+            .filter((row): row is HistoryEntry => row !== null),
+    );
 }
 
 export async function appendHistory(
     providerId: ProviderId,
     row: HistoryEntry,
 ): Promise<void> {
-    return appendHistoryToPath(getHistoryPath(providerId), row);
+    const path = getHistoryPath(providerId);
+    const existingRows = await readHistory(providerId);
+
+    return appendHistoryToPath(path, row, existingRows);
 }
 
-export async function appendHistoryToPath(path: string, row: HistoryEntry): Promise<void> {
-    try {
-        await appendHistoryRow(path, row);
-    } catch (error) {
-        if (!isHeaderMismatch(error)) {
-            throw error;
-        }
+export async function appendHistoryToPath(
+    path: string,
+    row: HistoryEntry,
+    existingRows: HistoryEntry[] | null = null,
+): Promise<void> {
+    const rows = existingRows ?? await readHistoryFromPath(path);
+    const normalizedRows = normalizeHistoryEntries(rows);
+    const normalizedRow = normalizeHistoryEntry(row);
 
-        await rewriteHistory(path, await readHistoryFromPath(path));
-        await appendHistoryRow(path, row);
+    if (!normalizedRow) return;
+
+    const lastRow = normalizedRows.at(-1);
+    const shouldAppend = !lastRow || !hasSameQuotaValues(lastRow, normalizedRow);
+    const nextRows = shouldAppend
+        ? normalizeHistoryEntries([...normalizedRows, normalizedRow])
+        : normalizedRows;
+
+    if (!fileExists(path) && nextRows.length > 0) {
+        await rewriteHistory(path, nextRows);
+        return;
     }
 
-    await compactHistory(path);
+    if (!shouldAppend) return;
+
+    await appendFile(path, JSON.stringify(normalizedRow));
+
+    if (nextRows.length !== normalizedRows.length + 1) {
+        await rewriteHistory(path, nextRows);
+    }
+}
+
+function fileExists(path: string): boolean {
+    return GLib.file_test(path, GLib.FileTest.EXISTS);
+}
+
+function parseJsonlHistory(text: string): HistoryEntry[] {
+    return text
+        .replace(/^\uFEFF/, "")
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+            try {
+                return JSON.parse(line);
+            } catch (_error) {
+                return null;
+            }
+        })
+        .filter((row): row is HistoryEntry => row !== null);
+}
+
+function normalizeHistoryEntries(rows: HistoryEntry[]): HistoryEntry[] {
+    const minTimestamp = Date.now() - (MAX_HISTORY_AGE_SECONDS * 1000);
+
+    return rows
+        .map(normalizeHistoryEntry)
+        .filter((row): row is HistoryEntry =>
+            row !== null && new Date(row.timestamp).getTime() >= minTimestamp
+        )
+        .slice(-MAX_HISTORY_ENTRIES);
+}
+
+function normalizeHistoryEntry(row: HistoryEntry): HistoryEntry | null {
+    if (!row || !isValidTimestamp(row.timestamp) || !Array.isArray(row.quotas)) {
+        return null;
+    }
+
+    const quotas = row.quotas
+        .map(normalizeHistoryQuota)
+        .filter((quota): quota is HistoryQuotaEntry => quota !== null);
+
+    if (quotas.length === 0) return null;
+
+    return {
+        timestamp: row.timestamp,
+        quotas,
+    };
+}
+
+function normalizeHistoryQuota(quota): HistoryQuotaEntry | null {
+    const id = `${quota?.id ?? ""}`;
+    const usedPercent = Number(quota?.usedPercent);
+
+    if (id.length === 0 || !Number.isFinite(usedPercent)) return null;
+
+    return omitUndefined({
+        id,
+        usedPercent,
+        used: finiteOrNull(quota?.used),
+        limit: finiteOrNull(quota?.limit),
+        remaining: finiteOrNull(quota?.remaining),
+        resetAt: finiteOrNull(quota?.resetAt),
+        limitReached: typeof quota?.limitReached === "boolean"
+            ? quota.limitReached
+            : undefined,
+    });
+}
+
+function finiteOrNull(value): number | null | undefined {
+    if (value === null) return null;
+
+    const number = Number(value);
+
+    return Number.isFinite(number) ? number : undefined;
+}
+
+function omitUndefined<T extends Record<string, unknown>>(value: T): T {
+    return Object.fromEntries(
+        Object.entries(value).filter(([, item]) => item !== undefined),
+    ) as T;
 }
 
 function isValidTimestamp(value: string): boolean {
     return value.length > 0 && Number.isFinite(new Date(value).getTime());
 }
 
-async function compactHistory(path: string): Promise<void> {
-    const rawRows = await readCsvFile(path);
-
-    if (rawRows.length < MAX_HISTORY_ENTRIES) {
-        return;
-    }
-
-    const rows = await readHistoryFromPath(path);
-
-    if (rows.length === rawRows.length) {
-        return;
-    }
-
-    await rewriteHistory(path, rows);
-}
-
-async function appendHistoryRow(path: string, row: HistoryEntry): Promise<void> {
-    await appendCsvFile(path, [historyEntryToRow(row)], HISTORY_HEADERS);
-}
-
 async function rewriteHistory(path: string, rows: HistoryEntry[]): Promise<void> {
-    await writeCsvFile(path, rows.map(historyEntryToRow));
-}
-
-function historyEntryToRow(row: HistoryEntry): Record<string, string> {
-    return {
-        timestamp: row.timestamp,
-        quotas_json: JSON.stringify(row.quotas),
-    };
+    await writeTextFile(
+        path,
+        rows.map((row) => JSON.stringify(row)).join("\n") + (rows.length ? "\n" : ""),
+    );
 }
 
 function rowToHistoryEntry(row: Record<string, string>): HistoryEntry | null {
@@ -111,10 +195,7 @@ function rowToHistoryEntry(row: Record<string, string>): HistoryEntry | null {
             if (Array.isArray(quotas)) {
                 return {
                     timestamp: row.timestamp,
-                    quotas: quotas.map((quota) => ({
-                        id: `${quota.id ?? ""}`,
-                        usedPercent: Number(quota.usedPercent),
-                    })),
+                    quotas,
                 };
             }
         } catch (_error) {
@@ -144,6 +225,20 @@ function rowToHistoryEntry(row: Record<string, string>): HistoryEntry | null {
     };
 }
 
-function isHeaderMismatch(error: unknown): boolean {
-    return error instanceof Error && error.message.includes("header mismatch");
+function hasSameQuotaValues(left: HistoryEntry, right: HistoryEntry): boolean {
+    if (left.quotas.length !== right.quotas.length) return false;
+
+    const leftById = new Map(left.quotas.map((quota) => [quota.id, quota]));
+
+    return right.quotas.every((rightQuota) => {
+        const leftQuota = leftById.get(rightQuota.id);
+
+        return Boolean(leftQuota) &&
+            leftQuota?.usedPercent === rightQuota.usedPercent &&
+            leftQuota?.used === rightQuota.used &&
+            leftQuota?.limit === rightQuota.limit &&
+            leftQuota?.remaining === rightQuota.remaining &&
+            leftQuota?.resetAt === rightQuota.resetAt &&
+            leftQuota?.limitReached === rightQuota.limitReached;
+    });
 }
