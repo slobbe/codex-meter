@@ -54,7 +54,21 @@ test("shows positive session usage deltas as normalized activity bars", () => {
     assert.equal(trend.visible, true);
     assert.equal(trend.bars.length, 56);
     assert.equal(Math.max(...trend.bars), 100);
-    assert.equal(trend.bars.filter((bar) => bar > 0).length, 2);
+    assert.ok(trend.bars.filter((bar) => bar > 0).length >= 2);
+});
+
+test("spreads sparse positive deltas across elapsed time", () => {
+    const trend = createUsageTrendViewModel(
+        createSnapshot(),
+        [entry(24 * 60 * 60, 1), entry(60, 99)],
+        now,
+    );
+
+    assert.equal(trend.visible, true);
+    assert.ok(
+        trend.bars.filter((bar) => bar > 0).length > 1,
+        "a one-day sparse increase should not render as a single spike",
+    );
 });
 
 test("ignores resets and keeps later positive usage", () => {
@@ -65,7 +79,7 @@ test("ignores resets and keeps later positive usage", () => {
     );
 
     assert.equal(trend.visible, true);
-    assert.equal(trend.bars.filter((bar) => bar > 0).length, 1);
+    assert.ok(trend.bars.filter((bar) => bar > 0).length >= 1);
     assert.equal(Math.max(...trend.bars), 100);
 });
 

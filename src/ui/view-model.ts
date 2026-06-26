@@ -299,11 +299,14 @@ export function createUsageTrendViewModel(
 
         if (delta <= 0 || delta > 100) continue;
 
-        const bucketIndex = Math.min(
-            TREND_BUCKET_COUNT - 1,
-            Math.max(0, Math.floor((current.timestamp - minTimestamp) / bucketSize)),
-        );
-        bucketValues[bucketIndex] += delta;
+        addTrendDeltaToBuckets({
+            bucketValues,
+            delta,
+            fromTimestamp: previous.timestamp,
+            toTimestamp: current.timestamp,
+            minTimestamp,
+            bucketSize,
+        });
     }
 
     const maxValue = Math.max(...bucketValues);
@@ -321,6 +324,59 @@ export function createUsageTrendViewModel(
             );
         }),
     };
+}
+
+function addTrendDeltaToBuckets({
+    bucketValues,
+    delta,
+    fromTimestamp,
+    toTimestamp,
+    minTimestamp,
+    bucketSize,
+}: {
+    bucketValues: number[];
+    delta: number;
+    fromTimestamp: number;
+    toTimestamp: number;
+    minTimestamp: number;
+    bucketSize: number;
+}) {
+    const start = Math.max(minTimestamp, fromTimestamp);
+    const end = Math.max(start, toTimestamp);
+
+    if (end <= start) {
+        const bucketIndex = getTrendBucketIndex(toTimestamp, minTimestamp, bucketSize);
+        bucketValues[bucketIndex] += delta;
+        return;
+    }
+
+    const duration = end - start;
+    const firstBucketIndex = getTrendBucketIndex(start, minTimestamp, bucketSize);
+    const lastBucketIndex = getTrendBucketIndex(end, minTimestamp, bucketSize);
+
+    for (let index = firstBucketIndex; index <= lastBucketIndex; index += 1) {
+        const bucketStart = minTimestamp + index * bucketSize;
+        const bucketEnd = bucketStart + bucketSize;
+        const overlap = Math.max(
+            0,
+            Math.min(end, bucketEnd) - Math.max(start, bucketStart),
+        );
+
+        if (overlap > 0) {
+            bucketValues[index] += delta * (overlap / duration);
+        }
+    }
+}
+
+function getTrendBucketIndex(
+    timestamp: number,
+    minTimestamp: number,
+    bucketSize: number,
+): number {
+    return Math.min(
+        TREND_BUCKET_COUNT - 1,
+        Math.max(0, Math.floor((timestamp - minTimestamp) / bucketSize)),
+    );
 }
 
 export function calculateBarFillWidth(trackWidth: number, percentValue: number): number {
