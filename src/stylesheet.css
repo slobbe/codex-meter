@@ -183,6 +183,10 @@
     background-color: #4f83ff;
 }
 
+.cx-trend-bar-empty {
+    background-color: rgba(255, 255, 255, 0.22);
+}
+
 .cx-footer-row {
     min-height: 2.1em;
 }

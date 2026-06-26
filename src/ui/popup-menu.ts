@@ -13,6 +13,7 @@ const BASELINE_MARKER_WIDTH = 3;
 const POPUP_CONTENT_WIDTH = 285;
 const TREND_BAR_COUNT = 56;
 const TREND_BAR_MAX_HEIGHT = 28;
+const TREND_BAR_MIN_HEIGHT = 3;
 export class CodexMeterPopupMenu {
     headerItem: any;
     errorItem: any;
@@ -58,8 +59,16 @@ export class CodexMeterPopupMenu {
             const bar = this.trendItem.bars[index];
             const value = viewModel.bars[index] ?? 0;
 
-            bar.visible = value > 0;
-            bar.height = Math.round(TREND_BAR_MAX_HEIGHT * (value / 100));
+            bar.visible = index < viewModel.bars.length;
+            bar.height = value > 0
+                ? Math.round(TREND_BAR_MAX_HEIGHT * (value / 100))
+                : TREND_BAR_MIN_HEIGHT;
+
+            if (value > 0) {
+                bar.remove_style_class_name("cx-trend-bar-empty");
+            } else {
+                bar.add_style_class_name("cx-trend-bar-empty");
+            }
         }
     }
 
