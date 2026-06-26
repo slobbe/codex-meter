@@ -1,22 +1,18 @@
-<div align="center">
-    <p>
-      <img src="docs/assets/logo/logo.svg" width="128" alt="Codex Meter logo">
-    </p>
-  <h1>Codex Meter</h1>
-  <p><strong>Monitor your Codex usage from the GNOME top panel.</strong></p>
-  <p>
-    <a href="https://github.com/slobbe/codex-meter/releases/latest">
-      <img src="https://www.shieldcn.dev/github/release/slobbe/codex-meter.svg?variant=secondary&size=sm" alt="Release" />
-    </a>
-    <img alt="badge" src="https://shieldcn.dev/badge/GNOME-45+-4A86CF.svg?logo=gnome">
-    <a href="https://github.com/slobbe/codex-meter/blob/main/LICENSE">
-        <img src="https://www.shieldcn.dev/github/license/slobbe/codex-meter.svg?variant=secondary&size=sm" alt="License" />
-    </a>
-  </p>
-  <p>
-    <img src="docs/assets/screens/popup_used.png" width="325" alt="Codex Meter popup preview">
-  </p>
-</div>
+<p align="center">
+  <picture><source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/header/surface.svg?title=Codex+Meter&amp;subtitle=Monitor+your+Codex+usage+from+the+GNOME+top+panel&amp;logo=https%3A%2F%2Fraw.githubusercontent.com%2Fslobbe%2Fcodex-meter%2Frefs%2Fheads%2Fmain%2Fdocs%2Fassets%2Flogo%2Flogo.svg&amp;mode=dark&amp;border=false" /><img alt="header" src="https://shieldcn.dev/header/surface.svg?title=Codex+Meter&amp;subtitle=Monitor+your+Codex+usage+from+the+GNOME+top+panel&amp;logo=https%3A%2F%2Fraw.githubusercontent.com%2Fslobbe%2Fcodex-meter%2Frefs%2Fheads%2Fmain%2Fdocs%2Fassets%2Flogo%2Flogo.svg&amp;mode=light&amp;border=false" /></picture>
+</p>
+
+<p align="center">
+  <picture><source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/-45%2B.svg?variant=branded&amp;logo=gnome&amp;label=GNOME&amp;color=3b82f6" /><img alt="Custom badge" src="https://shieldcn.dev/badge/-45%2B.svg?variant=branded&amp;mode=light&amp;logo=gnome&amp;label=GNOME&amp;color=3b82f6" /></picture>
+</p>
+
+<p align="center">
+  <picture><source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/group/github/slobbe/codex-meter/release+github/slobbe/codex-meter/license.svg?variant=secondary" /><img alt="badge group" src="https://shieldcn.dev/group/github/slobbe/codex-meter/release+github/slobbe/codex-meter/license.svg?variant=secondary&amp;mode=light" /></picture>
+</p>
+
+<p align="center">
+  <img src="docs/assets/screens/popup_used.png" width="325" alt="Codex Meter popup preview">
+</p>
 
 ## Features
 
