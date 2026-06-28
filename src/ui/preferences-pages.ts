@@ -101,6 +101,7 @@ export const CodexPage = GObject.registerClass(
                 this._render();
             } catch (error) {
                 this._render({ status: formatCodexPreferencesError(error) });
+                throw error;
             } finally {
                 this._loading = false;
             }
@@ -115,11 +116,11 @@ export const CodexPage = GObject.registerClass(
             try {
                 await redeemCodexBankedReset(credit.id);
                 await this._loadCredits();
-            } catch (error) {
-                this._render({ status: formatCodexPreferencesError(error) });
-            } finally {
                 this._redeemingCreditId = null;
                 this._render();
+            } catch (error) {
+                this._redeemingCreditId = null;
+                this._render({ status: formatCodexPreferencesError(error) });
             }
         }
 

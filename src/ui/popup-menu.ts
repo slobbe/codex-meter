@@ -344,7 +344,7 @@ export class CodexMeterPopupMenu {
         });
 
         const redeemButtonLabel = new St.Label({
-            text: "Reset limit (0)",
+            text: "Reset limits (0)",
             y_align: Clutter.ActorAlign.CENTER,
         });
 
