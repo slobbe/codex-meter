@@ -6,8 +6,6 @@
       <summary>Usage provider</summary>
       <choices>
         <choice value='codex'/>
-        <choice value='copilot'/>
-        <choice value='zed'/>
       </choices>
     </key>
     <key name="top-panel-display-mode" type="s">

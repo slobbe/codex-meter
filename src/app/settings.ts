@@ -52,7 +52,7 @@ export class SettingsService {
     getUsageProvider(): ProviderId {
         const value = this.settings.get_string(SETTINGS_USAGE_PROVIDER);
 
-        if (value === "copilot" || value === "zed") {
+        if (value === "codex") {
             return value;
         }
 
