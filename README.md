@@ -17,7 +17,8 @@
 ## Features
 
 - Displays current 5-hour session and weekly Codex usage.
-- Predicts whether current usage trends will hit the session or weekly limit before reset.
+- Shows a weekly usage trend and predicts whether limits will be hit before reset.
+- Shows and redeems available banked resets.
 - Show percentages as usage consumed or capacity left.
 - Choose between raw percentages or progress bars in the panel indicator.
 
