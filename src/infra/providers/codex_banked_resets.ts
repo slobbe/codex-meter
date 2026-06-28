@@ -93,7 +93,35 @@ export async function redeemNextCodexBankedReset(): Promise<CodexBankedResetCred
 }
 
 export async function redeemCodexBankedReset(creditId: string): Promise<CodexRedeemBankedResetResponse> {
-    return await consumeCodexBankedReset(creditId);
+    const response = await consumeCodexBankedReset(creditId);
+
+    try {
+        await markCachedBankedResetRedeemed(creditId);
+    } catch (error) {
+        console.error("Unable to update Codex banked reset snapshot cache", error);
+    }
+
+    return response;
+}
+
+async function markCachedBankedResetRedeemed(creditId: string): Promise<void> {
+    const snapshot = await readBankedResetSnapshot();
+
+    if (!snapshot) return;
+
+    const credits = snapshot.credits.map((credit) => {
+        if (credit.id !== creditId) return credit;
+
+        return {
+            ...credit,
+            status: "redeemed",
+        };
+    });
+
+    await writeBankedResetSnapshot({
+        available_count: credits.filter((credit) => credit.status === "available").length,
+        credits,
+    });
 }
 
 async function consumeCodexBankedReset(creditId: string): Promise<CodexRedeemBankedResetResponse> {
