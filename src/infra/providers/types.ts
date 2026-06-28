@@ -2,7 +2,7 @@ import Gio from "gi://Gio";
 
 import { UsageSnapshot } from "../../domain/usage.js";
 
-export type ProviderId = "codex" | "copilot" | "zed";
+export type ProviderId = "codex";
 
 export type UsageProviderInfo = {
     id: ProviderId;
