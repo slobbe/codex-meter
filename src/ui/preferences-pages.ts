@@ -15,6 +15,14 @@ import {
     type TopPanelIndicatorIcon,
     type TopPanelDisplayMode,
 } from "../app/settings.js";
+import { isRefreshFailureError } from "../domain/refresh-failure.js";
+import {
+    type CodexBankedResetCredit,
+    listCodexBankedResets,
+    readCachedCodexBankedResetsSync,
+    redeemCodexBankedReset,
+    redeemNextCodexBankedReset,
+} from "../infra/providers/codex_banked_resets.js";
 
 
 type Metadata = Record<string, any>;
@@ -34,6 +42,192 @@ export const DisplayPage = GObject.registerClass(
     },
 );
 
+export const CodexPage = GObject.registerClass(
+    class CodexPage extends Adw.PreferencesPage {
+        private _group: Adw.PreferencesGroup;
+        private _statusRow: Adw.ActionRow;
+        private _redeemNextButton: Gtk.Button;
+        private _rows: Gtk.Widget[];
+        private _credits: CodexBankedResetCredit[];
+        private _loading: boolean;
+        private _redeemingCreditId: string | null;
+        private _redeemingNext: boolean;
+
+        _init() {
+            this._rows = [];
+            this._credits = [];
+            this._loading = false;
+            this._redeemingCreditId = null;
+            this._redeemingNext = false;
+
+            super._init({
+                title: "Codex",
+                icon_name: "applications-development-symbolic",
+            });
+
+            this._redeemNextButton = new Gtk.Button({
+                label: "Redeem next",
+                valign: Gtk.Align.CENTER,
+            });
+            this._redeemNextButton.connect("clicked", () => {
+                void this._redeemNext();
+            });
+
+            this._group = new Adw.PreferencesGroup({
+                title: "Banked reset credits",
+            });
+            (this._group as any).set_header_suffix?.(this._redeemNextButton);
+
+            this._statusRow = new Adw.ActionRow({
+                title: getNoCodexCreditSnapshotMessage(),
+            });
+            this._addRow(this._statusRow);
+            this.add(this._group);
+
+            this._loadCachedCredits();
+        }
+
+        private _loadCachedCredits() {
+            const snapshot = readCachedCodexBankedResetsSync();
+
+            if (!snapshot) {
+                this._render({ status: getNoCodexCreditSnapshotMessage() });
+                return;
+            }
+
+            this._credits = snapshot.credits;
+            this._render();
+        }
+
+        private async _loadCredits() {
+            if (this._loading) return;
+
+            this._loading = true;
+            if (this._credits.length === 0) {
+                this._render({ status: "Loading Codex credits…" });
+            } else {
+                this._syncRedeemNextButton();
+            }
+
+            try {
+                const response = await listCodexBankedResets();
+                this._credits = response.credits;
+                this._render();
+            } catch (error) {
+                this._render({ status: formatCodexPreferencesError(error) });
+            } finally {
+                this._loading = false;
+                this._syncRedeemNextButton();
+            }
+        }
+
+        private async _redeemNext() {
+            if (this._redeemingNext || !hasAvailableCredit(this._credits)) return;
+
+            this._redeemingNext = true;
+            this._syncRedeemNextButton();
+
+            try {
+                await redeemNextCodexBankedReset();
+                await this._loadCredits();
+            } catch (error) {
+                this._render({ status: formatCodexPreferencesError(error) });
+            } finally {
+                this._redeemingNext = false;
+                this._syncRedeemNextButton();
+            }
+        }
+
+        private async _redeemCredit(credit: CodexBankedResetCredit) {
+            if (this._redeemingCreditId || credit.status !== "available") return;
+
+            this._redeemingCreditId = credit.id;
+            this._render();
+
+            try {
+                await redeemCodexBankedReset(credit.id);
+                await this._loadCredits();
+            } catch (error) {
+                this._render({ status: formatCodexPreferencesError(error) });
+            } finally {
+                this._redeemingCreditId = null;
+                this._render();
+            }
+        }
+
+        private _render({ status }: { status?: string } = {}) {
+            this._removeRows();
+
+            if (status) {
+                this._statusRow = new Adw.ActionRow({ title: status });
+                this._addRow(this._statusRow);
+                this._syncRedeemNextButton();
+                return;
+            }
+
+            if (this._credits.length === 0) {
+                this._statusRow = new Adw.ActionRow({
+                    title: "No banked Codex resets are available.",
+                });
+                this._addRow(this._statusRow);
+                this._syncRedeemNextButton();
+                return;
+            }
+
+            for (const credit of this._credits) {
+                this._addRow(this._createCreditRow(credit));
+            }
+
+            this._syncRedeemNextButton();
+        }
+
+        private _addRow(row: Gtk.Widget) {
+            this._group.add(row);
+            this._rows.push(row);
+        }
+
+        private _removeRows() {
+            for (const row of this._rows) {
+                this._group.remove(row);
+            }
+
+            this._rows = [];
+        }
+
+        private _createCreditRow(credit: CodexBankedResetCredit) {
+            const row = new Adw.ActionRow({
+                title: credit.title || "Codex rate limit reset",
+                subtitle: createCreditSubtitle(credit),
+            });
+            const redeeming = this._redeemingCreditId === credit.id;
+            const canRedeem = credit.status === "available" && !this._redeemingCreditId;
+            const button = new Gtk.Button({
+                label: redeeming ? "Redeeming…" : getCreditButtonLabel(credit),
+                sensitive: canRedeem,
+                valign: Gtk.Align.CENTER,
+            });
+
+            button.connect("clicked", () => {
+                void this._redeemCredit(credit);
+            });
+            row.add_suffix(button);
+            row.activatable_widget = button;
+
+            return row;
+        }
+
+        private _syncRedeemNextButton() {
+            const canRedeem = !this._loading &&
+                !this._redeemingNext &&
+                !this._redeemingCreditId &&
+                hasAvailableCredit(this._credits);
+
+            this._redeemNextButton.sensitive = canRedeem;
+            this._redeemNextButton.label = this._redeemingNext ? "Redeeming…" : "Redeem next";
+        }
+    },
+);
+
 export const AboutPage = GObject.registerClass(
     class AboutPage extends Adw.PreferencesPage {
         _init(metadata: Metadata, extensionPath: string) {
@@ -47,6 +241,56 @@ export const AboutPage = GObject.registerClass(
         }
     },
 );
+
+function getNoCodexCreditSnapshotMessage(): string {
+    return "No Codex credit snapshot is available yet. It will appear after the next successful panel refresh.";
+}
+
+function createCreditSubtitle(credit: CodexBankedResetCredit): string {
+    const lines = [];
+
+    if (credit.description) {
+        lines.push(credit.description);
+    }
+
+    lines.push(`Granted: ${formatCreditDate(credit.granted_at)}`);
+    lines.push(`Expires: ${formatCreditDate(credit.expires_at)}`);
+
+    if (credit.status !== "available") {
+        lines.push(`Status: ${credit.status}`);
+    }
+
+    return lines.join("\n");
+}
+
+function formatCreditDate(value?: string | null): string {
+    if (!value) return "Unknown";
+
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return "Unknown";
+
+    return date.toLocaleString();
+}
+
+function hasAvailableCredit(credits: CodexBankedResetCredit[]): boolean {
+    return credits.some((credit) => credit.status === "available");
+}
+
+function getCreditButtonLabel(credit: CodexBankedResetCredit): string {
+    return credit.status === "available" ? "Redeem" : credit.status;
+}
+
+function formatCodexPreferencesError(error: unknown): string {
+    if (isRefreshFailureError(error)) {
+        return error.message;
+    }
+
+    const message = error instanceof Error && error.message
+        ? error.message
+        : "Unknown Codex error";
+
+    return `Unable to load Codex credits: ${message}`;
+}
 
 function createTopPanelGroup(settings: Gio.Settings) {
     const group = new Adw.PreferencesGroup({

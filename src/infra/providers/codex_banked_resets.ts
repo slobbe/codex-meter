@@ -2,6 +2,11 @@ import GLib from "gi://GLib";
 
 import { fetchJson, JsonObject, UsageApiClientConfig } from "../api_client.js";
 import { RefreshFailureError } from "../../domain/refresh-failure.js";
+import {
+    readBankedResetSnapshot,
+    readBankedResetSnapshotSync,
+    writeBankedResetSnapshot,
+} from "../storage/banked-reset-snapshot.js";
 import { getCodexCredentials } from "./codex_auth.js";
 
 const CODEX_BANKED_RESETS_URL =
@@ -10,8 +15,14 @@ const CODEX_REDEEM_BANKED_RESET_URL = `${CODEX_BANKED_RESETS_URL}/consume`;
 
 export type CodexBankedResetCredit = {
     id: string;
+    reset_type?: string | null;
     status: string;
+    granted_at?: string | null;
     expires_at?: string | null;
+    profile_image_url?: string | null;
+    profile_user_id?: string | null;
+    title?: string | null;
+    description?: string | null;
 };
 
 export type CodexBankedResetListResponse = {
@@ -45,8 +56,23 @@ export async function listCodexBankedResets(): Promise<CodexBankedResetListRespo
     const response = await fetchJson(CODEX_BANKED_RESETS_URL, CODEX_BANKED_RESETS_API_CONFIG, {
         headers: createCodexBankedResetHeaders(credentials.accessToken, credentials.accountId),
     });
+    const listResponse = toListResponse(response as JsonObject);
 
-    return toListResponse(response as JsonObject);
+    try {
+        await writeBankedResetSnapshot(listResponse);
+    } catch (error) {
+        console.error("Unable to write Codex banked reset snapshot cache", error);
+    }
+
+    return listResponse;
+}
+
+export async function readCachedCodexBankedResets() {
+    return await readBankedResetSnapshot();
+}
+
+export function readCachedCodexBankedResetsSync() {
+    return readBankedResetSnapshotSync();
 }
 
 export async function redeemNextCodexBankedReset(): Promise<CodexBankedResetCredit> {
@@ -61,9 +87,13 @@ export async function redeemNextCodexBankedReset(): Promise<CodexBankedResetCred
         );
     }
 
-    await consumeCodexBankedReset(credit.id);
+    await redeemCodexBankedReset(credit.id);
 
     return credit;
+}
+
+export async function redeemCodexBankedReset(creditId: string): Promise<CodexRedeemBankedResetResponse> {
+    return await consumeCodexBankedReset(creditId);
 }
 
 async function consumeCodexBankedReset(creditId: string): Promise<CodexRedeemBankedResetResponse> {
@@ -125,12 +155,22 @@ function assertListResponseShape(response: JsonObject): void {
             throwUnexpected(`credits[${index}].status is missing or not a string`);
         }
 
-        if (
-            credit.expires_at !== undefined &&
-            credit.expires_at !== null &&
-            typeof credit.expires_at !== "string"
-        ) {
-            throwUnexpected(`credits[${index}].expires_at is not a string`);
+        for (const key of [
+            "reset_type",
+            "granted_at",
+            "expires_at",
+            "profile_image_url",
+            "profile_user_id",
+            "title",
+            "description",
+        ]) {
+            if (
+                credit[key] !== undefined &&
+                credit[key] !== null &&
+                typeof credit[key] !== "string"
+            ) {
+                throwUnexpected(`credits[${index}].${key} is not a string`);
+            }
         }
     }
 }
