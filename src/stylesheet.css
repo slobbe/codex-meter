@@ -191,7 +191,8 @@
     min-height: 2.1em;
 }
 
-.cx-footer-button {
+.cx-footer-button,
+.cx-reset-button {
     padding: 5px;
     margin: 0;
     border-radius: 999px;
@@ -199,11 +200,26 @@
     transition-duration: 150ms;
 }
 
+.cx-reset-button {
+    padding-left: 10px;
+    padding-right: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
 .cx-footer-button:hover,
-.cx-footer-button:focus {
+.cx-footer-button:focus,
+.cx-reset-button:hover,
+.cx-reset-button:focus {
     background-color: rgba(255, 255, 255, 0.08);
 }
 
-.cx-footer-button:active {
+.cx-reset-button:hover,
+.cx-reset-button:focus {
+    border-color: rgba(255, 255, 255, 0.34);
+}
+
+.cx-footer-button:active,
+.cx-reset-button:active {
     background-color: rgba(255, 255, 255, 0.16);
 }
