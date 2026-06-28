@@ -22,11 +22,15 @@
 - Show percentages as usage consumed or capacity left.
 - Choose between raw percentages or progress bars in the panel indicator.
 
+## Requirements
+
+- GNOME Shell 45+
+- Codex CLI logged in on the same machine
+
 ## Install
 
 > [!NOTE]
-> Requires the Codex CLI and an active login on the same machine.
-> The extension reads your local local auth credentials from `~/.codex/auth.json` to fetch usage data from `https://chatgpt.com/backend-api/wham/usage`.
+> The extension reads your local auth credentials from `~/.codex/auth.json`.
 
 1. Download the [latest release](https://github.com/slobbe/codex-meter/releases/latest) zip.
 2. Install and enable the extension with:
@@ -38,20 +42,14 @@ gnome-extensions enable codex-meter@slobbe.github.io
 
 If GNOME does not pick it up immediately, log out and back in.
 
-## Development / Build
+## Development
 
-For local development, run the following commands:
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local development, build, and test instructions.
 
-```sh
-make install
-gnome-extensions disable codex-meter@slobbe.github.io
-gnome-extensions enable codex-meter@slobbe.github.io
-```
+## Privacy
 
-You may need to log out and back in to see the changes.
+Codex Meter reads your local Codex auth file and only uses it to fetch usage and banked reset data from ChatGPT. It does not store or transmit credentials elsewhere.
 
-To build a release bundle locally:
+## License
 
-```sh
-make clean pack
-```
+[GPL-3.0-or-later](LICENSE)
