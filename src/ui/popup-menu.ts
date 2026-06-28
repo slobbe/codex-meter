@@ -23,10 +23,12 @@ export class CodexMeterPopupMenu {
     footerItem: any;
 
     private _onRefresh: () => void;
+    private _onRedeemBankedReset: () => void;
     private _onOpenPreferences: () => void;
 
-    constructor({ onRefresh, onOpenPreferences }) {
+    constructor({ onRefresh, onRedeemBankedReset, onOpenPreferences }) {
         this._onRefresh = onRefresh;
+        this._onRedeemBankedReset = onRedeemBankedReset;
         this._onOpenPreferences = onOpenPreferences;
 
         this.headerItem = this._createHeaderItem();
@@ -95,6 +97,18 @@ export class CodexMeterPopupMenu {
         this.trendItem.visible = !hasError && this.trendItem.visible;
         this.errorItem.message = message ?? "";
         this.errorItem.messageLabel.text = message ?? "";
+    }
+
+    setBankedResets({ count, visible, redeeming }) {
+        const canRedeem = !redeeming && count !== null && count > 0;
+
+        this.headerItem.redeemButton.visible = visible && count !== null;
+        this.headerItem.redeemButton.reactive = canRedeem;
+        this.headerItem.redeemButton.can_focus = canRedeem;
+        this.headerItem.redeemButton.opacity = canRedeem ? 255 : 150;
+        this.headerItem.redeemButtonLabel.text = redeeming
+            ? "Resetting…"
+            : `Reset limit (${count ?? 0})`;
     }
 
     private _createUsageItem(title) {
@@ -329,6 +343,23 @@ export class CodexMeterPopupMenu {
             style_class: "cx-header-row",
         });
 
+        const redeemButtonLabel = new St.Label({
+            text: "Reset limit (0)",
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+
+        const redeemButton = new St.Button({
+            child: redeemButtonLabel,
+            style_class: "cx-reset-button",
+            can_focus: true,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        redeemButton.connect("clicked", () => {
+            if (!redeemButton.reactive) return;
+
+            this._onRedeemBankedReset();
+        });
+
         const refreshButton = new St.Button({
             child: new St.Icon({
                 icon_name: "view-refresh-symbolic",
@@ -348,20 +379,25 @@ export class CodexMeterPopupMenu {
         const datetimeLabel = new St.Label({
             text: "--",
             x_expand: true,
+            x_align: Clutter.ActorAlign.END,
             y_align: Clutter.ActorAlign.CENTER,
             style_class: "cx-header-detail",
         });
 
+        topRow.add_child(redeemButton);
         topRow.add_child(datetimeLabel);
         topRow.add_child(refreshButton);
         box.add_child(topRow);
         item.add_child(box);
         item.datetimeLabel = datetimeLabel;
+        item.redeemButton = redeemButton;
+        item.redeemButtonLabel = redeemButtonLabel;
         item.refreshIcon = refreshIcon;
         item.refreshButton = refreshButton;
 
         return item;
     }
+
 
     private _createFooterItem() {
         const item = new PopupMenu.PopupBaseMenuItem({

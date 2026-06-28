@@ -1,23 +1,10 @@
 import { fetchProviderUsage, JsonObject, UsageApiClientConfig } from "../api_client.js";
 import { RefreshFailureError } from "../../domain/refresh-failure.js";
 import { UsageSnapshot } from "../../domain/usage.js";
-import { getLocalAccessToken, LocalTokenAuthConfig } from "./auth.js";
-import GLib from "gi://GLib";
+import { getCodexAccessToken } from "./codex_auth.js";
 import { UsageProvider, UsageProviderRefreshOptions } from "./types.js";
 
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
-
-type CodexAuth = {
-    auth_mode?: string;
-    OPENAI_API_KEY?: string | null;
-    tokens?: {
-        id_token?: string;
-        access_token?: string;
-        refresh_token?: string;
-        account_id?: string;
-    };
-    last_refresh?: string;
-};
 
 type CodexApiResponse = {
     user_id: string;
@@ -68,23 +55,6 @@ type CodexRateLimit = {
     secondary_window: CodexRateLimitWindow;
 };
 
-function getCodexAuthPath() {
-    return GLib.build_filenamev([GLib.get_home_dir(), ".codex", "auth.json"]);
-}
-
-const CODEX_AUTH_CONFIG: LocalTokenAuthConfig<CodexAuth> = {
-    providerName: "Codex",
-    authPath: getCodexAuthPath(),
-    loginCommand: "codex login",
-    parseAccessToken(auth) {
-        if (!auth.tokens || typeof auth.tokens !== "object") {
-            return null;
-        }
-
-        return auth.tokens.access_token ?? null;
-    },
-};
-
 const CODEX_API_CONFIG: UsageApiClientConfig = {
     providerName: "Codex",
     usageUrl: CODEX_USAGE_URL,
@@ -93,7 +63,7 @@ const CODEX_API_CONFIG: UsageApiClientConfig = {
         unexpectedResponseFormat: "Codex returned an unexpected response format.",
         networkUnavailable: "Codex usage could not be reached. Check your network and try again.",
         responseTooLarge: "Codex returned a response that is too large.",
-        unauthorized: "Codex authentication expired. Run `codex login` and try again.",
+        unauthorized: "Codex authentication expired. Please run `codex login` again.",
         refreshFailed: "Codex usage refresh failed. Try again later.",
         emptyResponse: "Codex returned an empty response.",
     },
@@ -103,7 +73,7 @@ export class CodexUsageProvider implements UsageProvider {
     readonly info = { id: "codex", displayName: "Codex" } as const;
 
     async refreshUsage(options: UsageProviderRefreshOptions = {}) {
-        const token = await getLocalAccessToken(CODEX_AUTH_CONFIG);
+        const token = await getCodexAccessToken();
         const apiResponse = await fetchProviderUsage(token, CODEX_API_CONFIG, {
             cancellable: options.cancellable ?? null,
         });

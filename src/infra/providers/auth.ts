@@ -35,7 +35,7 @@ export async function getLocalAccessToken<TAuth extends object>(
     return token.trim();
 }
 
-async function readLocalAuth<TAuth extends object>(
+export async function readLocalAuth<TAuth extends object>(
     path: string,
     config: LocalTokenAuthConfig<TAuth>,
 ): Promise<TAuth> {

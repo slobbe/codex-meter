@@ -4,6 +4,7 @@ import GLib from "gi://GLib";
 import GObject from "gi://GObject";
 import St from "gi://St";
 
+import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
 
 import { SettingsService } from "../app/settings.js";
@@ -11,6 +12,10 @@ import { Scheduler } from "../app/scheduler.js";
 import { UsageService } from "../app/usage.js";
 import { DEFAULT_PROVIDER_ID, getUsageProvider, type ProviderId } from "../infra/providers/index.js";
 import { isRefreshFailureError } from "../domain/refresh-failure.js";
+import {
+    listCodexBankedResets,
+    redeemNextCodexBankedReset,
+} from "../infra/providers/codex_banked_resets.js";
 import { CodexMeterPopupMenu } from "./popup-menu.js";
 import {
     calculateBarFillWidth,
@@ -45,6 +50,8 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._prediction = null;
         this._history = [];
         this._errorMessage = null;
+        this._bankedResetCount = null;
+        this._redeemingBankedReset = false;
         this._destroyed = false;
 
         this._panelBox = new St.BoxLayout({
@@ -144,6 +151,9 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             onRefresh: () => {
                 void this._refreshUsage({ manual: true });
             },
+            onRedeemBankedReset: () => {
+                void this._redeemBankedReset();
+            },
             onOpenPreferences: () => {
                 this.menu.close();
                 this._extension.openPreferences();
@@ -225,6 +235,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
                 this._prediction = null;
                 this._history = [];
                 this._errorMessage = null;
+                this._bankedResetCount = null;
                 void this._loadCachedSnapshot();
             }
 
@@ -278,6 +289,10 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             if (this._destroyed) return;
 
             this._snapshot = await this._usageService.refresh({ cancellable });
+
+            if (this._destroyed) return;
+
+            await this._refreshBankedResets();
 
             if (this._destroyed) return;
 
@@ -368,6 +383,61 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         }
     }
 
+    async _refreshBankedResets() {
+        if (this._providerId !== "codex") {
+            this._bankedResetCount = null;
+            return;
+        }
+
+        try {
+            const response = await listCodexBankedResets();
+
+            if (this._destroyed) return;
+
+            this._bankedResetCount = Math.max(0, response.available_count);
+        } catch (error) {
+            if (isCancellationError(error)) return;
+
+            console.warn("Unable to refresh Codex banked reset count", error);
+            this._bankedResetCount = null;
+        }
+    }
+
+    async _redeemBankedReset() {
+        if (this._destroyed || this._redeemingBankedReset) return;
+
+        if (this._providerId !== "codex") {
+            notify("Codex Meter", "Banked resets are only available for Codex usage.");
+            return;
+        }
+
+        if (this._bankedResetCount !== null && this._bankedResetCount <= 0) {
+            notify("Codex Meter", "No banked Codex resets are available to redeem.");
+            return;
+        }
+
+        this._redeemingBankedReset = true;
+        this._syncMenu();
+
+        try {
+            await redeemNextCodexBankedReset();
+
+            if (this._destroyed) return;
+
+            notify("Codex Meter", "Banked Codex reset redeemed.");
+            await this._refreshUsage({ manual: true });
+        } catch (error) {
+            if (this._destroyed && isCancellationError(error)) return;
+
+            notify("Codex Meter", formatBankedResetFailure(error));
+        } finally {
+            if (this._destroyed) return;
+
+            this._redeemingBankedReset = false;
+            this._syncMenu();
+        }
+    }
+
     _startRefreshSpin() {
         if (!this._headerItem?.refreshIcon || this._refreshSpinId) return;
 
@@ -453,6 +523,11 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._setUsageItem(this._primaryItem, viewModel.primary);
         this._setUsageItem(this._secondaryItem, viewModel.secondary);
         this._popupMenu.setTrend(viewModel.trend);
+        this._popupMenu.setBankedResets({
+            count: this._bankedResetCount,
+            visible: this._providerId === "codex",
+            redeeming: this._redeemingBankedReset,
+        });
         this._footerItem.planLabel.text = viewModel.plan;
     }
 
@@ -512,6 +587,23 @@ function formatRefreshFailure(error: unknown): string {
             : "Unknown refresh failure";
 
     return `Codex usage refresh failed.\n\nDetails: ${message}`;
+}
+
+function formatBankedResetFailure(error: unknown): string {
+    if (isRefreshFailureError(error)) {
+        return error.message;
+    }
+
+    const message =
+        error instanceof Error && error.message
+            ? error.message
+            : "Unknown banked reset failure";
+
+    return `Banked Codex reset redemption failed: ${message}`;
+}
+
+function notify(title: string, message: string): void {
+    (Main as any).notify(title, message);
 }
 
 function isCancellationError(error: unknown): boolean {
