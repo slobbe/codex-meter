@@ -14,6 +14,10 @@
   <img src="docs/assets/screens/popup.png" width="325" alt="Codex Meter popup preview">
 </p>
 
+<p align="center">
+    <img src="docs/assets/screens/preferences-codex.png" width="325" alt="Codex Meter preferences preview">
+</p>
+
 ## Features
 
 - Displays current 5-hour session and weekly Codex usage.
