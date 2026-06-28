@@ -267,13 +267,13 @@ export function createUsageTrendViewModel(
     history: HistoryEntry[] = [],
     nowSeconds = Date.now() / 1000,
 ): UsageTrendViewModel {
-    const quotaId = getPrimaryQuota(snapshot)?.id ?? "session";
+    const quotaId = getSecondaryQuota(snapshot)?.id ?? "weekly";
     const minTimestamp = nowSeconds - TREND_LOOKBACK_SECONDS;
     const samples = history
         .map((entry) => {
             const timestamp = new Date(entry.timestamp).getTime() / 1000;
             const quota = entry.quotas.find((item) => item.id === quotaId) ??
-                entry.quotas.find((item) => item.id === "session");
+                entry.quotas.find((item) => item.id === "weekly");
 
             return {
                 timestamp,

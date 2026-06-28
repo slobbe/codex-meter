@@ -15,11 +15,16 @@ function createSnapshot() {
                 label: "Session (5h)",
                 usedPercent: 10,
             },
+            {
+                id: "weekly",
+                label: "Week",
+                usedPercent: 10,
+            },
         ],
     };
 }
 
-function entry(secondsAgo, usedPercent, id = "session") {
+function entry(secondsAgo, usedPercent, id = "weekly") {
     return {
         timestamp: new Date((now - secondsAgo) * 1000).toISOString(),
         quotas: [{ id, usedPercent }],
@@ -44,7 +49,7 @@ test("hides usage trend when there is no positive usage delta", () => {
     assert.deepEqual(trend.bars, []);
 });
 
-test("shows positive session usage deltas as normalized activity bars", () => {
+test("shows positive weekly usage deltas as normalized activity bars", () => {
     const trend = createUsageTrendViewModel(
         createSnapshot(),
         [entry(30_000, 1), entry(15_000, 4), entry(3_600, 10)],
@@ -95,14 +100,21 @@ test("ignores usage outside the last seven days", () => {
     assert.deepEqual(trend.bars, []);
 });
 
-test("falls back to legacy session quota id", () => {
+test("uses the secondary quota id for usage trend", () => {
     const snapshot = {
         ...createSnapshot(),
-        quotas: [{ id: "primary", label: "Session (5h)", usedPercent: 10 }],
+        quotas: [
+            { id: "session", label: "Session (5h)", usedPercent: 10 },
+            { id: "week", label: "Week", usedPercent: 10 },
+        ],
     };
     const trend = createUsageTrendViewModel(
         snapshot,
-        [entry(600, 1), entry(300, 5)],
+        [
+            entry(600, 90, "session"),
+            entry(300, 1, "week"),
+            entry(60, 5, "week"),
+        ],
         now,
     );
 
