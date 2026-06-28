@@ -223,8 +223,8 @@ function createAboutHeaderGroup(metadata: Metadata, extensionPath: string) {
     const group = new Adw.PreferencesGroup();
     const box = new Gtk.Box({
         orientation: Gtk.Orientation.VERTICAL,
-        margin_top: 18,
-        margin_bottom: 12,
+        margin_top: 12,
+        margin_bottom: 8,
         halign: Gtk.Align.CENTER,
         valign: Gtk.Align.CENTER,
     });
@@ -234,9 +234,9 @@ function createAboutHeaderGroup(metadata: Metadata, extensionPath: string) {
             gicon: new Gio.FileIcon({
                 file: Gio.File.new_for_path(`${extensionPath}/assets/logo.png`),
             }),
-            pixel_size: 256,
+            pixel_size: 160,
             halign: Gtk.Align.CENTER,
-            margin_bottom: 12,
+            margin_bottom: 8,
         }),
     );
     box.append(
