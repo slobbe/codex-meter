@@ -108,7 +108,7 @@ export class CodexMeterPopupMenu {
         this.headerItem.redeemButton.opacity = canRedeem ? 255 : 150;
         this.headerItem.redeemButtonLabel.text = redeeming
             ? "Resetting…"
-            : `Reset limit (${count ?? 0})`;
+            : `Reset limits (${count ?? 0})`;
     }
 
     private _createUsageItem(title) {
