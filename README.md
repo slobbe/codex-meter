@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/screens/popup_used.png" width="325" alt="Codex Meter popup preview">
+  <img src="docs/assets/screens/popup.png" width="325" alt="Codex Meter popup preview">
 </p>
 
 ## Features
