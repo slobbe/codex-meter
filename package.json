@@ -1,6 +1,6 @@
 {
     "name": "codex-meter",
-    "version": "0.8.3",
+    "version": "0.8.4",
     "description": "Monitor and manage Codex usage limits",
     "type": "module",
     "private": true,
