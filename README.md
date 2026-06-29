@@ -19,18 +19,13 @@
 - Displays current 5-hour session and weekly Codex usage.
 - Shows a weekly usage trend and predicts whether limits will be hit before reset.
 - Shows and redeems available banked resets.
-- Show percentages as usage consumed or capacity left.
-- Choose between raw percentages or progress bars in the panel indicator.
 
 ## Requirements
 
+- [Codex CLI](https://developers.openai.com/codex/cli) logged in on the same machine
 - GNOME Shell 45+
-- Codex CLI logged in on the same machine
 
 ## Install
-
-> [!NOTE]
-> The extension reads your local auth credentials from `~/.codex/auth.json`.
 
 1. Download the [latest release](https://github.com/slobbe/codex-meter/releases/latest) zip.
 2. Install and enable the extension with:
@@ -42,13 +37,9 @@ gnome-extensions enable codex-meter@slobbe.github.io
 
 If GNOME does not pick it up immediately, log out and back in.
 
-## Development
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for local development, build, and test instructions.
-
 ## Privacy
 
-Codex Meter reads your local Codex auth file and only uses it to fetch usage and banked reset data from ChatGPT. It does not store or transmit credentials elsewhere.
+Codex Meter reads your local Codex auth credentials from `~/.codex/auth.json` and uses it to fetch usage and banked reset data from ChatGPT. It does not store or transmit credentials elsewhere.
 
 ## License
 
