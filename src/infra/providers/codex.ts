@@ -2,7 +2,7 @@ import { fetchProviderUsage, JsonObject, UsageApiClientConfig } from "../api_cli
 import { RefreshFailureError } from "../../domain/refresh-failure.js";
 import { UsageSnapshot } from "../../domain/usage.js";
 import { getCodexAccessToken } from "./codex_auth.js";
-import { UsageProvider, UsageProviderRefreshOptions } from "./types.js";
+import type { UsageProvider, UsageProviderRefreshOptions } from "./types.js";
 
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 

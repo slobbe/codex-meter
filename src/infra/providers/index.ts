@@ -1,5 +1,5 @@
 import { CodexUsageProvider } from "./codex.js";
-import { ProviderId, UsageProvider } from "./types.js";
+import type { ProviderId, UsageProvider } from "./types.js";
 
 export const DEFAULT_PROVIDER_ID: ProviderId = "codex";
 

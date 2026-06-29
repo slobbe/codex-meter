@@ -3,7 +3,7 @@ import GLib from "gi://GLib";
 import { UsageSnapshot } from "../../domain/usage.js";
 import { CACHE_DIR } from "../config.js";
 import { readJsonFile, writeJsonFile } from "../filesystem.js";
-import { ProviderId } from "../providers/types.js";
+import type { ProviderId } from "../providers/types.js";
 
 function getSnapshotPath(providerId: ProviderId) {
     return GLib.build_filenamev([CACHE_DIR, providerId, "snapshot.json"]);

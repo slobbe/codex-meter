@@ -34,17 +34,6 @@ export async function readBankedResetSnapshot(): Promise<BankedResetSnapshot | n
     }
 }
 
-export function readBankedResetSnapshotSync(): BankedResetSnapshot | null {
-    try {
-        const [, contents] = GLib.file_get_contents(getBankedResetSnapshotPath());
-        const raw = JSON.parse(new TextDecoder("utf-8").decode(contents));
-
-        return toBankedResetSnapshot(raw);
-    } catch {
-        return null;
-    }
-}
-
 function toBankedResetSnapshot(value: unknown): BankedResetSnapshot | null {
     if (!isBankedResetSnapshot(value)) {
         return null;

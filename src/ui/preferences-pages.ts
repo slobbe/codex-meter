@@ -18,8 +18,8 @@ import {
 import { isRefreshFailureError } from "../domain/refresh-failure.js";
 import {
     type CodexBankedResetCredit,
+    type CodexBankedResetListResponse,
     listCodexBankedResets,
-    readCachedCodexBankedResetsSync,
     redeemCodexBankedReset,
 } from "../infra/providers/codex_banked_resets.js";
 
@@ -50,9 +50,9 @@ export const CodexPage = GObject.registerClass(
         private _loading: boolean;
         private _redeemingCreditId: string | null;
 
-        _init() {
+        _init(snapshot: CodexBankedResetListResponse | null = null) {
             this._rows = [];
-            this._credits = [];
+            this._credits = snapshot?.credits ?? [];
             this._loading = false;
             this._redeemingCreditId = null;
 
@@ -66,25 +66,10 @@ export const CodexPage = GObject.registerClass(
                 description: "Available: 0",
             });
 
-            this._statusRow = new Adw.ActionRow({
-                title: getNoCodexCreditSnapshotMessage(),
-            });
+            this._statusRow = new Adw.ActionRow();
             this._addRow(this._statusRow);
             this.add(this._group);
-
-            this._loadCachedCredits();
-        }
-
-        private _loadCachedCredits() {
-            const snapshot = readCachedCodexBankedResetsSync();
-
-            if (!snapshot) {
-                this._render({ status: getNoCodexCreditSnapshotMessage() });
-                return;
-            }
-
-            this._credits = snapshot.credits;
-            this._render();
+            this._render(snapshot ? undefined : { status: getNoCodexCreditSnapshotMessage() });
         }
 
         private async _loadCredits() {

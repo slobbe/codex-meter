@@ -1,6 +1,6 @@
 import Gio from "gi://Gio";
 
-import { UsageSnapshot } from "../../domain/usage.js";
+import type { UsageSnapshot } from "../../domain/usage.js";
 
 export type ProviderId = "codex";
 

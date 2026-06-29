@@ -3,7 +3,7 @@ import GLib from "gi://GLib";
 import { HistoryEntry, HistoryQuotaEntry } from "../../domain/usage.js";
 import { STATE_DIR } from "../config.js";
 import { appendFile, readTextFile, writeTextFile } from "../filesystem.js";
-import { ProviderId } from "../providers/types.js";
+import type { ProviderId } from "../providers/types.js";
 
 const MAX_HISTORY_ENTRIES = 25_000;
 const MAX_HISTORY_AGE_SECONDS = 21 * 24 * 60 * 60;

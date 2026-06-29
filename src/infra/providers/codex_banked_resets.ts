@@ -4,7 +4,6 @@ import { fetchJson, JsonObject, UsageApiClientConfig } from "../api_client.js";
 import { RefreshFailureError } from "../../domain/refresh-failure.js";
 import {
     readBankedResetSnapshot,
-    readBankedResetSnapshotSync,
     writeBankedResetSnapshot,
 } from "../storage/banked-reset-snapshot.js";
 import { getCodexCredentials } from "./codex_auth.js";
@@ -69,10 +68,6 @@ export async function listCodexBankedResets(): Promise<CodexBankedResetListRespo
 
 export async function readCachedCodexBankedResets() {
     return await readBankedResetSnapshot();
-}
-
-export function readCachedCodexBankedResetsSync() {
-    return readBankedResetSnapshotSync();
 }
 
 export async function redeemNextCodexBankedReset(): Promise<CodexBankedResetCredit> {
