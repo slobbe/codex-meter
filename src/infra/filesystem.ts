@@ -16,16 +16,7 @@ function ensureParentDir(path: string) {
     GLib.chmod(dir, PRIVATE_DIR_MODE);
 }
 
-
-export async function readTextFile(path: string): Promise<string> {
-    return readFile(path);
-}
-
-export async function writeTextFile(path: string, text: string): Promise<void> {
-    return writeFile(path, text);
-}
-
-async function readFile(path: string): Promise<string> {
+export async function readFile(path: string): Promise<string> {
     try {
         const file = Gio.File.new_for_path(path);
         const [contents] = await file.load_contents_async(null);
@@ -38,7 +29,7 @@ async function readFile(path: string): Promise<string> {
     }
 }
 
-async function writeFile(path: string, text: string): Promise<void> {
+export async function writeFile(path: string, text: string): Promise<void> {
     try {
         ensureParentDir(path);
 
@@ -82,7 +73,6 @@ export async function appendFile(path: string, line: string): Promise<void> {
         );
     }
 }
-
 
 // JSON
 export async function readJsonFile<T = unknown>(path: string): Promise<T> {

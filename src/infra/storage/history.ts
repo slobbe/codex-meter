@@ -2,7 +2,7 @@ import GLib from "gi://GLib";
 
 import { HistoryEntry, HistoryQuotaEntry } from "../../domain/usage.js";
 import { STATE_DIR } from "../config.js";
-import { appendFile, readTextFile, writeTextFile } from "../filesystem.js";
+import { appendFile, readFile, writeFile } from "../filesystem.js";
 import type { ProviderId } from "../providers/types.js";
 
 const MAX_HISTORY_ENTRIES = 25_000;
@@ -20,7 +20,7 @@ export async function readHistoryFromPath(path: string): Promise<HistoryEntry[]>
     if (!fileExists(path)) return [];
 
     try {
-        return normalizeHistoryEntries(parseJsonlHistory(await readTextFile(path)));
+        return normalizeHistoryEntries(parseJsonlHistory(await readFile(path)));
     } catch (error) {
         console.error("Unable to read usage history", error);
         return [];
@@ -153,7 +153,7 @@ function isValidTimestamp(value: string): boolean {
 }
 
 async function rewriteHistory(path: string, rows: HistoryEntry[]): Promise<void> {
-    await writeTextFile(
+    await writeFile(
         path,
         rows.map((row) => JSON.stringify(row)).join("\n") + (rows.length ? "\n" : ""),
     );
