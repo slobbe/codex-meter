@@ -39,7 +39,9 @@ If GNOME does not pick it up immediately, log out and back in.
 
 ## Privacy
 
-Codex Meter reads your local Codex auth credentials from `~/.codex/auth.json` and uses it to fetch usage and banked reset data from ChatGPT. It does not store or transmit credentials elsewhere.
+Codex Meter reads your local Codex auth credentials from `~/.codex/auth.json` and uses them to fetch usage and banked reset data from ChatGPT. It does not store those credentials or transmit them anywhere else.
+
+The extension stores non-credential usage data locally so the panel can show cached state, trends, and banked reset information while refreshing. It writes the latest usage and banked-reset snapshots in the user cache directory, typically `~/.cache/codex-meter`, and usage history in the user state directory, typically `~/.local/state/codex-meter`. Usage history is pruned to roughly the last 21 days and at most 25,000 entries. These files are written with private file permissions where supported by the platform.
 
 ## License
 

@@ -10,7 +10,7 @@ Planned against commit `d5233e7` (`Fix native append byte writes`). The working 
 |---|---|---|---|---|---|
 | [001](001-cancellable-banked-reset-requests.md) | Make banked-reset requests cancellable during extension teardown | P1 | M | — | DONE |
 | [002](002-sanitize-ui-error-details.md) | Stop showing raw technical error details in user-facing UI | P1 | S | — | DONE |
-| [003](003-document-local-storage-privacy.md) | Document local usage, history, and banked-reset storage in the privacy section | P1 | S | — | TODO |
+| [003](003-document-local-storage-privacy.md) | Document local usage, history, and banked-reset storage in the privacy section | P1 | S | — | DONE |
 | [004](004-minimize-banked-reset-cache-metadata.md) | Minimize persisted banked-reset metadata | P2 | S | 003 recommended | TODO |
 | [005](005-add-codex-api-auth-characterization-tests.md) | Add characterization tests for Codex API, auth, and banked-reset parsing | P2 | M | — | TODO |
 
