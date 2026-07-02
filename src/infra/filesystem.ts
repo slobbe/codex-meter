@@ -4,7 +4,7 @@ import GLib from "gi://GLib";
 Gio._promisify(Gio.File.prototype, "load_contents_async");
 Gio._promisify(Gio.File.prototype, "replace_contents_async");
 Gio._promisify(Gio.File.prototype, "append_to_async");
-Gio._promisify(Gio.OutputStream.prototype, "write_all_async");
+Gio._promisify(Gio.OutputStream.prototype, "write_bytes_async");
 Gio._promisify(Gio.OutputStream.prototype, "close_async");
 
 const PRIVATE_DIR_MODE = 0o700;
@@ -57,14 +57,14 @@ export async function appendFile(path: string, line: string): Promise<void> {
 
         const file = Gio.File.new_for_path(path);
         const text = line.endsWith("\n") ? line : `${line}\n`;
-        const bytes = new TextEncoder().encode(text);
+        const bytes = new GLib.Bytes(new TextEncoder().encode(text));
 
         const stream = await file.append_to_async(
             Gio.FileCreateFlags.NONE,
             GLib.PRIORITY_DEFAULT,
             null,
         );
-        await stream.write_all_async(bytes, GLib.PRIORITY_DEFAULT, null);
+        await stream.write_bytes_async(bytes, GLib.PRIORITY_DEFAULT, null);
         await stream.close_async(GLib.PRIORITY_DEFAULT, null);
         GLib.chmod(path, PRIVATE_FILE_MODE);
     } catch (error) {

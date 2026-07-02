@@ -80,6 +80,16 @@ async function testAppendWritesJsonl() {
         const lines = (await readText(path)).trim().split(/\r?\n/);
 
         assertEqual(lines.length, 2, "history append should write one JSON object per line");
+
+        for (const [index, line] of lines.entries()) {
+            assertEqual(
+                line.startsWith("{\"timestamp\":"),
+                true,
+                `history line ${index + 1} should start with a JSON object`,
+            );
+            JSON.parse(line);
+        }
+
         assertDeepEqual(JSON.parse(lines[0]), {
             timestamp: firstTimestamp,
             quotas: [
@@ -95,6 +105,13 @@ async function testAppendWritesJsonl() {
                 { id: "weekly", usedPercent: 54 },
             ],
         }, "history row should preserve richer quota fields");
+        assertDeepEqual(JSON.parse(lines[1]), {
+            timestamp: secondTimestamp,
+            quotas: [
+                { id: "session", usedPercent: 15, used: 150 },
+                { id: "weekly", usedPercent: 55 },
+            ],
+        }, "appended history row should be valid JSON text");
     } finally {
         removeFile(path);
     }
