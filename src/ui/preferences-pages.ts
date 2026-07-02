@@ -63,7 +63,6 @@ export const CodexPage = GObject.registerClass(
 
             this._group = new Adw.PreferencesGroup({
                 title: "Banked resets",
-                description: "Available: 0",
             });
 
             this._statusRow = new Adw.ActionRow();
@@ -110,7 +109,6 @@ export const CodexPage = GObject.registerClass(
         }
 
         private _render({ status }: { status?: string } = {}) {
-            this._group.description = `Available: ${getAvailableCreditCount(this._credits)}`;
             this._removeRows();
 
             if (status) {
@@ -214,10 +212,6 @@ function formatCreditDate(value?: string | null): string {
     const minutes = String(date.getMinutes()).padStart(2, "0");
 
     return `${year}-${month}-${day}, ${hours}:${minutes}`;
-}
-
-function getAvailableCreditCount(credits: CodexBankedResetCredit[]): number {
-    return credits.filter((credit) => credit.status === "available").length;
 }
 
 function getCreditButtonLabel(credit: CodexBankedResetCredit): string {
