@@ -25,7 +25,6 @@ import {
 
 
 type Metadata = Record<string, any>;
-type ShellVersions = unknown;
 
 export const DisplayPage = GObject.registerClass(
     class DisplayPage extends Adw.PreferencesPage {
@@ -581,11 +580,6 @@ function escapeMarkup(text: unknown) {
         .replace(/>/g, "&gt;");
 }
 
-function formatShellVersions(versions: ShellVersions) {
-    if (!Array.isArray(versions) || versions.length === 0) return "--";
-
-    return versions.join(", ");
-}
 
 
 
