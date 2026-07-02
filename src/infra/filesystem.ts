@@ -3,6 +3,9 @@ import GLib from "gi://GLib";
 
 Gio._promisify(Gio.File.prototype, "load_contents_async");
 Gio._promisify(Gio.File.prototype, "replace_contents_async");
+Gio._promisify(Gio.File.prototype, "append_to_async");
+Gio._promisify(Gio.OutputStream.prototype, "write_all_async");
+Gio._promisify(Gio.OutputStream.prototype, "close_async");
 
 const PRIVATE_DIR_MODE = 0o700;
 const PRIVATE_FILE_MODE = 0o600;
@@ -13,9 +16,6 @@ function ensureParentDir(path: string) {
     GLib.chmod(dir, PRIVATE_DIR_MODE);
 }
 
-function fileExists(path: string): boolean {
-    return GLib.file_test(path, GLib.FileTest.EXISTS);
-}
 
 export async function readTextFile(path: string): Promise<string> {
     return readFile(path);
@@ -64,10 +64,18 @@ export async function appendFile(path: string, line: string): Promise<void> {
     try {
         ensureParentDir(path);
 
-        const existingText = fileExists(path) ? await readFile(path) : "";
+        const file = Gio.File.new_for_path(path);
         const text = line.endsWith("\n") ? line : `${line}\n`;
+        const bytes = new TextEncoder().encode(text);
 
-        await writeFile(path, `${existingText}${text}`);
+        const stream = await file.append_to_async(
+            Gio.FileCreateFlags.NONE,
+            GLib.PRIORITY_DEFAULT,
+            null,
+        );
+        await stream.write_all_async(bytes, GLib.PRIORITY_DEFAULT, null);
+        await stream.close_async(GLib.PRIORITY_DEFAULT, null);
+        GLib.chmod(path, PRIVATE_FILE_MODE);
     } catch (error) {
         throw new Error(
             `Failed to append file "${path}": ${error instanceof Error ? error.message : String(error)}`,
