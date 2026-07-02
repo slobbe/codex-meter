@@ -17,6 +17,7 @@ import {
     redeemNextCodexBankedReset,
 } from "../infra/providers/codex_banked_resets.js";
 import { CodexMeterPopupMenu } from "./popup-menu.js";
+import { formatRefreshFailure } from "./refresh-error-message.js";
 import {
     calculateBarFillWidth,
     createMenuViewModel,
@@ -589,19 +590,6 @@ function createUsageService(providerId: ProviderId): UsageService {
         );
         return new UsageService(getUsageProvider(DEFAULT_PROVIDER_ID));
     }
-}
-
-function formatRefreshFailure(error: unknown): string {
-    if (isRefreshFailureError(error)) {
-        return `${error.message}\n\nDetails: ${error.technicalMessage}`;
-    }
-
-    const message =
-        error instanceof Error && error.message
-            ? error.message
-            : "Unknown refresh failure";
-
-    return `Codex usage refresh failed.\n\nDetails: ${message}`;
 }
 
 function formatBankedResetFailure(error: unknown): string {
