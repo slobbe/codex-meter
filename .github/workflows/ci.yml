@@ -29,7 +29,6 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          # Shexli currently crashes under Python 3.14 on GitHub-hosted runners.
           python-version: "3.13"
 
       - name: Install validation dependencies
@@ -40,7 +39,8 @@ jobs:
           sudo apt-get install -y gjs jq libglib2.0-bin unzip zip
 
           python -m pip install --upgrade pip
-          pip install -U shexli
+          # shexli 0.2.1 currently segfaults with tree-sitter 0.26.0.
+          pip install -U shexli "tree-sitter==0.25.2"
 
       - name: Install Node.js dependencies
         run: npm ci
