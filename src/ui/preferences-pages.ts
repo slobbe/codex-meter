@@ -144,9 +144,32 @@ export const CodexPage = GObject.registerClass(
         }
 
         private _createCreditRow(credit: CodexBankedResetCredit) {
-            const row = new Adw.ActionRow({
-                title: credit.title || "Codex rate limit reset",
-                subtitle: createCreditSubtitle(credit),
+            const row = new Adw.PreferencesRow();
+            const box = new Gtk.Box({
+                orientation: Gtk.Orientation.VERTICAL,
+                spacing: 6,
+                margin_top: 12,
+                margin_bottom: 12,
+                margin_start: 12,
+                margin_end: 12,
+            });
+            const titleRow = new Gtk.Box({
+                orientation: Gtk.Orientation.HORIZONTAL,
+                spacing: 12,
+            });
+            const title = new Gtk.Label({
+                label: createCreditTitle(credit),
+                xalign: 0,
+                wrap: true,
+                hexpand: true,
+                halign: Gtk.Align.FILL,
+            });
+            const description = new Gtk.Label({
+                label: credit.description ?? "",
+                xalign: 0,
+                wrap: true,
+                hexpand: true,
+                halign: Gtk.Align.FILL,
             });
             const redeeming = this._redeemingCreditId === credit.id;
             const canRedeem = credit.status === "available" && !this._redeemingCreditId;
@@ -154,13 +177,40 @@ export const CodexPage = GObject.registerClass(
                 label: redeeming ? "Redeeming…" : getCreditButtonLabel(credit),
                 sensitive: canRedeem,
                 valign: Gtk.Align.CENTER,
+                halign: Gtk.Align.END,
+            });
+            const dates = new Gtk.Box({
+                orientation: Gtk.Orientation.HORIZONTAL,
+                spacing: 12,
+            });
+            const granted = new Gtk.Label({
+                label: `Granted ${formatCreditDate(credit.granted_at)}`,
+                xalign: 0,
+                hexpand: true,
+                halign: Gtk.Align.FILL,
+            });
+            const expires = new Gtk.Label({
+                label: `Expires ${formatCreditDate(credit.expires_at)}`,
+                xalign: 1,
+                halign: Gtk.Align.END,
             });
 
+            title.add_css_class("heading");
+            description.add_css_class("dim-label");
+            granted.add_css_class("dim-label");
+            expires.add_css_class("dim-label");
             button.connect("clicked", () => {
                 void this._redeemCredit(credit);
             });
-            row.add_suffix(button);
-            row.activatable_widget = button;
+
+            titleRow.append(title);
+            titleRow.append(button);
+            dates.append(granted);
+            dates.append(expires);
+            box.append(titleRow);
+            box.append(description);
+            box.append(dates);
+            row.set_child(box);
 
             return row;
         }
@@ -186,17 +236,10 @@ function getNoCodexCreditSnapshotMessage(): string {
     return "No Codex credit snapshot is available yet. It will appear after the next successful panel refresh.";
 }
 
-function createCreditSubtitle(credit: CodexBankedResetCredit): string {
-    const lines = [
-        credit.description ?? "",
-        `Granted: ${formatCreditDate(credit.granted_at)} · Expires: ${formatCreditDate(credit.expires_at)}`,
-    ];
+function createCreditTitle(credit: CodexBankedResetCredit): string {
+    const title = credit.title || "Codex rate limit reset";
 
-    if (credit.status !== "available") {
-        lines.push(`Status: ${credit.status}`);
-    }
-
-    return lines.join("\n");
+    return credit.profile_user_id ? `${title} from ${credit.profile_user_id}` : title;
 }
 
 function formatCreditDate(value?: string | null): string {
