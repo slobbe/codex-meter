@@ -1,3 +1,4 @@
+import Gio from "gi://Gio";
 import GLib from "gi://GLib";
 
 import { fetchJson, JsonObject, UsageApiClientConfig } from "../api_client.js";
@@ -36,6 +37,10 @@ export type CodexRedeemBankedResetRequest = {
 
 export type CodexRedeemBankedResetResponse = JsonObject;
 
+export type CodexBankedResetRequestOptions = {
+    cancellable?: Gio.Cancellable | null;
+};
+
 const CODEX_BANKED_RESETS_API_CONFIG: UsageApiClientConfig = {
     providerName: "Codex",
     usageUrl: CODEX_BANKED_RESETS_URL,
@@ -50,10 +55,13 @@ const CODEX_BANKED_RESETS_API_CONFIG: UsageApiClientConfig = {
     },
 };
 
-export async function listCodexBankedResets(): Promise<CodexBankedResetListResponse> {
+export async function listCodexBankedResets(
+    options: CodexBankedResetRequestOptions = {},
+): Promise<CodexBankedResetListResponse> {
     const credentials = await getCodexCredentials();
     const response = await fetchJson(CODEX_BANKED_RESETS_URL, CODEX_BANKED_RESETS_API_CONFIG, {
         headers: createCodexBankedResetHeaders(credentials.accessToken, credentials.accountId),
+        cancellable: options.cancellable ?? null,
     });
     const listResponse = toListResponse(response as JsonObject);
 
@@ -70,8 +78,10 @@ export async function readCachedCodexBankedResets() {
     return await readBankedResetSnapshot();
 }
 
-export async function redeemNextCodexBankedReset(): Promise<CodexBankedResetCredit> {
-    const list = await listCodexBankedResets();
+export async function redeemNextCodexBankedReset(
+    options: CodexBankedResetRequestOptions = {},
+): Promise<CodexBankedResetCredit> {
+    const list = await listCodexBankedResets(options);
     const credit = selectCreditToRedeem(list.credits);
 
     if (!credit) {
@@ -82,13 +92,16 @@ export async function redeemNextCodexBankedReset(): Promise<CodexBankedResetCred
         );
     }
 
-    await redeemCodexBankedReset(credit.id);
+    await redeemCodexBankedReset(credit.id, options);
 
     return credit;
 }
 
-export async function redeemCodexBankedReset(creditId: string): Promise<CodexRedeemBankedResetResponse> {
-    const response = await consumeCodexBankedReset(creditId);
+export async function redeemCodexBankedReset(
+    creditId: string,
+    options: CodexBankedResetRequestOptions = {},
+): Promise<CodexRedeemBankedResetResponse> {
+    const response = await consumeCodexBankedReset(creditId, options);
 
     try {
         await markCachedBankedResetRedeemed(creditId);
@@ -119,7 +132,10 @@ async function markCachedBankedResetRedeemed(creditId: string): Promise<void> {
     });
 }
 
-async function consumeCodexBankedReset(creditId: string): Promise<CodexRedeemBankedResetResponse> {
+async function consumeCodexBankedReset(
+    creditId: string,
+    options: CodexBankedResetRequestOptions = {},
+): Promise<CodexRedeemBankedResetResponse> {
     const credentials = await getCodexCredentials();
     const request: CodexRedeemBankedResetRequest = {
         credit_id: creditId,
@@ -134,6 +150,7 @@ async function consumeCodexBankedReset(creditId: string): Promise<CodexRedeemBan
         },
         body: JSON.stringify(request),
         bodyContentType: "application/json",
+        cancellable: options.cancellable ?? null,
     }) as JsonObject;
 }
 

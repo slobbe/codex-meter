@@ -52,6 +52,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._errorMessage = null;
         this._bankedResetCount = null;
         this._redeemingBankedReset = false;
+        this._redeemBankedResetCancellable = null;
         this._destroyed = false;
 
         this._panelBox = new St.BoxLayout({
@@ -117,6 +118,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._destroyed = true;
         this._scheduler.stop();
         this._cancelRefresh();
+        this._cancelBankedResetRedemption();
 
         if (this._refreshSpinId) {
             GLib.source_remove(this._refreshSpinId);
@@ -284,6 +286,13 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._refreshCancellable = null;
     }
 
+    _cancelBankedResetRedemption() {
+        if (!this._redeemBankedResetCancellable) return;
+
+        this._redeemBankedResetCancellable.cancel();
+        this._redeemBankedResetCancellable = null;
+    }
+
     async _refreshUsageOnce(cancellable) {
         try {
             if (this._destroyed) return;
@@ -292,7 +301,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
 
             if (this._destroyed) return;
 
-            await this._refreshBankedResets();
+            await this._refreshBankedResets(cancellable);
 
             if (this._destroyed) return;
 
@@ -383,14 +392,14 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         }
     }
 
-    async _refreshBankedResets() {
+    async _refreshBankedResets(cancellable = null) {
         if (this._providerId !== "codex") {
             this._bankedResetCount = null;
             return;
         }
 
         try {
-            const response = await listCodexBankedResets();
+            const response = await listCodexBankedResets({ cancellable });
 
             if (this._destroyed) return;
 
@@ -416,11 +425,13 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             return;
         }
 
+        const cancellable = new Gio.Cancellable();
         this._redeemingBankedReset = true;
+        this._redeemBankedResetCancellable = cancellable;
         this._syncMenu();
 
         try {
-            await redeemNextCodexBankedReset();
+            await redeemNextCodexBankedReset({ cancellable });
 
             if (this._destroyed) return;
 
@@ -431,6 +442,10 @@ export class CodexMeterIndicator extends PanelMenu.Button {
 
             notify("Codex Meter", formatBankedResetFailure(error));
         } finally {
+            if (this._redeemBankedResetCancellable === cancellable) {
+                this._redeemBankedResetCancellable = null;
+            }
+
             if (this._destroyed) return;
 
             this._redeemingBankedReset = false;
