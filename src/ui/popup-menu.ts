@@ -187,20 +187,21 @@ export class CodexMeterPopupMenu {
             x_expand: true,
             style_class: "cx-usage-detail",
         });
-        const resetLabel = new St.Label({
-            text: "resets in --",
-            x_expand: true,
-            y_align: Clutter.ActorAlign.CENTER,
-            style_class: "cx-usage-detail-muted",
-        });
         const predictionLabel = new St.Label({
             text: "",
+            x_expand: true,
+            x_align: Clutter.ActorAlign.START,
             y_align: Clutter.ActorAlign.CENTER,
             style_class: "cx-usage-prediction",
         });
+        const resetLabel = new St.Label({
+            text: "resets in --",
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: "cx-usage-detail-muted",
+        });
 
-        detailBox.add_child(resetLabel);
         detailBox.add_child(predictionLabel);
+        detailBox.add_child(resetLabel);
 
         headingBox.add_child(titleLabel);
         headingBox.add_child(valueLabel);
