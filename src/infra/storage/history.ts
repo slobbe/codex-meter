@@ -5,7 +5,7 @@ import { STATE_DIR } from "../config.js";
 import { appendFile, readFile, writeFile } from "../filesystem.js";
 import type { ProviderId } from "../providers/types.js";
 
-const MAX_HISTORY_ENTRIES = 25_000;
+export const MAX_HISTORY_ENTRIES = 25_000;
 const MAX_HISTORY_AGE_SECONDS = 21 * 24 * 60 * 60;
 
 function getHistoryPath(providerId: ProviderId) {
@@ -36,6 +36,27 @@ export async function appendHistory(
     return appendHistoryToPath(getHistoryPath(providerId), row);
 }
 
+export async function appendHistoryRow(
+    providerId: ProviderId,
+    row: HistoryEntry,
+): Promise<void> {
+    return appendHistoryRowToPath(getHistoryPath(providerId), row);
+}
+
+export async function appendHistoryRowToPath(
+    path: string,
+    row: HistoryEntry,
+): Promise<void> {
+    await appendFile(path, JSON.stringify(row));
+}
+
+export async function rewriteHistory(
+    providerId: ProviderId,
+    rows: HistoryEntry[],
+): Promise<void> {
+    await rewriteHistoryToPath(getHistoryPath(providerId), normalizeHistoryEntries(rows));
+}
+
 export async function appendHistoryToPath(
     path: string,
     row: HistoryEntry,
@@ -54,7 +75,7 @@ export async function appendHistoryToPath(
         : normalizedRows;
 
     if (!fileExists(path) && nextRows.length > 0) {
-        await rewriteHistory(path, nextRows);
+        await rewriteHistoryToPath(path, nextRows);
         return;
     }
 
@@ -63,7 +84,7 @@ export async function appendHistoryToPath(
     await appendFile(path, JSON.stringify(normalizedRow));
 
     if (nextRows.length !== normalizedRows.length + 1) {
-        await rewriteHistory(path, nextRows);
+        await rewriteHistoryToPath(path, nextRows);
     }
 }
 
@@ -87,7 +108,7 @@ function parseJsonlHistory(text: string): HistoryEntry[] {
         .filter((row): row is HistoryEntry => row !== null);
 }
 
-function normalizeHistoryEntries(rows: HistoryEntry[]): HistoryEntry[] {
+export function normalizeHistoryEntries(rows: HistoryEntry[]): HistoryEntry[] {
     const minTimestamp = Date.now() - (MAX_HISTORY_AGE_SECONDS * 1000);
 
     return rows
@@ -98,7 +119,7 @@ function normalizeHistoryEntries(rows: HistoryEntry[]): HistoryEntry[] {
         .slice(-MAX_HISTORY_ENTRIES);
 }
 
-function normalizeHistoryEntry(row: HistoryEntry): HistoryEntry | null {
+export function normalizeHistoryEntry(row: HistoryEntry): HistoryEntry | null {
     if (!row || !isValidTimestamp(row.timestamp) || !Array.isArray(row.quotas)) {
         return null;
     }
@@ -152,14 +173,14 @@ function isValidTimestamp(value: string): boolean {
     return value.length > 0 && Number.isFinite(new Date(value).getTime());
 }
 
-async function rewriteHistory(path: string, rows: HistoryEntry[]): Promise<void> {
+async function rewriteHistoryToPath(path: string, rows: HistoryEntry[]): Promise<void> {
     await writeFile(
         path,
         rows.map((row) => JSON.stringify(row)).join("\n") + (rows.length ? "\n" : ""),
     );
 }
 
-function hasSameQuotaValues(left: HistoryEntry, right: HistoryEntry): boolean {
+export function hasSameQuotaValues(left: HistoryEntry, right: HistoryEntry): boolean {
     if (left.quotas.length !== right.quotas.length) return false;
 
     const leftById = new Map(left.quotas.map((quota) => [quota.id, quota]));

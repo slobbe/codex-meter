@@ -3,7 +3,15 @@ import Gio from "gi://Gio";
 import { predict, UsagePrediction } from "../domain/prediction.js";
 import { HistoryEntry, UsageSnapshot, toHistoryEntry } from "../domain/usage.js";
 import { getUsageProvider, UsageProvider } from "../infra/providers/index.js";
-import { appendHistory, readHistory } from "../infra/storage/history.js";
+import {
+    appendHistoryRow,
+    hasSameQuotaValues,
+    MAX_HISTORY_ENTRIES,
+    normalizeHistoryEntries,
+    normalizeHistoryEntry,
+    readHistory,
+    rewriteHistory,
+} from "../infra/storage/history.js";
 import { readSnapshot, writeSnapshot } from "../infra/storage/snapshot-cache.js";
 
 export type RefreshOptions = {
@@ -12,6 +20,7 @@ export type RefreshOptions = {
 
 export class UsageService {
     private readonly provider: UsageProvider;
+    private history: HistoryEntry[] | null = null;
 
     constructor(provider: UsageProvider = getUsageProvider()) {
         this.provider = provider;
@@ -33,7 +42,7 @@ export class UsageService {
         }
 
         try {
-            await appendHistory(this.provider.info.id, toHistoryEntry(snapshot));
+            await this.appendSnapshotToHistory(snapshot);
         } catch (error) {
             console.error(`Unable to append ${this.provider.info.displayName} usage history`, error);
         }
@@ -42,7 +51,32 @@ export class UsageService {
     }
 
     async readHistory(): Promise<HistoryEntry[]> {
-        return await readHistory(this.provider.info.id);
+        return await this.loadHistory();
+    }
+
+    private async loadHistory(): Promise<HistoryEntry[]> {
+        if (this.history) return this.history;
+
+        this.history = await readHistory(this.provider.info.id);
+        return this.history;
+    }
+
+    private async appendSnapshotToHistory(snapshot: UsageSnapshot): Promise<void> {
+        const history = await this.loadHistory();
+        const row = normalizeHistoryEntry(toHistoryEntry(snapshot));
+
+        if (!row) return;
+
+        const lastRow = history.at(-1);
+        if (lastRow && hasSameQuotaValues(lastRow, row)) return;
+
+        await appendHistoryRow(this.provider.info.id, row);
+        history.push(row);
+
+        if (history.length > MAX_HISTORY_ENTRIES) {
+            this.history = normalizeHistoryEntries(history);
+            await rewriteHistory(this.provider.info.id, this.history);
+        }
     }
 
     async predict(snapshot?: UsageSnapshot): Promise<UsagePrediction> {
