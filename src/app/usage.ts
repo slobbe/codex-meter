@@ -51,7 +51,7 @@ export class UsageService {
     }
 
     async readHistory(): Promise<HistoryEntry[]> {
-        return await this.loadHistory();
+        return [...await this.loadHistory()];
     }
 
     private async loadHistory(): Promise<HistoryEntry[]> {
