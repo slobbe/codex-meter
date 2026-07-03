@@ -60,6 +60,24 @@ test("maps valid Codex usage response to usage snapshot", () => {
     assert.equal(typeof snapshot.fetchedAt, "number");
 });
 
+test("maps Codex credit balance when present", () => {
+    const snapshot = toUsageSnapshot(validUsageResponse({
+        credits: {
+            has_credits: true,
+            unlimited: false,
+            overage_limit_reached: false,
+            balance: "$4.21",
+        },
+    }));
+
+    assert.deepEqual(snapshot.credits, {
+        balance: "$4.21",
+        hasCredits: true,
+        unlimited: false,
+        overageLimitReached: false,
+    });
+});
+
 test("throws unexpected-response when plan_type is missing", () => {
     const response = validUsageResponse();
     delete response.plan_type;

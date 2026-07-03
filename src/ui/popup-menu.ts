@@ -17,6 +17,7 @@ const TREND_BAR_MIN_HEIGHT = 3;
 export class CodexMeterPopupMenu {
     headerItem: any;
     errorItem: any;
+    statusItem: any;
     primaryItem: any;
     secondaryItem: any;
     trendItem: any;
@@ -33,6 +34,7 @@ export class CodexMeterPopupMenu {
 
         this.headerItem = this._createHeaderItem();
         this.errorItem = this._createErrorItem();
+        this.statusItem = this._createStatusItem();
         this.primaryItem = this._createUsageItem("Session (5h)");
         this.secondaryItem = this._createUsageItem("Week");
         this.trendItem = this._createTrendItem();
@@ -42,6 +44,7 @@ export class CodexMeterPopupMenu {
     addToMenu(menu) {
         menu.addMenuItem(this.headerItem);
         menu.addMenuItem(this.errorItem);
+        menu.addMenuItem(this.statusItem);
         menu.addMenuItem(this.primaryItem);
         menu.addMenuItem(this.secondaryItem);
         menu.addMenuItem(this.trendItem);
@@ -97,6 +100,12 @@ export class CodexMeterPopupMenu {
         this.trendItem.visible = !hasError && this.trendItem.visible;
         this.errorItem.message = message ?? "";
         this.errorItem.messageLabel.text = message ?? "";
+    }
+
+    setStatus({ title, message, visible }) {
+        this.statusItem.visible = Boolean(visible);
+        this.statusItem.titleLabel.text = title ?? "";
+        this.statusItem.messageLabel.text = message ?? "";
     }
 
     setBankedResets({ count, visible, redeeming }) {
@@ -326,6 +335,58 @@ export class CodexMeterPopupMenu {
         return item;
     }
 
+    private _createStatusItem() {
+        const item = new PopupMenu.PopupBaseMenuItem({
+            reactive: false,
+            can_focus: false,
+        }) as any;
+
+        const box = new St.BoxLayout({
+            vertical: true,
+            style_class: "cx-error-menu-item",
+        });
+        box.width = POPUP_CONTENT_WIDTH;
+
+        const headingBox = new St.BoxLayout({
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: "cx-error-heading-row",
+        });
+
+        const icon = new St.Icon({
+            icon_name: "dialog-warning-symbolic",
+            style_class: "popup-menu-icon cx-color-warning",
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+
+        const titleLabel = new St.Label({
+            text: "",
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: "cx-error-title cx-color-warning",
+        });
+
+        const messageLabel = new St.Label({
+            text: "",
+            x_expand: true,
+            style_class: "cx-error-message",
+        });
+        messageLabel.width = POPUP_CONTENT_WIDTH;
+        messageLabel.clutter_text.line_wrap = true;
+        messageLabel.clutter_text.ellipsize = 0;
+
+        headingBox.add_child(icon);
+        headingBox.add_child(titleLabel);
+        box.add_child(headingBox);
+        box.add_child(messageLabel);
+        item.add_child(box);
+        item.visible = false;
+        item.titleLabel = titleLabel;
+        item.messageLabel = messageLabel;
+
+        return item;
+    }
+
     private _createHeaderItem() {
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
@@ -386,6 +447,7 @@ export class CodexMeterPopupMenu {
         });
 
         topRow.add_child(redeemButton);
+        topRow.add_child(new St.Widget({ x_expand: true }));
         topRow.add_child(datetimeLabel);
         topRow.add_child(refreshButton);
         box.add_child(topRow);

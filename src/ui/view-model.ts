@@ -43,6 +43,8 @@ export type MenuViewModel = {
     plan: string;
     trend: UsageTrendViewModel;
     errorMessage: string | null;
+    statusTitle: string | null;
+    statusMessage: string | null;
     hasError: boolean;
 };
 
@@ -130,6 +132,7 @@ export function createMenuViewModel(
     prediction: UsagePrediction,
     history: HistoryEntry[] = [],
     errorMessage = null,
+    cachedFailureMessage = null,
 ) {
     const percentDisplayMode = settings.percentDisplayMode;
 
@@ -137,6 +140,8 @@ export function createMenuViewModel(
         return {
             updatedAt: "--",
             errorMessage,
+            statusTitle: null,
+            statusMessage: null,
             hasError: true,
             primary: createUsageItemViewModel({
                 title: "Session (5h)",
@@ -157,6 +162,8 @@ export function createMenuViewModel(
         return {
             updatedAt: "--",
             errorMessage: null,
+            statusTitle: null,
+            statusMessage: null,
             hasError: false,
             primary: createUsageItemViewModel({
                 title: "Session (5h)",
@@ -177,8 +184,10 @@ export function createMenuViewModel(
     const secondaryQuota = getSecondaryQuota(snapshot);
 
     return {
-        updatedAt: "Updated at " + formatUnixTimestamp(snapshot.fetchedAt, false),
+        updatedAt: "",
         errorMessage: null,
+        statusTitle: cachedFailureMessage ? "Showing cached data" : null,
+        statusMessage: cachedFailureMessage ? `Refresh failed: ${cachedFailureMessage}` : null,
         hasError: false,
         primary: createUsageItemViewModel({
             title: primaryQuota?.label ?? "Primary",
@@ -188,6 +197,7 @@ export function createMenuViewModel(
             ),
             prediction: formatLimitPrediction(
                 primaryQuota ? prediction?.quotas?.[primaryQuota.id] : prediction?.primary,
+                primaryQuota,
                 "primary",
             ),
             reset: formatReset(primaryQuota, "primary"),
@@ -206,6 +216,7 @@ export function createMenuViewModel(
             ),
             prediction: formatLimitPrediction(
                 secondaryQuota ? prediction?.quotas?.[secondaryQuota.id] : prediction?.secondary,
+                secondaryQuota,
                 "secondary",
             ),
             reset: formatReset(secondaryQuota, "secondary"),
@@ -216,7 +227,7 @@ export function createMenuViewModel(
                 secondaryQuota ? prediction?.quotas?.[secondaryQuota.id] : prediction?.secondary,
             ),
         }),
-        plan: formatPlan(snapshot.planType),
+        plan: formatFooter(snapshot),
         trend: createUsageTrendViewModel(snapshot, history),
     };
 }
@@ -547,12 +558,26 @@ export function secondsUntil(unixTimestamp: number): number {
     return Math.max(0, Math.round(unixTimestamp - Date.now() / 1000));
 }
 
-export function formatLimitPrediction(prediction: WindowPrediction, windowType: UsageWindowType) {
+export function formatLimitPrediction(
+    prediction: WindowPrediction,
+    quota: UsageQuota | null,
+    windowType: UsageWindowType,
+) {
     if (prediction?.trend === "limit reached") return "Limit reached";
 
-    if (prediction?.trend !== "unsafe") return "";
+    if (prediction?.trend === "safe") return "Safe at current pace";
 
-    return `Limit in about ${formatDuration(
+    if (prediction?.trend !== "unsafe" || !Number.isFinite(prediction.estimatedLimitAt)) {
+        return "";
+    }
+
+    if (Number.isFinite(quota?.resetAt)) {
+        const secondsBeforeReset = Math.max(0, Math.round((quota?.resetAt as number) - prediction.estimatedLimitAt));
+
+        return `Will hit limit ~${formatCompactDuration(secondsBeforeReset, windowType)} before reset`;
+    }
+
+    return `Will hit limit in ~${formatCompactDuration(
         secondsUntil(prediction.estimatedLimitAt),
         windowType,
     )}`;
@@ -571,6 +596,35 @@ export function getPredictionStyleClass(prediction: WindowPrediction): Predictio
     }
 }
 
+export function formatFooter(snapshot: UsageSnapshot | null): string {
+    if (!snapshot) return "--";
+
+    const parts = [formatPlan(snapshot.planType)];
+    const credits = formatCredits(snapshot.credits);
+
+    if (credits) parts.push(credits);
+
+    parts.push(`Updated ${formatUnixTimestamp(snapshot.fetchedAt, false)}`);
+
+    return parts.filter((part) => part && part !== "--").join(" · ") || "--";
+}
+
+function formatCredits(credits): string {
+    if (!credits || credits.unlimited) return "";
+
+    const balance = typeof credits.balance === "string" ? credits.balance.trim() : "";
+
+    if (!balance || isZeroCreditBalance(balance)) return "";
+
+    return `Credits ${balance}`;
+}
+
+function isZeroCreditBalance(value: string): boolean {
+    const numeric = Number(value.replace(/[^0-9.-]/g, ""));
+
+    return Number.isFinite(numeric) && numeric === 0;
+}
+
 export function formatPlan(value) {
     if (!value) return "--";
 
@@ -580,6 +634,25 @@ export function formatPlan(value) {
         .filter(Boolean)
         .map((part) => `${part[0].toUpperCase()}${part.slice(1)}`)
         .join(" ");
+}
+
+function formatCompactDuration(totalSeconds: number, windowType?: UsageWindowType): string {
+    if (!Number.isFinite(totalSeconds)) return "--";
+
+    const seconds = Math.max(0, Math.round(totalSeconds));
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+
+    if (windowType === "secondary" && days > 0) {
+        return hours >= 12 ? `${days + 1}d` : `${days}d`;
+    }
+
+    if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+
+    if (hours > 0) return minutes >= 30 ? `${hours + 1}h` : `${hours}h`;
+
+    return `${Math.max(1, minutes)}m`;
 }
 
 export function normalizePercent(value: number): number {

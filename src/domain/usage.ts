@@ -2,7 +2,15 @@ export type UsageSnapshot = {
     fetchedAt: number; // UNIX in seconds
     providerId?: string;
     planType: "free" | "plus" | "pro" | string;
+    credits?: UsageCredits;
     quotas: UsageQuota[];
+};
+
+export type UsageCredits = {
+    balance: string | null;
+    hasCredits?: boolean;
+    unlimited?: boolean;
+    overageLimitReached?: boolean;
 };
 
 export type UsageQuota = {
