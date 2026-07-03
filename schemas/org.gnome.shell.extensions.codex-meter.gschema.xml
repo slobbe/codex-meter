@@ -42,7 +42,7 @@
       </choices>
     </key>
     <key name="background-refresh-interval-minutes" type="u">
-      <default>1</default>
+      <default>5</default>
       <summary>Background refresh interval (minutes)</summary>
       <description>Set to 0 to refresh manually</description>
       <range min="0" max="60"/>
