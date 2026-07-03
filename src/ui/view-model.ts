@@ -291,9 +291,6 @@ export function createUsageTrendViewModel(
 
     if (samples.length < 2) return createHiddenUsageTrendViewModel();
 
-    const burnRate = calculateAverageBurnRatePercentPerDay(samples);
-    const title = formatUsageTrendTitle(formatBurnRate(burnRate));
-
     const bucketSize = TREND_LOOKBACK_SECONDS / TREND_BUCKET_COUNT;
     const bucketValues = Array(TREND_BUCKET_COUNT).fill(0);
 
@@ -320,7 +317,7 @@ export function createUsageTrendViewModel(
 
     return {
         visible: true,
-        title,
+        title: TREND_TITLE,
         bars: bucketValues.map((value) => {
             if (value <= 0) return 0;
 
@@ -394,20 +391,6 @@ export function calculateAverageBurnRatePercentPerDay(samples: UsageTrendSample[
     ) / 86400;
 
     return positiveDelta / observedDays;
-}
-
-export function formatBurnRate(percentPerDay: number | null): string {
-    if (!Number.isFinite(percentPerDay) || percentPerDay <= 0) return "";
-
-    if (percentPerDay < 0.1) return "<0.1% / day";
-
-    if (percentPerDay < 10) return `~${percentPerDay.toFixed(1)}% / day`;
-
-    return `~${Math.round(percentPerDay)}% / day`;
-}
-
-function formatUsageTrendTitle(burnRate: string): string {
-    return burnRate ? `${TREND_TITLE} (${burnRate})` : TREND_TITLE;
 }
 
 function addTrendDeltaToBuckets({
