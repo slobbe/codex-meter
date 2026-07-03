@@ -36,6 +36,10 @@ export async function appendHistory(
     return appendHistoryToPath(getHistoryPath(providerId), row);
 }
 
+/**
+ * Append a history row verbatim without reading, deduping, or normalizing existing history.
+ * Callers must pre-normalize rows and decide whether appending is appropriate.
+ */
 export async function appendHistoryRow(
     providerId: ProviderId,
     row: HistoryEntry,

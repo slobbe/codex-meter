@@ -500,6 +500,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             this._syncMenu();
         } catch (error) {
             if (isCancellationError(error)) return;
+            if (this._destroyed) return;
 
             console.warn("Unable to refresh Codex banked reset count", error);
             this._bankedResetCount = null;

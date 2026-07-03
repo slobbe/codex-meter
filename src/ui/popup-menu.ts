@@ -291,58 +291,25 @@ export class CodexMeterPopupMenu {
     }
 
     private _createErrorItem() {
-        const item = new PopupMenu.PopupBaseMenuItem({
-            reactive: false,
-            can_focus: false,
-        }) as any;
-
-        const box = new St.BoxLayout({
-            vertical: true,
-            style_class: "cx-error-menu-item",
+        const item = this._createBannerItem({
+            iconName: "dialog-error-symbolic",
+            title: "Unable to load usage",
+            colorStyleClass: "cx-color-danger",
         });
-        box.width = POPUP_CONTENT_WIDTH;
-
-        const headingBox = new St.BoxLayout({
-            x_expand: true,
-            y_align: Clutter.ActorAlign.CENTER,
-            style_class: "cx-error-heading-row",
-        });
-
-        const icon = new St.Icon({
-            icon_name: "dialog-error-symbolic",
-            style_class: "popup-menu-icon cx-color-danger",
-            y_align: Clutter.ActorAlign.CENTER,
-        });
-
-        const titleLabel = new St.Label({
-            text: "Unable to load usage",
-            x_expand: true,
-            y_align: Clutter.ActorAlign.CENTER,
-            style_class: "cx-error-title cx-color-danger",
-        });
-
-        const messageLabel = new St.Label({
-            text: "",
-            x_expand: true,
-            style_class: "cx-error-message",
-        });
-        messageLabel.width = POPUP_CONTENT_WIDTH;
-        messageLabel.clutter_text.line_wrap = true;
-        messageLabel.clutter_text.ellipsize = 0;
-
-        headingBox.add_child(icon);
-        headingBox.add_child(titleLabel);
-        box.add_child(headingBox);
-        box.add_child(messageLabel);
-        item.add_child(box);
-        item.visible = false;
         item.message = "";
-        item.messageLabel = messageLabel;
 
         return item;
     }
 
     private _createStatusItem() {
+        return this._createBannerItem({
+            iconName: "dialog-warning-symbolic",
+            title: "",
+            colorStyleClass: "cx-color-warning",
+        });
+    }
+
+    private _createBannerItem({ iconName, title, colorStyleClass }) {
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
@@ -361,16 +328,16 @@ export class CodexMeterPopupMenu {
         });
 
         const icon = new St.Icon({
-            icon_name: "dialog-warning-symbolic",
-            style_class: "popup-menu-icon cx-color-warning",
+            icon_name: iconName,
+            style_class: `popup-menu-icon ${colorStyleClass}`,
             y_align: Clutter.ActorAlign.CENTER,
         });
 
         const titleLabel = new St.Label({
-            text: "",
+            text: title,
             x_expand: true,
             y_align: Clutter.ActorAlign.CENTER,
-            style_class: "cx-error-title cx-color-warning",
+            style_class: `cx-error-title ${colorStyleClass}`,
         });
 
         const messageLabel = new St.Label({
