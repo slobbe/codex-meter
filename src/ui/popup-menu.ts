@@ -14,6 +14,7 @@ const POPUP_CONTENT_WIDTH = 285;
 const TREND_BAR_COUNT = 56;
 const TREND_BAR_MAX_HEIGHT = 28;
 const TREND_BAR_MIN_HEIGHT = 3;
+const TREND_BAR_SPACING = 2;
 export class CodexMeterPopupMenu {
     headerItem: any;
     errorItem: any;
@@ -59,6 +60,8 @@ export class CodexMeterPopupMenu {
 
     setTrend(viewModel) {
         this.trendItem.visible = viewModel.visible;
+        this.trendItem.titleLabel.text = viewModel.title;
+        this._updateTrendBarWidths();
 
         for (let index = 0; index < this.trendItem.bars.length; index += 1) {
             const bar = this.trendItem.bars[index];
@@ -241,22 +244,26 @@ export class CodexMeterPopupMenu {
             can_focus: false,
         }) as any;
 
-        const row = new St.BoxLayout({
+        const box = new St.BoxLayout({
+            vertical: true,
             x_expand: true,
-            y_align: Clutter.ActorAlign.CENTER,
             style_class: "cx-trend-row",
         });
 
         const titleLabel = new St.Label({
-            text: "Usage Trend",
+            text: "Weekly activity",
             x_expand: true,
             y_align: Clutter.ActorAlign.CENTER,
             style_class: "cx-usage-heading cx-trend-title",
         });
 
         const sparklineBox = new St.BoxLayout({
+            x_expand: true,
             y_align: Clutter.ActorAlign.END,
             style_class: "cx-trend-sparkline",
+        });
+        sparklineBox.connect("notify::width", () => {
+            this._updateTrendBarWidths();
         });
         const bars = [];
 
@@ -272,9 +279,9 @@ export class CodexMeterPopupMenu {
             sparklineBox.add_child(bar);
         }
 
-        row.add_child(titleLabel);
-        row.add_child(sparklineBox);
-        item.add_child(row);
+        box.add_child(titleLabel);
+        box.add_child(sparklineBox);
+        item.add_child(box);
         item.titleLabel = titleLabel;
         item.sparklineBox = sparklineBox;
         item.bars = bars;
@@ -502,6 +509,22 @@ export class CodexMeterPopupMenu {
         item.settingsButton = settingsButton;
 
         return item;
+    }
+
+    private _updateTrendBarWidths() {
+        if (!this.trendItem?.sparklineBox || !this.trendItem?.bars) return;
+
+        const visibleBars = this.trendItem.bars.length;
+        if (visibleBars <= 0 || this.trendItem.sparklineBox.width <= 0) return;
+
+        const totalSpacing = TREND_BAR_SPACING * Math.max(0, visibleBars - 1);
+        const availableWidth = Math.max(visibleBars, this.trendItem.sparklineBox.width - totalSpacing);
+        const baseBarWidth = Math.max(1, Math.floor(availableWidth / visibleBars));
+        const extraPixels = Math.max(0, availableWidth - (baseBarWidth * visibleBars));
+
+        for (let index = 0; index < this.trendItem.bars.length; index += 1) {
+            this.trendItem.bars[index].width = baseBarWidth + (index < extraPixels ? 1 : 0);
+        }
     }
 
     private _updateUsageBar(item) {
