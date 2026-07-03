@@ -2,6 +2,7 @@ import GLib from "gi://GLib";
 import Gio from "gi://Gio";
 
 import {
+    appendHistoryRowToPath,
     appendHistoryToPath,
     readHistoryFromPath,
 } from "../dist/infra/storage/history.js";
@@ -146,6 +147,29 @@ async function testAppendSkipsDuplicateQuotaValues() {
     }
 }
 
+async function testDirectAppendWritesWithoutDeduping() {
+    const path = createTempPath("direct-append.jsonl");
+    const firstTimestamp = new Date(Date.now() - 60_000).toISOString();
+    const secondTimestamp = new Date().toISOString();
+
+    try {
+        await appendHistoryRowToPath(path, {
+            timestamp: firstTimestamp,
+            quotas: [{ id: "session", usedPercent: 14 }],
+        });
+        await appendHistoryRowToPath(path, {
+            timestamp: secondTimestamp,
+            quotas: [{ id: "session", usedPercent: 14 }],
+        });
+
+        const lines = (await readText(path)).trim().split(/\r?\n/);
+
+        assertEqual(lines.length, 2, "direct append should not read existing rows or dedupe");
+    } finally {
+        removeFile(path);
+    }
+}
+
 async function testJsonlIsReadable() {
     const path = createTempPath("read.jsonl");
     const timestamp = new Date().toISOString();
@@ -181,5 +205,6 @@ async function testMissingJsonlReturnsEmptyHistory() {
 
 await testAppendWritesJsonl();
 await testAppendSkipsDuplicateQuotaValues();
+await testDirectAppendWritesWithoutDeduping();
 await testJsonlIsReadable();
 await testMissingJsonlReturnsEmptyHistory();
