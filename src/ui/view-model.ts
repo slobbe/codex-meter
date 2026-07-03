@@ -33,6 +33,7 @@ export type PanelBarViewModel = {
 
 export type UsageTrendViewModel = {
     visible: boolean;
+    title: string;
     bars: number[];
 };
 
@@ -269,36 +270,29 @@ export function createUsageItemViewModel({
     };
 }
 
+const TREND_TITLE = "Weekly activity";
 const TREND_LOOKBACK_SECONDS = 7 * 24 * 60 * 60;
 const TREND_BUCKET_COUNT = 56;
 const TREND_MIN_BAR_PERCENT = 12;
+const MIN_BURN_RATE_OBSERVED_SECONDS = 6 * 60 * 60;
+
+type UsageTrendSample = {
+    timestamp: number;
+    usedPercent: number;
+};
 
 export function createUsageTrendViewModel(
     snapshot: UsageSnapshot | null,
     history: HistoryEntry[] = [],
     nowSeconds = Date.now() / 1000,
 ): UsageTrendViewModel {
-    const quotaId = getSecondaryQuota(snapshot)?.id ?? "weekly";
     const minTimestamp = nowSeconds - TREND_LOOKBACK_SECONDS;
-    const samples = history
-        .map((entry) => {
-            const timestamp = new Date(entry.timestamp).getTime() / 1000;
-            const quota = entry.quotas.find((item) => item.id === quotaId) ??
-                entry.quotas.find((item) => item.id === "weekly");
+    const samples = getUsageTrendSamples(snapshot, history, nowSeconds);
 
-            return {
-                timestamp,
-                usedPercent: quota?.usedPercent,
-            };
-        })
-        .filter((entry): entry is { timestamp: number; usedPercent: number } =>
-            Number.isFinite(entry.timestamp) &&
-            entry.timestamp >= minTimestamp &&
-            Number.isFinite(entry.usedPercent)
-        )
-        .toSorted((a, b) => a.timestamp - b.timestamp);
+    if (samples.length < 2) return createHiddenUsageTrendViewModel();
 
-    if (samples.length < 2) return { visible: false, bars: [] };
+    const burnRate = calculateAverageBurnRatePercentPerDay(samples);
+    const title = formatUsageTrendTitle(formatBurnRate(burnRate));
 
     const bucketSize = TREND_LOOKBACK_SECONDS / TREND_BUCKET_COUNT;
     const bucketValues = Array(TREND_BUCKET_COUNT).fill(0);
@@ -322,10 +316,11 @@ export function createUsageTrendViewModel(
 
     const maxValue = Math.max(...bucketValues);
 
-    if (maxValue <= 0) return { visible: false, bars: [] };
+    if (maxValue <= 0) return createHiddenUsageTrendViewModel();
 
     return {
         visible: true,
+        title,
         bars: bucketValues.map((value) => {
             if (value <= 0) return 0;
 
@@ -335,6 +330,84 @@ export function createUsageTrendViewModel(
             );
         }),
     };
+}
+
+function createHiddenUsageTrendViewModel(): UsageTrendViewModel {
+    return {
+        visible: false,
+        title: TREND_TITLE,
+        bars: [],
+    };
+}
+
+export function getUsageTrendSamples(
+    snapshot: UsageSnapshot | null,
+    history: HistoryEntry[] = [],
+    nowSeconds = Date.now() / 1000,
+): UsageTrendSample[] {
+    const quotaId = getSecondaryQuota(snapshot)?.id ?? "weekly";
+    const minTimestamp = nowSeconds - TREND_LOOKBACK_SECONDS;
+
+    return history
+        .map((entry) => {
+            const timestamp = new Date(entry.timestamp).getTime() / 1000;
+            const quota = entry.quotas.find((item) => item.id === quotaId) ??
+                entry.quotas.find((item) => item.id === "weekly");
+
+            return {
+                timestamp,
+                usedPercent: quota?.usedPercent,
+            };
+        })
+        .filter((entry): entry is UsageTrendSample =>
+            Number.isFinite(entry.timestamp) &&
+            entry.timestamp >= minTimestamp &&
+            Number.isFinite(entry.usedPercent)
+        )
+        .toSorted((a, b) => a.timestamp - b.timestamp);
+}
+
+export function calculateRecentPositiveDelta(samples: UsageTrendSample[]): number {
+    let total = 0;
+
+    for (let index = 1; index < samples.length; index += 1) {
+        const delta = samples[index].usedPercent - samples[index - 1].usedPercent;
+
+        if (delta > 0 && delta <= 100) total += delta;
+    }
+
+    return total;
+}
+
+export function calculateAverageBurnRatePercentPerDay(samples: UsageTrendSample[]): number | null {
+    if (samples.length < 2) return null;
+
+    const positiveDelta = calculateRecentPositiveDelta(samples);
+    if (positiveDelta <= 0) return null;
+
+    const observedSeconds = samples.at(-1).timestamp - samples[0].timestamp;
+    if (!Number.isFinite(observedSeconds) || observedSeconds <= 0) return null;
+
+    const observedDays = Math.max(
+        observedSeconds,
+        MIN_BURN_RATE_OBSERVED_SECONDS,
+    ) / 86400;
+
+    return positiveDelta / observedDays;
+}
+
+export function formatBurnRate(percentPerDay: number | null): string {
+    if (!Number.isFinite(percentPerDay) || percentPerDay <= 0) return "";
+
+    if (percentPerDay < 0.1) return "<0.1% / day";
+
+    if (percentPerDay < 10) return `~${percentPerDay.toFixed(1)}% / day`;
+
+    return `~${Math.round(percentPerDay)}% / day`;
+}
+
+function formatUsageTrendTitle(burnRate: string): string {
+    return burnRate ? `${TREND_TITLE} (${burnRate})` : TREND_TITLE;
 }
 
 function addTrendDeltaToBuckets({

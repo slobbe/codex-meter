@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createUsageTrendViewModel } from "../dist/ui/view-model.js";
+import {
+    calculateAverageBurnRatePercentPerDay,
+    calculateRecentPositiveDelta,
+    createUsageTrendViewModel,
+    formatBurnRate,
+} from "../dist/ui/view-model.js";
 
 const now = 1_700_000_000;
 
@@ -35,6 +40,7 @@ test("hides usage trend when history is empty", () => {
     const trend = createUsageTrendViewModel(createSnapshot(), [], now);
 
     assert.equal(trend.visible, false);
+    assert.equal(trend.title, "Weekly activity");
     assert.deepEqual(trend.bars, []);
 });
 
@@ -46,6 +52,7 @@ test("hides usage trend when there is no positive usage delta", () => {
     );
 
     assert.equal(trend.visible, false);
+    assert.equal(trend.title, "Weekly activity");
     assert.deepEqual(trend.bars, []);
 });
 
@@ -57,6 +64,7 @@ test("shows positive weekly usage deltas as normalized activity bars", () => {
     );
 
     assert.equal(trend.visible, true);
+    assert.match(trend.title, /^Weekly activity \(~\d+(?:\.\d)?% \/ day\)$/);
     assert.equal(trend.bars.length, 56);
     assert.equal(Math.max(...trend.bars), 100);
     assert.ok(trend.bars.filter((bar) => bar > 0).length >= 2);
@@ -97,6 +105,7 @@ test("ignores usage outside the last seven days", () => {
     );
 
     assert.equal(trend.visible, false);
+    assert.equal(trend.title, "Weekly activity");
     assert.deepEqual(trend.bars, []);
 });
 
@@ -119,5 +128,35 @@ test("uses the secondary quota id for usage trend", () => {
     );
 
     assert.equal(trend.visible, true);
+    assert.match(trend.title, /^Weekly activity \(~\d+(?:\.\d)?% \/ day\)$/);
     assert.equal(Math.max(...trend.bars), 100);
+});
+
+test("calculates recent positive delta and ignores resets", () => {
+    assert.equal(calculateRecentPositiveDelta([
+        { timestamp: now - 300, usedPercent: 80 },
+        { timestamp: now - 200, usedPercent: 2 },
+        { timestamp: now - 100, usedPercent: 9 },
+    ]), 7);
+});
+
+test("calculates average burn rate over observed span", () => {
+    assert.equal(calculateAverageBurnRatePercentPerDay([
+        { timestamp: now - 86_400, usedPercent: 1 },
+        { timestamp: now, usedPercent: 2.8 },
+    ]), 1.7999999999999998);
+});
+
+test("calculates average burn rate with six hour minimum observed span", () => {
+    assert.equal(calculateAverageBurnRatePercentPerDay([
+        { timestamp: now - 3_600, usedPercent: 1 },
+        { timestamp: now, usedPercent: 2 },
+    ]), 4);
+});
+
+test("formats burn rates", () => {
+    assert.equal(formatBurnRate(1.84), "~1.8% / day");
+    assert.equal(formatBurnRate(12.3), "~12% / day");
+    assert.equal(formatBurnRate(0.05), "<0.1% / day");
+    assert.equal(formatBurnRate(null), "");
 });
