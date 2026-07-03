@@ -1,5 +1,5 @@
 import { RefreshFailureError } from "../../domain/refresh-failure.js";
-import { UsageSnapshot } from "../../domain/usage.js";
+import { UsageCredits, UsageSnapshot } from "../../domain/usage.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -59,6 +59,7 @@ export function toUsageSnapshot(api: JsonObject): UsageSnapshot {
         fetchedAt: Math.floor(Date.now() / 1000),
         providerId: "codex",
         planType: codexApi.plan_type,
+        credits: toUsageCredits(api.credits),
         quotas: [
             {
                 id: "session",
@@ -106,6 +107,23 @@ function assertApiResponseShape(api: JsonObject): void {
 
     assertWindow(api.rate_limit.primary_window, "rate_limit.primary_window");
     assertWindow(api.rate_limit.secondary_window, "rate_limit.secondary_window");
+}
+
+function toUsageCredits(value: unknown): UsageCredits | undefined {
+    if (!isObject(value)) return undefined;
+
+    const balance = typeof value.balance === "string" && value.balance.trim().length > 0
+        ? value.balance
+        : null;
+
+    return {
+        balance,
+        hasCredits: typeof value.has_credits === "boolean" ? value.has_credits : undefined,
+        unlimited: typeof value.unlimited === "boolean" ? value.unlimited : undefined,
+        overageLimitReached: typeof value.overage_limit_reached === "boolean"
+            ? value.overage_limit_reached
+            : undefined,
+    };
 }
 
 function assertWindow(value: unknown, path: string): void {

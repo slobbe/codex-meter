@@ -58,6 +58,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._prediction = null;
         this._history = [];
         this._errorMessage = null;
+        this._cachedFailureMessage = null;
         this._bankedResetCount = null;
         this._lastBankedResetRefreshAt = null;
         this._bankedResetRefreshPromise = null;
@@ -255,6 +256,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
                 this._prediction = null;
                 this._history = [];
                 this._errorMessage = null;
+                this._cachedFailureMessage = null;
                 this._bankedResetCount = null;
                 this._lastBankedResetRefreshAt = null;
                 void this._loadCachedBankedResets();
@@ -331,6 +333,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             await this._loadHistory();
 
             this._errorMessage = null;
+            this._cachedFailureMessage = null;
 
             try {
                 this._prediction = await this._usageService.predict(
@@ -342,10 +345,21 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         } catch (error) {
             if (this._destroyed && isCancellationError(error)) return;
 
-            this._errorMessage = formatRefreshFailure(error);
+            const failureMessage = formatRefreshFailure(error);
 
-            if (!this._destroyed && !this._snapshot) {
-                await this._loadCachedSnapshotAfterFailure();
+            if (this._snapshot) {
+                this._errorMessage = null;
+                this._cachedFailureMessage = failureMessage;
+            } else {
+                const loadedCachedSnapshot = !this._destroyed && await this._loadCachedSnapshotAfterFailure();
+
+                if (loadedCachedSnapshot) {
+                    this._errorMessage = null;
+                    this._cachedFailureMessage = failureMessage;
+                } else {
+                    this._errorMessage = failureMessage;
+                    this._cachedFailureMessage = null;
+                }
             }
         } finally {
             if (this._destroyed) return;
@@ -402,12 +416,13 @@ export class CodexMeterIndicator extends PanelMenu.Button {
     }
 
     async _loadCachedSnapshotAfterFailure() {
-        if (this._destroyed) return;
+        if (this._destroyed) return false;
 
         try {
             const snapshot = await this._usageService.readCachedSnapshot();
 
-            if (this._destroyed || !snapshot || this._snapshot) return;
+            if (this._destroyed || !snapshot) return false;
+            if (this._snapshot) return true;
 
             this._snapshot = snapshot;
 
@@ -418,7 +433,11 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             } catch (error) {
                 this._prediction = null;
             }
-        } catch (error) {}
+
+            return true;
+        } catch (error) {
+            return false;
+        }
     }
 
     async _loadHistory() {
@@ -609,10 +628,17 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             this._prediction,
             this._history,
             this._errorMessage,
+            this._cachedFailureMessage,
         );
 
         this._headerItem.datetimeLabel.text = viewModel.updatedAt;
+        this._headerItem.datetimeLabel.visible = false;
         this._popupMenu.setError(viewModel.errorMessage);
+        this._popupMenu.setStatus({
+            title: viewModel.statusTitle,
+            message: viewModel.statusMessage,
+            visible: Boolean(viewModel.statusTitle || viewModel.statusMessage),
+        });
         this._setUsageItem(this._primaryItem, viewModel.primary);
         this._setUsageItem(this._secondaryItem, viewModel.secondary);
         this._popupMenu.setTrend(viewModel.trend);
