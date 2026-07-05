@@ -295,6 +295,7 @@ export class CodexMeterPopupMenu {
             iconName: "dialog-error-symbolic",
             title: "Unable to load usage",
             colorStyleClass: "cx-color-danger",
+            messageStyleClass: "cx-error-message-danger",
         });
         item.message = "";
 
@@ -306,10 +307,11 @@ export class CodexMeterPopupMenu {
             iconName: "dialog-warning-symbolic",
             title: "",
             colorStyleClass: "cx-color-warning",
+            messageStyleClass: "cx-error-message-warning",
         });
     }
 
-    private _createBannerItem({ iconName, title, colorStyleClass }) {
+    private _createBannerItem({ iconName, title, colorStyleClass, messageStyleClass }) {
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
@@ -343,9 +345,8 @@ export class CodexMeterPopupMenu {
         const messageLabel = new St.Label({
             text: "",
             x_expand: true,
-            style_class: "cx-error-message",
+            style_class: `cx-error-message ${messageStyleClass}`,
         });
-        messageLabel.width = POPUP_CONTENT_WIDTH;
         messageLabel.clutter_text.line_wrap = true;
         messageLabel.clutter_text.ellipsize = 0;
 

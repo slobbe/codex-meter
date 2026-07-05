@@ -83,7 +83,7 @@
 }
 
 .cx-error-menu-item {
-    spacing: 8px;
+    spacing: 6px;
 }
 
 .cx-error-heading-row {
@@ -145,10 +145,17 @@
 }
 
 .cx-error-message {
-    padding: 8px;
-    border-radius: 10px;
-    background-color: rgba(217, 83, 79, 0.12);
+    padding: 7px 8px;
+    border-radius: 9px;
     color: rgba(255, 255, 255, 0.92);
+}
+
+.cx-error-message-danger {
+    background-color: rgba(217, 83, 79, 0.12);
+}
+
+.cx-error-message-warning {
+    background-color: rgba(229, 154, 47, 0.13);
 }
 
 .cx-header-item {

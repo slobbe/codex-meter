@@ -20,7 +20,6 @@ import {
     type CodexBankedResetCredit,
     type CodexBankedResetListResponse,
     listCodexBankedResets,
-    redeemCodexBankedReset,
 } from "../infra/providers/codex_banked_resets.js";
 
 
@@ -47,13 +46,11 @@ export const CodexPage = GObject.registerClass(
         private _rows: Gtk.Widget[];
         private _credits: CodexBankedResetCredit[];
         private _loading: boolean;
-        private _redeemingCreditId: string | null;
 
         _init(snapshot: CodexBankedResetListResponse | null = null) {
             this._rows = [];
             this._credits = snapshot?.credits ?? [];
             this._loading = false;
-            this._redeemingCreditId = null;
 
             super._init({
                 title: "Codex",
@@ -90,22 +87,6 @@ export const CodexPage = GObject.registerClass(
             }
         }
 
-        private async _redeemCredit(credit: CodexBankedResetCredit) {
-            if (this._redeemingCreditId || credit.status !== "available") return;
-
-            this._redeemingCreditId = credit.id;
-            this._render();
-
-            try {
-                await redeemCodexBankedReset(credit.id);
-                await this._loadCredits();
-                this._redeemingCreditId = null;
-                this._render();
-            } catch (error) {
-                this._redeemingCreditId = null;
-                this._render({ status: formatCodexPreferencesError(error) });
-            }
-        }
 
         private _render({ status }: { status?: string } = {}) {
             this._removeRows();
@@ -170,11 +151,8 @@ export const CodexPage = GObject.registerClass(
                 hexpand: true,
                 halign: Gtk.Align.FILL,
             });
-            const redeeming = this._redeemingCreditId === credit.id;
-            const canRedeem = credit.status === "available" && !this._redeemingCreditId;
-            const button = new Gtk.Button({
-                label: redeeming ? "Redeeming…" : getCreditButtonLabel(credit),
-                sensitive: canRedeem,
+            const status = new Gtk.Label({
+                label: formatCreditStatus(credit),
                 valign: Gtk.Align.CENTER,
                 halign: Gtk.Align.END,
             });
@@ -198,12 +176,10 @@ export const CodexPage = GObject.registerClass(
             description.add_css_class("dim-label");
             granted.add_css_class("dim-label");
             expires.add_css_class("dim-label");
-            button.connect("clicked", () => {
-                void this._redeemCredit(credit);
-            });
+            status.add_css_class("dim-label");
 
             titleRow.append(title);
-            titleRow.append(button);
+            titleRow.append(status);
             dates.append(granted);
             dates.append(expires);
             box.append(titleRow);
@@ -257,8 +233,8 @@ function formatCreditDate(value?: string | null): string {
     });
 }
 
-function getCreditButtonLabel(credit: CodexBankedResetCredit): string {
-    return credit.status === "available" ? "Redeem" : credit.status;
+function formatCreditStatus(credit: CodexBankedResetCredit): string {
+    return credit.status === "available" ? "Available" : credit.status;
 }
 
 function formatCodexPreferencesError(error: unknown): string {
