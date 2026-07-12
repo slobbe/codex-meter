@@ -60,6 +60,31 @@ test("maps valid Codex usage response to usage snapshot", () => {
     assert.equal(typeof snapshot.fetchedAt, "number");
 });
 
+test("maps a weekly-only Codex response without a session quota", () => {
+    const snapshot = toUsageSnapshot(validUsageResponse({
+        rate_limit: {
+            limit_reached: false,
+            primary_window: {
+                used_percent: 0,
+                limit_window_seconds: 604_800,
+                reset_after_seconds: 604_762,
+                reset_at: 1_784_488_950,
+            },
+            secondary_window: null,
+        },
+    }));
+
+    assert.deepEqual(snapshot.quotas, [{
+        id: "weekly",
+        label: "Week",
+        usedPercent: 0,
+        limitWindowSeconds: 604_800,
+        resetAfterSeconds: 604_762,
+        resetAt: 1_784_488_950,
+        limitReached: false,
+    }]);
+});
+
 test("maps Codex credit balance when present", () => {
     const snapshot = toUsageSnapshot(validUsageResponse({
         credits: {

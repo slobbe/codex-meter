@@ -1,5 +1,5 @@
 import { UsagePrediction, WindowPrediction } from "../domain/prediction.js";
-import { getPrimaryQuota, getSecondaryQuota, HistoryEntry, UsageQuota, UsageSnapshot } from "../domain/usage.js";
+import { getPrimaryQuota, getQuota, getSecondaryQuota, HistoryEntry, UsageQuota, UsageSnapshot } from "../domain/usage.js";
 import { type PercentDisplayMode } from "../app/settings.js";
 
 export type UsageWindowType = "primary" | "secondary";
@@ -7,6 +7,7 @@ export type UsageWindowType = "primary" | "secondary";
 export type PredictionStyle = "safe" | "warning" | "danger" | "muted";
 
 export type UsageItemViewModel = {
+    visible: boolean;
     title: string;
     value: string;
     prediction: string;
@@ -50,16 +51,17 @@ export type MenuViewModel = {
 };
 
 export function createPanelBarViewModel(settings, snapshot, errorMessage) {
-    const showPrimary = settings.showPrimary;
-    const showSecondary = settings.showSecondary;
+    const sessionQuota = getQuota(snapshot, "session");
+    const weeklyQuota = getQuota(snapshot, "weekly");
+    const showPrimary = settings.showPrimary && (!snapshot || Boolean(sessionQuota));
+    const showSecondary = settings.showSecondary && (!snapshot || Boolean(weeklyQuota));
     const displayMode = settings.topPanelDisplayMode;
     const hasTopPanelUsage = showPrimary || showSecondary;
-    const includePrimary = showPrimary;
     const showSplitBars = displayMode === "bars" && hasTopPanelUsage;
     const percentDisplayMode = settings.percentDisplayMode;
 
     const viewModel: PanelBarViewModel = {
-        primaryVisible: includePrimary,
+        primaryVisible: showPrimary,
         secondaryVisible: showSecondary,
         primaryPercent: 0,
         secondaryPercent: 0,
@@ -80,12 +82,8 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
     }
 
     if (snapshot) {
-        viewModel.primaryPercent = normalizePercent(
-            getPrimaryQuota(snapshot)?.usedPercent,
-        );
-        viewModel.secondaryPercent = normalizePercent(
-            getSecondaryQuota(snapshot)?.usedPercent,
-        );
+        viewModel.primaryPercent = normalizePercent(sessionQuota?.usedPercent);
+        viewModel.secondaryPercent = normalizePercent(weeklyQuota?.usedPercent);
 
         viewModel.primaryDisplayPercent = convertPercentForDisplay(
             viewModel.primaryPercent,
@@ -108,18 +106,12 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
 
     const parts = [];
 
-    if (includePrimary) {
-        parts.push(formatPercentForDisplay(
-            getPrimaryQuota(snapshot)?.usedPercent,
-            percentDisplayMode,
-        ));
+    if (showPrimary) {
+        parts.push(formatPercentForDisplay(sessionQuota?.usedPercent, percentDisplayMode));
     }
 
     if (showSecondary) {
-        parts.push(formatPercentForDisplay(
-            getSecondaryQuota(snapshot)?.usedPercent,
-            percentDisplayMode,
-        ));
+        parts.push(formatPercentForDisplay(weeklyQuota?.usedPercent, percentDisplayMode));
     }
 
     viewModel.label = parts.join("/");
@@ -145,11 +137,13 @@ export function createMenuViewModel(
             statusMessage: null,
             hasError: true,
             primary: createUsageItemViewModel({
+                visible: false,
                 title: "Session (5h)",
                 value: "--",
                 percentDisplayMode,
             }),
             secondary: createUsageItemViewModel({
+                visible: false,
                 title: "Week",
                 value: "--",
                 percentDisplayMode,
@@ -181,8 +175,8 @@ export function createMenuViewModel(
         };
     }
 
-    const primaryQuota = getPrimaryQuota(snapshot);
-    const secondaryQuota = getSecondaryQuota(snapshot);
+    const primaryQuota = getQuota(snapshot, "session");
+    const secondaryQuota = getQuota(snapshot, "weekly");
 
     return {
         updatedAt: "",
@@ -191,6 +185,7 @@ export function createMenuViewModel(
         statusMessage: cachedFailureMessage ? `Refresh failed: ${cachedFailureMessage}` : null,
         hasError: false,
         primary: createUsageItemViewModel({
+            visible: Boolean(primaryQuota),
             title: primaryQuota?.label ?? "Primary",
             value: formatPercentForDisplay(
                 primaryQuota?.usedPercent,
@@ -210,6 +205,7 @@ export function createMenuViewModel(
             ),
         }),
         secondary: createUsageItemViewModel({
+            visible: Boolean(secondaryQuota),
             title: secondaryQuota?.label ?? "Secondary",
             value: formatPercentForDisplay(
                 secondaryQuota?.usedPercent,
@@ -234,6 +230,7 @@ export function createMenuViewModel(
 }
 
 export function createUsageItemViewModel({
+    visible = true,
     title,
     value,
     prediction = "",
@@ -249,6 +246,7 @@ export function createUsageItemViewModel({
         : null;
 
     return {
+        visible,
         title,
         value,
         prediction,
