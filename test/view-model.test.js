@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
     createMenuViewModel,
+    createPanelBarViewModel,
     formatFooter,
     formatLimitPrediction,
 } from "../dist/ui/view-model.js";
@@ -81,6 +82,42 @@ test("formats footer without zero credits", () => {
         }),
         /^Pro · Updated /,
     );
+});
+
+test("omits the session UI when only weekly usage is available", () => {
+    const settings = {
+        percentDisplayMode: "used",
+        showPrimary: true,
+        showSecondary: true,
+        topPanelDisplayMode: "label",
+    };
+    const snapshot = {
+        fetchedAt: 1_700_000_000,
+        planType: "plus",
+        quotas: [{
+            id: "weekly",
+            label: "Week",
+            usedPercent: 12,
+            limitWindowSeconds: 604_800,
+            resetAfterSeconds: 86_400,
+            resetAt: 1_700_086_400,
+        }],
+    };
+    const prediction = {
+        quotas: { weekly: { trend: "safe", estimatedLimitAt: null } },
+        primary: { trend: "unknown", estimatedLimitAt: null },
+        secondary: { trend: "safe", estimatedLimitAt: null },
+    };
+
+    const menu = createMenuViewModel(settings, snapshot, prediction);
+    const panel = createPanelBarViewModel(settings, snapshot, null);
+
+    assert.equal(menu.primary.visible, false);
+    assert.equal(menu.secondary.visible, true);
+    assert.equal(menu.secondary.title, "Week");
+    assert.equal(panel.primaryVisible, false);
+    assert.equal(panel.secondaryVisible, true);
+    assert.equal(panel.label, "12%");
 });
 
 test("keeps cached data visible with refresh failure status", () => {

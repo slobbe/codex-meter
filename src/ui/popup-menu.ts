@@ -81,6 +81,7 @@ export class CodexMeterPopupMenu {
     }
 
     setUsageItem(item, viewModel) {
+        item.visible = viewModel.visible;
         item.titleLabel.text = viewModel.title;
         item.valueLabel.text = `${viewModel.value} ${viewModel.percentLabel}`;
         item.predictionLabel.text = viewModel.prediction;

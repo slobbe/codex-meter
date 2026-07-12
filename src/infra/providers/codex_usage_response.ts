@@ -4,38 +4,12 @@ import { UsageCredits, UsageSnapshot } from "../../domain/usage.js";
 type JsonObject = Record<string, unknown>;
 
 type CodexApiResponse = {
-    user_id: string;
-    account_id: string;
-    email: string;
-    plan_type: "free" | "plus" | "pro" | string;
-
+    plan_type: string;
     rate_limit: {
-        allowed: boolean;
         limit_reached: boolean;
-        primary_window: CodexRateLimitWindow;
-        secondary_window: CodexRateLimitWindow;
+        primary_window: CodexRateLimitWindow | null;
+        secondary_window: CodexRateLimitWindow | null;
     };
-
-    code_review_rate_limit: CodexRateLimit | null;
-    additional_rate_limits: unknown | null;
-
-    credits: {
-        has_credits: boolean;
-        unlimited: boolean;
-        overage_limit_reached: boolean;
-        balance: string;
-        approx_local_messages: [number, number];
-        approx_cloud_messages: [number, number];
-    };
-
-    spend_control: {
-        reached: boolean;
-        individual_limit: number | null;
-    };
-
-    rate_limit_reached_type: string | null;
-    promo: unknown | null;
-    referral_beacon: unknown | null;
 };
 
 type CodexRateLimitWindow = {
@@ -43,13 +17,6 @@ type CodexRateLimitWindow = {
     limit_window_seconds: number;
     reset_after_seconds: number;
     reset_at: number;
-};
-
-type CodexRateLimit = {
-    allowed: boolean;
-    limit_reached: boolean;
-    primary_window: CodexRateLimitWindow;
-    secondary_window: CodexRateLimitWindow;
 };
 
 export function toUsageSnapshot(api: JsonObject): UsageSnapshot {
@@ -60,30 +27,7 @@ export function toUsageSnapshot(api: JsonObject): UsageSnapshot {
         providerId: "codex",
         planType: codexApi.plan_type,
         credits: toUsageCredits(api.credits),
-        quotas: [
-            {
-                id: "session",
-                label: "Session (5h)",
-                usedPercent: codexApi.rate_limit.primary_window.used_percent,
-                limitWindowSeconds:
-                    codexApi.rate_limit.primary_window.limit_window_seconds,
-                resetAfterSeconds:
-                    codexApi.rate_limit.primary_window.reset_after_seconds,
-                resetAt: codexApi.rate_limit.primary_window.reset_at,
-                limitReached: codexApi.rate_limit.limit_reached,
-            },
-            {
-                id: "weekly",
-                label: "Week",
-                usedPercent: codexApi.rate_limit.secondary_window.used_percent,
-                limitWindowSeconds:
-                    codexApi.rate_limit.secondary_window.limit_window_seconds,
-                resetAfterSeconds:
-                    codexApi.rate_limit.secondary_window.reset_after_seconds,
-                resetAt: codexApi.rate_limit.secondary_window.reset_at,
-                limitReached: codexApi.rate_limit.limit_reached,
-            },
-        ],
+        quotas: toUsageQuotas(codexApi),
     };
 }
 
@@ -105,8 +49,52 @@ function assertApiResponseShape(api: JsonObject): void {
         throwUnexpected("rate_limit.limit_reached is missing or not a boolean");
     }
 
-    assertWindow(api.rate_limit.primary_window, "rate_limit.primary_window");
-    assertWindow(api.rate_limit.secondary_window, "rate_limit.secondary_window");
+    assertOptionalWindow(api.rate_limit.primary_window, "rate_limit.primary_window");
+    assertOptionalWindow(api.rate_limit.secondary_window, "rate_limit.secondary_window");
+
+    if (api.rate_limit.primary_window === null && api.rate_limit.secondary_window === null) {
+        throwUnexpected("rate_limit does not contain a usage window");
+    }
+}
+
+function toUsageQuotas(api: CodexApiResponse): UsageSnapshot["quotas"] {
+    const { primary_window: primary, secondary_window: secondary } = api.rate_limit;
+
+    if (primary && secondary) {
+        return [
+            toUsageQuota("session", "Session (5h)", primary, api.rate_limit.limit_reached),
+            toUsageQuota("weekly", "Week", secondary, api.rate_limit.limit_reached),
+        ];
+    }
+
+    const weeklyWindow = primary ?? secondary;
+    if (!weeklyWindow) {
+        throwUnexpected("rate_limit does not contain a usage window");
+    }
+
+    return [toUsageQuota("weekly", "Week", weeklyWindow, api.rate_limit.limit_reached)];
+}
+
+function toUsageQuota(
+    id: string,
+    label: string,
+    window: CodexRateLimitWindow,
+    limitReached: boolean,
+): UsageSnapshot["quotas"][number] {
+    return {
+        id,
+        label,
+        usedPercent: window.used_percent,
+        limitWindowSeconds: window.limit_window_seconds,
+        resetAfterSeconds: window.reset_after_seconds,
+        resetAt: window.reset_at,
+        limitReached,
+    };
+}
+
+function assertOptionalWindow(value: unknown, path: string): void {
+    if (value === null || value === undefined) return;
+    assertWindow(value, path);
 }
 
 function toUsageCredits(value: unknown): UsageCredits | undefined {
