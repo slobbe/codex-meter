@@ -15,8 +15,10 @@ import { isRefreshFailureError } from "../domain/refresh-failure.js";
 import {
     listCodexBankedResets,
     readCachedCodexBankedResets,
+    redeemCodexBankedReset,
     redeemNextCodexBankedReset,
 } from "../infra/providers/codex_banked_resets.js";
+import { selectCreditExpiringWithin } from "../infra/providers/codex_banked_reset_response.js";
 import { CodexMeterPopupMenu } from "./popup-menu.js";
 import { formatRefreshFailure } from "./refresh-error-message.js";
 import {
@@ -27,6 +29,7 @@ import {
 } from "./view-model.js";
 
 const BANKED_RESET_BACKGROUND_REFRESH_SECONDS = 20 * 60;
+const AUTO_APPLY_BANKED_RESET_WINDOW_MS = 60 * 60 * 1000;
 
 export class CodexMeterIndicator extends PanelMenu.Button {
     [key: string]: any;
@@ -41,6 +44,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._extension = extension;
         this._settings = new SettingsService(extension.getSettings());
         this._providerId = this._settings.getUsageProvider();
+        this._autoApplyBankedReset = this._settings.getAutoApplyBankedReset();
         this._usageService = createUsageService(this._providerId);
         this._scheduler = new Scheduler(
             this._settings.getBackgroundRefreshIntervalSeconds(),
@@ -248,6 +252,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
 
         this._settingsChangedId = this._settings.connectChanged(() => {
             const providerId = this._settings.getUsageProvider();
+            const autoApplyBankedReset = this._settings.getAutoApplyBankedReset();
 
             if (providerId !== this._providerId) {
                 this._providerId = providerId;
@@ -262,6 +267,11 @@ export class CodexMeterIndicator extends PanelMenu.Button {
                 void this._loadCachedBankedResets();
                 void this._loadCachedSnapshot();
             }
+
+            if (autoApplyBankedReset && !this._autoApplyBankedReset) {
+                void this._refreshBankedResets();
+            }
+            this._autoApplyBankedReset = autoApplyBankedReset;
 
             this._syncLabel();
             this._syncMenu();
@@ -497,6 +507,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
 
             this._bankedResetCount = Math.max(0, response.available_count);
             this._lastBankedResetRefreshAt = Math.floor(Date.now() / 1000);
+            await this._autoApplyExpiringBankedReset(response.credits, cancellable);
             this._syncMenu();
         } catch (error) {
             if (isCancellationError(error)) return;
@@ -506,6 +517,45 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             this._bankedResetCount = null;
             this._lastBankedResetRefreshAt = null;
             this._syncMenu();
+        }
+    }
+
+    async _autoApplyExpiringBankedReset(credits, cancellable) {
+        if (
+            this._destroyed ||
+            this._redeemingBankedReset ||
+            !this._settings.getAutoApplyBankedReset()
+        ) {
+            return;
+        }
+
+        const credit = selectCreditExpiringWithin(
+            credits,
+            Date.now(),
+            AUTO_APPLY_BANKED_RESET_WINDOW_MS,
+        );
+        if (!credit) return;
+
+        this._redeemingBankedReset = true;
+        this._syncMenu();
+
+        try {
+            await redeemCodexBankedReset(credit.id, { cancellable });
+
+            if (this._destroyed) return;
+
+            this._bankedResetCount = Math.max(0, (this._bankedResetCount ?? 1) - 1);
+            notify("Codex Meter", "Expiring banked Codex reset applied automatically.");
+            await this._refreshUsage();
+        } catch (error) {
+            if (this._destroyed && isCancellationError(error)) return;
+
+            console.warn("Unable to auto-apply expiring Codex banked reset", error);
+        } finally {
+            if (!this._destroyed) {
+                this._redeemingBankedReset = false;
+                this._syncMenu();
+            }
         }
     }
 

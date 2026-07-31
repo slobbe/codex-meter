@@ -78,9 +78,29 @@ export function selectCreditToRedeem(credits: CodexBankedResetCredit[]): CodexBa
         return available[0];
     }
 
-    return [...available].sort((left, right) => {
+    return sortByExpiry(available)[0];
+}
+
+export function selectCreditExpiringWithin(
+    credits: CodexBankedResetCredit[],
+    nowMs: number,
+    windowMs: number,
+): CodexBankedResetCredit | null {
+    const expiresBy = nowMs + windowMs;
+    const expiring = credits.filter((credit) => {
+        if (credit.status !== "available" || !hasValidExpiresAt(credit)) return false;
+
+        const expiresAt = Date.parse(credit.expires_at ?? "");
+        return expiresAt > nowMs && expiresAt <= expiresBy;
+    });
+
+    return sortByExpiry(expiring)[0] ?? null;
+}
+
+function sortByExpiry(credits: CodexBankedResetCredit[]): CodexBankedResetCredit[] {
+    return [...credits].sort((left, right) => {
         return Date.parse(left.expires_at ?? "") - Date.parse(right.expires_at ?? "");
-    })[0];
+    });
 }
 
 function hasValidExpiresAt(credit: CodexBankedResetCredit): boolean {
