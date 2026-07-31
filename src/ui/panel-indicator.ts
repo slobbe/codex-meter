@@ -21,11 +21,10 @@ import {
 import { selectCreditExpiringWithin } from "../infra/providers/codex_banked_reset_response.js";
 import { CodexMeterPopupMenu } from "./popup-menu.js";
 import { formatRefreshFailure } from "./refresh-error-message.js";
+import { UsageBar } from "./usage-bar.js";
 import {
-    calculateBarFillWidth,
     createMenuViewModel,
     createPanelBarViewModel,
-    getUsageBarColorStyleClass,
 } from "./view-model.js";
 
 const BANKED_RESET_BACKGROUND_REFRESH_SECONDS = 20 * 60;
@@ -198,45 +197,13 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             style_class: "cx-panel-bars",
         });
 
-        this._panelPrimaryBar = this._createPanelBar();
-        this._panelSecondaryBar = this._createPanelBar();
+        this._panelPrimaryBar = new UsageBar("panel");
+        this._panelSecondaryBar = new UsageBar("panel");
 
-        box.add_child(this._panelPrimaryBar.barTrack);
-        box.add_child(this._panelSecondaryBar.barTrack);
+        box.add_child(this._panelPrimaryBar.actor);
+        box.add_child(this._panelSecondaryBar.actor);
 
         return box;
-    }
-
-    _createPanelBar() {
-        const barTrack = new St.BoxLayout({
-            y_align: Clutter.ActorAlign.CENTER,
-            style_class: "cx-panel-bar-track",
-        });
-
-        const barFill = new St.Widget({
-            y_expand: true,
-            style_class: "cx-usage-bar-fill cx-panel-bar-fill",
-        });
-        const barSpacer = new St.Widget({
-            x_expand: true,
-        });
-
-        barFill.width = 0;
-        barTrack.add_child(barFill);
-        barTrack.add_child(barSpacer);
-
-        const bar = {
-            barTrack,
-            barFill,
-            percentValue: 0,
-            displayPercentValue: 0,
-        };
-
-        barTrack.connect("notify::width", () => {
-            this._updateUsageBar(bar);
-        });
-
-        return bar;
     }
 
     _connectSignals() {
@@ -641,14 +608,16 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             this._errorMessage,
         );
 
-        this._panelPrimaryBar.barTrack.visible = viewModel.primaryVisible;
-        this._panelSecondaryBar.barTrack.visible = viewModel.secondaryVisible;
-        this._panelPrimaryBar.percentValue = viewModel.primaryPercent;
-        this._panelSecondaryBar.percentValue = viewModel.secondaryPercent;
-        this._panelPrimaryBar.displayPercentValue =
-            viewModel.primaryDisplayPercent;
-        this._panelSecondaryBar.displayPercentValue =
-            viewModel.secondaryDisplayPercent;
+        this._panelPrimaryBar.actor.visible = viewModel.primaryVisible;
+        this._panelSecondaryBar.actor.visible = viewModel.secondaryVisible;
+        this._panelPrimaryBar.update({
+            percentValue: viewModel.primaryPercent,
+            displayPercentValue: viewModel.primaryDisplayPercent,
+        });
+        this._panelSecondaryBar.update({
+            percentValue: viewModel.secondaryPercent,
+            displayPercentValue: viewModel.secondaryDisplayPercent,
+        });
         this._panelBars.visible = viewModel.showBars;
         if (viewModel.primaryVisible && viewModel.secondaryVisible) {
             this._panelBars.add_style_class_name("cx-panel-bars-stacked");
@@ -666,10 +635,6 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._codexIcon.visible = settings.topPanelIndicatorIcon === "codex";
         this._openAiIcon.visible = settings.topPanelIndicatorIcon === "openai";
 
-        this._updateUsageBarColor(this._panelPrimaryBar);
-        this._updateUsageBarColor(this._panelSecondaryBar);
-        this._updateUsageBar(this._panelPrimaryBar);
-        this._updateUsageBar(this._panelSecondaryBar);
     }
 
     _syncMenu() {
@@ -715,23 +680,6 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._popupMenu.setUsageItem(item, viewModel);
     }
 
-    _updateUsageBar(item) {
-        item.barFill.width = calculateBarFillWidth(
-            item.barTrack.width,
-            item.displayPercentValue,
-        );
-    }
-
-    _updateUsageBarColor(item) {
-        item.barFill.remove_style_class_name("cx-color-green");
-        item.barFill.remove_style_class_name("cx-color-warning");
-        item.barFill.remove_style_class_name("cx-color-danger");
-        item.barFill.remove_style_class_name("cx-muted");
-
-        item.barFill.add_style_class_name(
-            getUsageBarColorStyleClass(item.percentValue),
-        );
-    }
 }
 
 function createUsageService(providerId: ProviderId): UsageService {

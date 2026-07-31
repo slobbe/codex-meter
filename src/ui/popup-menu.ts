@@ -3,13 +3,8 @@ import St from "gi://St";
 
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 
-import {
-    calculateBarFillWidth,
-    calculateBarMarkerPosition,
-    getUsageBarColorStyleClass,
-} from "./view-model.js";
-
-const BASELINE_MARKER_WIDTH = 3;
+import { createIconButton, createTextButton } from "./button.js";
+import { UsageBar } from "./usage-bar.js";
 const POPUP_CONTENT_WIDTH = 285;
 const TREND_BAR_COUNT = 56;
 const TREND_BAR_MAX_HEIGHT = 28;
@@ -54,8 +49,8 @@ export class CodexMeterPopupMenu {
     }
 
     syncBars() {
-        this._updateUsageBar(this.primaryItem);
-        this._updateUsageBar(this.secondaryItem);
+        this.primaryItem.usageBar.sync();
+        this.secondaryItem.usageBar.sync();
     }
 
     setTrend(viewModel) {
@@ -87,12 +82,12 @@ export class CodexMeterPopupMenu {
         item.predictionLabel.text = viewModel.prediction;
         item.resetLabel.text = viewModel.reset;
         setPredictionStyleClass(item.predictionLabel, viewModel.predictionStyle);
-        item.percentValue = viewModel.percentValue;
-        item.displayPercentValue = viewModel.displayPercentValue;
-        item.baselinePercentValue = viewModel.baselinePercentValue;
-        item.displayBaselinePercentValue = viewModel.displayBaselinePercentValue;
-        this._updateUsageBarColor(item);
-        this._updateUsageBar(item);
+        item.usageBar.update({
+            percentValue: viewModel.percentValue,
+            displayPercentValue: viewModel.displayPercentValue,
+            baselinePercentValue: viewModel.baselinePercentValue,
+            displayBaselinePercentValue: viewModel.displayBaselinePercentValue,
+        });
     }
 
     setError(message) {
@@ -154,47 +149,7 @@ export class CodexMeterPopupMenu {
             y_align: Clutter.ActorAlign.CENTER,
         });
 
-        const barTrack = new St.BoxLayout({
-            x_expand: true,
-            y_align: Clutter.ActorAlign.CENTER,
-            style_class: "cx-usage-bar-track",
-        });
-
-        const barOverlay = new St.Widget({
-            x_expand: true,
-            y_align: Clutter.ActorAlign.CENTER,
-            style_class: "cx-usage-bar-overlay",
-            layout_manager: new Clutter.FixedLayout(),
-        });
-
-        const barFill = new St.Widget({
-            y_expand: true,
-            style_class: "cx-usage-bar-fill",
-        });
-        const barSpacer = new St.Widget({
-            x_expand: true,
-        });
-
-        const barMarker = new St.Widget({
-            x_align: Clutter.ActorAlign.START,
-            y_align: Clutter.ActorAlign.FILL,
-            y_expand: true,
-            style_class: "cx-usage-bar-marker",
-        });
-
-        barFill.width = 0;
-        barMarker.width = BASELINE_MARKER_WIDTH;
-        barMarker.visible = false;
-        barTrack.add_child(barFill);
-        barTrack.add_child(barSpacer);
-        barOverlay.add_child(barTrack);
-        barOverlay.add_child(barMarker);
-        barOverlay.connect("notify::width", () => {
-            this._updateUsageBar(item);
-        });
-        barOverlay.connect("notify::height", () => {
-            this._updateUsageBar(item);
-        });
+        const usageBar = new UsageBar("menu");
 
         const detailBox = new St.BoxLayout({
             x_expand: true,
@@ -220,19 +175,12 @@ export class CodexMeterPopupMenu {
         headingBox.add_child(valueLabel);
 
         box.add_child(headingBox);
-        box.add_child(barOverlay);
+        box.add_child(usageBar.actor);
         box.add_child(detailBox);
         item.add_child(box);
         item.titleLabel = titleLabel;
         item.valueLabel = valueLabel;
-        item.barOverlay = barOverlay;
-        item.barTrack = barTrack;
-        item.barFill = barFill;
-        item.barMarker = barMarker;
-        item.percentValue = 0;
-        item.displayPercentValue = 0;
-        item.baselinePercentValue = null;
-        item.displayBaselinePercentValue = null;
+        item.usageBar = usageBar;
         item.predictionLabel = predictionLabel;
         item.resetLabel = resetLabel;
 
@@ -381,38 +329,29 @@ export class CodexMeterPopupMenu {
             style_class: "cx-header-row",
         });
 
-        const redeemButtonLabel = new St.Label({
+        const {
+            button: redeemButton,
+            label: redeemButtonLabel,
+        } = createTextButton({
             text: "Reset limits (0)",
-            y_align: Clutter.ActorAlign.CENTER,
+            styleClass: "cx-reset-button",
+            onClick: button => {
+                if (!button.reactive) return;
+
+                this._onRedeemBankedReset();
+            },
         });
 
-        const redeemButton = new St.Button({
-            child: redeemButtonLabel,
-            style_class: "cx-reset-button",
-            can_focus: true,
-            y_align: Clutter.ActorAlign.CENTER,
+        const {
+            button: refreshButton,
+            icon: refreshIcon,
+        } = createIconButton({
+            iconName: "view-refresh-symbolic",
+            accessibleName: "Refresh usage",
+            styleClass: "cx-footer-button",
+            onClick: () => this._onRefresh(),
         });
-        redeemButton.connect("clicked", () => {
-            if (!redeemButton.reactive) return;
-
-            this._onRedeemBankedReset();
-        });
-
-        const refreshButton = new St.Button({
-            child: new St.Icon({
-                icon_name: "view-refresh-symbolic",
-                style_class: "popup-menu-icon",
-            }),
-            style_class: "cx-footer-button",
-            can_focus: true,
-            x_align: Clutter.ActorAlign.END,
-            y_align: Clutter.ActorAlign.CENTER,
-        });
-        const refreshIcon = refreshButton.child;
         refreshIcon.set_pivot_point(0.5, 0.5);
-        refreshButton.connect("clicked", () => {
-            this._onRefresh();
-        });
 
         const datetimeLabel = new St.Label({
             text: "--",
@@ -457,18 +396,11 @@ export class CodexMeterPopupMenu {
             style_class: "cx-footer-label",
         });
 
-        const settingsButton = new St.Button({
-            child: new St.Icon({
-                icon_name: "preferences-system-symbolic",
-                style_class: "popup-menu-icon",
-            }),
-            style_class: "cx-footer-button",
-            can_focus: true,
-            x_align: Clutter.ActorAlign.END,
-            y_align: Clutter.ActorAlign.CENTER,
-        });
-        settingsButton.connect("clicked", () => {
-            this._onOpenPreferences();
+        const { button: settingsButton } = createIconButton({
+            iconName: "preferences-system-symbolic",
+            accessibleName: "Open preferences",
+            styleClass: "cx-footer-button",
+            onClick: () => this._onOpenPreferences(),
         });
 
         box.add_child(planLabel);
@@ -496,31 +428,6 @@ export class CodexMeterPopupMenu {
         }
     }
 
-    private _updateUsageBar(item) {
-        item.barTrack.height = item.barOverlay.height;
-        item.barTrack.width = item.barOverlay.width;
-        item.barFill.width = calculateBarFillWidth(
-            item.barOverlay.width,
-            item.displayPercentValue,
-        );
-        item.barMarker.width = BASELINE_MARKER_WIDTH;
-        item.barMarker.height = item.barOverlay.height;
-        item.barMarker.visible = Number.isFinite(item.baselinePercentValue);
-        item.barMarker.x = calculateBarMarkerPosition(
-            item.barOverlay.width,
-            item.barMarker.width,
-            item.displayBaselinePercentValue,
-        );
-        item.barMarker.y = 1;
-    }
-
-    private _updateUsageBarColor(item) {
-        removeColorStyleClasses(item.barFill);
-
-        item.barFill.add_style_class_name(
-            getUsageBarColorStyleClass(item.percentValue),
-        );
-    }
 }
 
 function setPredictionStyleClass(label, style) {
