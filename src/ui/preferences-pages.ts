@@ -385,11 +385,20 @@ function createBoundSwitchRow({
     title: string;
     subtitle?: string;
 }) {
-    const row = new Adw.SwitchRow({
+    const rowOptions: {
+        title: string;
+        active: boolean;
+        subtitle?: string;
+    } = {
         title,
-        subtitle,
         active: settings.get_boolean(key),
-    });
+    };
+
+    if (subtitle !== undefined) {
+        rowOptions.subtitle = subtitle;
+    }
+
+    const row = new Adw.SwitchRow(rowOptions);
 
     settings.bind(key, row, "active", Gio.SettingsBindFlags.DEFAULT);
 
