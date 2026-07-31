@@ -45,7 +45,12 @@
       <default>5</default>
       <summary>Background refresh interval (minutes)</summary>
       <description>Set to 0 to refresh manually</description>
-      <range min="0" max="60"/>
+      <range min="0" max="30"/>
+    </key>
+    <key name="auto-apply-banked-reset" type="b">
+      <default>false</default>
+      <summary>Auto-apply banked resets</summary>
+      <description>Automatically apply a banked reset within 1 hour of expiry</description>
     </key>
   </schema>
 </schemalist>

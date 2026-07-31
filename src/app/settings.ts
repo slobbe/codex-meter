@@ -10,6 +10,7 @@ export const SETTINGS_TOP_PANEL_INDICATOR_ICON = "top-panel-indicator-icon";
 export const SETTINGS_PERCENT_DISPLAY_MODE = "percent-display-mode";
 export const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES =
     "background-refresh-interval-minutes";
+export const SETTINGS_AUTO_APPLY_BANKED_RESET = "auto-apply-banked-reset";
 
 export const MIN_REFRESH_INTERVAL_MINUTES = 0;
 
@@ -27,6 +28,7 @@ export type ExtensionSettings = {
     percentDisplayMode: PercentDisplayMode;
     backgroundRefreshIntervalMinutes: number;
     backgroundRefreshIntervalSeconds: number;
+    autoApplyBankedReset: boolean;
 };
 
 export class SettingsService {
@@ -46,6 +48,7 @@ export class SettingsService {
             backgroundRefreshIntervalMinutes,
             backgroundRefreshIntervalSeconds:
                 backgroundRefreshIntervalMinutes * 60,
+            autoApplyBankedReset: this.getAutoApplyBankedReset(),
         };
     }
 
@@ -110,6 +113,10 @@ export class SettingsService {
 
     getBackgroundRefreshIntervalSeconds(): number {
         return this.getBackgroundRefreshIntervalMinutes() * 60;
+    }
+
+    getAutoApplyBankedReset(): boolean {
+        return this.settings.get_boolean(SETTINGS_AUTO_APPLY_BANKED_RESET);
     }
 
     connectChanged(callback: () => void): number {

@@ -5,6 +5,7 @@ import Gtk from "gi://Gtk";
 
 import {
     MIN_REFRESH_INTERVAL_MINUTES,
+    SETTINGS_AUTO_APPLY_BANKED_RESET,
     SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES,
     SETTINGS_PERCENT_DISPLAY_MODE,
     SETTINGS_SHOW_PRIMARY,
@@ -47,7 +48,7 @@ export const CodexPage = GObject.registerClass(
         private _credits: CodexBankedResetCredit[];
         private _loading: boolean;
 
-        _init(snapshot: CodexBankedResetListResponse | null = null) {
+        _init(settings: Gio.Settings, snapshot: CodexBankedResetListResponse | null = null) {
             this._rows = [];
             this._credits = snapshot?.credits ?? [];
             this._loading = false;
@@ -60,6 +61,14 @@ export const CodexPage = GObject.registerClass(
             this._group = new Adw.PreferencesGroup({
                 title: "Banked resets",
             });
+            this._group.add(
+                createBoundSwitchRow({
+                    settings,
+                    key: SETTINGS_AUTO_APPLY_BANKED_RESET,
+                    title: "Auto-apply expiring resets",
+                    subtitle: "Apply a banked reset automatically within 1 hour of expiry",
+                }),
+            );
 
             this._statusRow = new Adw.ActionRow();
             this._addRow(this._statusRow);
@@ -369,13 +378,16 @@ function createBoundSwitchRow({
     settings,
     key,
     title,
+    subtitle,
 }: {
     settings: Gio.Settings;
     key: string;
     title: string;
+    subtitle?: string;
 }) {
     const row = new Adw.SwitchRow({
         title,
+        subtitle,
         active: settings.get_boolean(key),
     });
 

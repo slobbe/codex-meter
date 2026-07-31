@@ -17,7 +17,7 @@ export default class CodexMeterPreferences extends ExtensionPreferences {
         const bankedResetSnapshot = await readCachedCodexBankedResets();
 
         window.add(new (DisplayPage as any)(settings));
-        window.add(new (CodexPage as any)(bankedResetSnapshot));
+        window.add(new (CodexPage as any)(settings, bankedResetSnapshot));
         window.add(new (AboutPage as any)(this.metadata, this.path));
         window.set_default_size(640, 720);
     }
