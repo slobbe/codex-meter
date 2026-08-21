@@ -45,8 +45,7 @@ function writeText(path, text) {
 function removeFile(path) {
     try {
         Gio.File.new_for_path(path).delete(null);
-    } catch (_error) {
-    }
+    } catch (_error) {}
 }
 
 async function testAppendWritesJsonl() {
@@ -84,35 +83,43 @@ async function testAppendWritesJsonl() {
 
         for (const [index, line] of lines.entries()) {
             assertEqual(
-                line.startsWith("{\"timestamp\":"),
+                line.startsWith('{"timestamp":'),
                 true,
                 `history line ${index + 1} should start with a JSON object`,
             );
             JSON.parse(line);
         }
 
-        assertDeepEqual(JSON.parse(lines[0]), {
-            timestamp: firstTimestamp,
-            quotas: [
-                {
-                    id: "session",
-                    usedPercent: 14,
-                    used: 140,
-                    limit: 1000,
-                    remaining: 860,
-                    resetAt: 1_700_000_000,
-                    limitReached: false,
-                },
-                { id: "weekly", usedPercent: 54 },
-            ],
-        }, "history row should preserve richer quota fields");
-        assertDeepEqual(JSON.parse(lines[1]), {
-            timestamp: secondTimestamp,
-            quotas: [
-                { id: "session", usedPercent: 15, used: 150 },
-                { id: "weekly", usedPercent: 55 },
-            ],
-        }, "appended history row should be valid JSON text");
+        assertDeepEqual(
+            JSON.parse(lines[0]),
+            {
+                timestamp: firstTimestamp,
+                quotas: [
+                    {
+                        id: "session",
+                        usedPercent: 14,
+                        used: 140,
+                        limit: 1000,
+                        remaining: 860,
+                        resetAt: 1_700_000_000,
+                        limitReached: false,
+                    },
+                    { id: "weekly", usedPercent: 54 },
+                ],
+            },
+            "history row should preserve richer quota fields",
+        );
+        assertDeepEqual(
+            JSON.parse(lines[1]),
+            {
+                timestamp: secondTimestamp,
+                quotas: [
+                    { id: "session", usedPercent: 15, used: 150 },
+                    { id: "weekly", usedPercent: 55 },
+                ],
+            },
+            "appended history row should be valid JSON text",
+        );
     } finally {
         removeFile(path);
     }
@@ -175,21 +182,28 @@ async function testJsonlIsReadable() {
     const timestamp = new Date().toISOString();
 
     try {
-        writeText(path, `${JSON.stringify({
-            timestamp,
-            quotas: [
-                { id: "session", usedPercent: 11, used: 110 },
-                { id: "weekly", usedPercent: 56 },
-            ],
-        })}\n`);
+        writeText(
+            path,
+            `${JSON.stringify({
+                timestamp,
+                quotas: [
+                    { id: "session", usedPercent: 11, used: 110 },
+                    { id: "weekly", usedPercent: 56 },
+                ],
+            })}\n`,
+        );
 
         const history = await readHistoryFromPath(path);
 
         assertEqual(history.length, 1, "JSONL history row should be read");
-        assertDeepEqual(history[0].quotas, [
-            { id: "session", usedPercent: 11, used: 110 },
-            { id: "weekly", usedPercent: 56 },
-        ], "JSONL usage quotas should be read");
+        assertDeepEqual(
+            history[0].quotas,
+            [
+                { id: "session", usedPercent: 11, used: 110 },
+                { id: "weekly", usedPercent: 56 },
+            ],
+            "JSONL usage quotas should be read",
+        );
     } finally {
         removeFile(path);
     }

@@ -121,17 +121,17 @@ function assertOptionalWindow(value, path) {
 function toUsageCredits(value) {
     if (!isObject(value)) return undefined;
 
-    const balance = typeof value.balance === "string" && value.balance.trim().length > 0
-        ? value.balance
-        : null;
+    const balance =
+        typeof value.balance === "string" && value.balance.trim().length > 0 ? value.balance : null;
 
     return {
         balance,
         hasCredits: typeof value.has_credits === "boolean" ? value.has_credits : undefined,
         unlimited: typeof value.unlimited === "boolean" ? value.unlimited : undefined,
-        overageLimitReached: typeof value.overage_limit_reached === "boolean"
-            ? value.overage_limit_reached
-            : undefined,
+        overageLimitReached:
+            typeof value.overage_limit_reached === "boolean"
+                ? value.overage_limit_reached
+                : undefined,
     };
 }
 
@@ -144,12 +144,7 @@ function assertWindow(value, path) {
         throwUnexpected(`${path} is missing or not an object`);
     }
 
-    for (const key of [
-        "used_percent",
-        "limit_window_seconds",
-        "reset_after_seconds",
-        "reset_at",
-    ]) {
+    for (const key of ["used_percent", "limit_window_seconds", "reset_after_seconds", "reset_at"]) {
         if (!Number.isFinite(value[key])) {
             throwUnexpected(`${path}.${key} is missing or not a finite number`);
         }

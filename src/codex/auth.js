@@ -1,19 +1,24 @@
 import GLib from "gi://GLib";
-import { getLocalAccessToken, readLocalAuth, } from "./auth-file.js";
-import { parseCodexAccessToken, parseCodexAccountId, } from "./auth-parser.js";
+import { getLocalAccessToken, readLocalAuth } from "./auth-file.js";
+import { parseCodexAccessToken, parseCodexAccountId } from "./auth-parser.js";
+
 export { parseCodexAccessToken, parseCodexAccountId } from "./auth-parser.js";
+
 export function getCodexAuthPath() {
     return GLib.build_filenamev([GLib.get_home_dir(), ".codex", "auth.json"]);
 }
+
 export const CODEX_AUTH_CONFIG = {
     providerName: "Codex",
     authPath: getCodexAuthPath(),
     loginCommand: "codex login",
     parseAccessToken: parseCodexAccessToken,
 };
+
 export async function getCodexAccessToken() {
     return await getLocalAccessToken(CODEX_AUTH_CONFIG);
 }
+
 export async function getCodexCredentials() {
     const auth = await readLocalAuth(CODEX_AUTH_CONFIG.authPath, CODEX_AUTH_CONFIG);
     const accessToken = parseCodexAccessToken(auth);

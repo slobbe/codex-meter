@@ -1,7 +1,9 @@
 import { fetchProviderUsage } from "../io/http.js";
 import { getCodexAccessToken } from "./auth.js";
 import { toUsageSnapshot } from "./usage-response.js";
+
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
+
 const CODEX_API_CONFIG = {
     providerName: "Codex",
     usageUrl: CODEX_USAGE_URL,
@@ -15,8 +17,10 @@ const CODEX_API_CONFIG = {
         emptyResponse: "Codex returned an empty response.",
     },
 };
+
 export class CodexUsageProvider {
     info = { id: "codex", displayName: "Codex" };
+
     async refreshUsage(options = {}) {
         const token = await getCodexAccessToken();
         const apiResponse = await fetchProviderUsage(token, CODEX_API_CONFIG, {

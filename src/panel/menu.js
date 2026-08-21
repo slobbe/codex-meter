@@ -3,22 +3,38 @@ import St from "gi://St";
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 import { createIconButton, createTextButton } from "./button.js";
 import { UsageBar } from "./usage-bar.js";
+
 const POPUP_CONTENT_WIDTH = 285;
+
 const TREND_BAR_COUNT = 56;
+
 const TREND_BAR_MAX_HEIGHT = 28;
+
 const TREND_BAR_MIN_HEIGHT = 3;
+
 const TREND_BAR_SPACING = 2;
+
 export class CodexMeterPopupMenu {
     headerItem;
+
     errorItem;
+
     statusItem;
+
     primaryItem;
+
     secondaryItem;
+
     trendItem;
+
     footerItem;
+
     _onRefresh;
+
     _onRedeemBankedReset;
+
     _onOpenPreferences;
+
     constructor({ onRefresh, onRedeemBankedReset, onOpenPreferences }) {
         this._onRefresh = onRefresh;
         this._onRedeemBankedReset = onRedeemBankedReset;
@@ -31,6 +47,7 @@ export class CodexMeterPopupMenu {
         this.trendItem = this._createTrendItem();
         this.footerItem = this._createFooterItem();
     }
+
     addToMenu(menu) {
         menu.addMenuItem(this.headerItem);
         menu.addMenuItem(this.errorItem);
@@ -41,10 +58,12 @@ export class CodexMeterPopupMenu {
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         menu.addMenuItem(this.footerItem);
     }
+
     syncBars() {
         this.primaryItem.usageBar.sync();
         this.secondaryItem.usageBar.sync();
     }
+
     setTrend(viewModel) {
         this.trendItem.visible = viewModel.visible;
         this.trendItem.titleLabel.text = viewModel.title;
@@ -53,17 +72,16 @@ export class CodexMeterPopupMenu {
             const bar = this.trendItem.bars[index];
             const value = viewModel.bars[index] ?? 0;
             bar.visible = index < viewModel.bars.length;
-            bar.height = value > 0
-                ? Math.round(TREND_BAR_MAX_HEIGHT * (value / 100))
-                : TREND_BAR_MIN_HEIGHT;
+            bar.height =
+                value > 0 ? Math.round(TREND_BAR_MAX_HEIGHT * (value / 100)) : TREND_BAR_MIN_HEIGHT;
             if (value > 0) {
                 bar.remove_style_class_name("cx-trend-bar-empty");
-            }
-            else {
+            } else {
                 bar.add_style_class_name("cx-trend-bar-empty");
             }
         }
     }
+
     setUsageItem(item, viewModel) {
         item.visible = viewModel.visible;
         item.titleLabel.text = viewModel.title;
@@ -78,6 +96,7 @@ export class CodexMeterPopupMenu {
             displayBaselinePercentValue: viewModel.displayBaselinePercentValue,
         });
     }
+
     setError(message) {
         const hasError = Boolean(message);
         this.errorItem.visible = hasError;
@@ -87,11 +106,13 @@ export class CodexMeterPopupMenu {
         this.errorItem.message = message ?? "";
         this.errorItem.messageLabel.text = message ?? "";
     }
+
     setStatus({ title, message, visible }) {
         this.statusItem.visible = Boolean(visible);
         this.statusItem.titleLabel.text = title ?? "";
         this.statusItem.messageLabel.text = message ?? "";
     }
+
     setBankedResets({ count, visible, redeeming }) {
         const canRedeem = !redeeming && count !== null && count > 0;
         this.headerItem.redeemButton.visible = visible && count !== null;
@@ -102,6 +123,7 @@ export class CodexMeterPopupMenu {
             ? "Resetting…"
             : `Reset limits (${count ?? 0})`;
     }
+
     _createUsageItem(title) {
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
@@ -159,6 +181,7 @@ export class CodexMeterPopupMenu {
         item.resetLabel = resetLabel;
         return item;
     }
+
     _createTrendItem() {
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
@@ -203,6 +226,7 @@ export class CodexMeterPopupMenu {
         item.visible = false;
         return item;
     }
+
     _createErrorItem() {
         const item = this._createBannerItem({
             iconName: "dialog-error-symbolic",
@@ -213,6 +237,7 @@ export class CodexMeterPopupMenu {
         item.message = "";
         return item;
     }
+
     _createStatusItem() {
         return this._createBannerItem({
             iconName: "dialog-warning-symbolic",
@@ -221,6 +246,7 @@ export class CodexMeterPopupMenu {
             messageStyleClass: "cx-error-message-warning",
         });
     }
+
     _createBannerItem({ iconName, title, colorStyleClass, messageStyleClass }) {
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
@@ -264,6 +290,7 @@ export class CodexMeterPopupMenu {
         item.messageLabel = messageLabel;
         return item;
     }
+
     _createHeaderItem() {
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
@@ -279,16 +306,15 @@ export class CodexMeterPopupMenu {
             y_align: Clutter.ActorAlign.CENTER,
             style_class: "cx-header-row",
         });
-        const { button: redeemButton, label: redeemButtonLabel, } = createTextButton({
+        const { button: redeemButton, label: redeemButtonLabel } = createTextButton({
             text: "Reset limits (0)",
             styleClass: "cx-reset-button",
-            onClick: button => {
-                if (!button.reactive)
-                    return;
+            onClick: (button) => {
+                if (!button.reactive) return;
                 this._onRedeemBankedReset();
             },
         });
-        const { button: refreshButton, icon: refreshIcon, } = createIconButton({
+        const { button: refreshButton, icon: refreshIcon } = createIconButton({
             iconName: "view-refresh-symbolic",
             accessibleName: "Refresh usage",
             styleClass: "cx-footer-button",
@@ -315,6 +341,7 @@ export class CodexMeterPopupMenu {
         item.refreshButton = refreshButton;
         return item;
     }
+
     _createFooterItem() {
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
@@ -344,32 +371,35 @@ export class CodexMeterPopupMenu {
         item.settingsButton = settingsButton;
         return item;
     }
+
     _updateTrendBarWidths() {
-        if (!this.trendItem?.sparklineBox || !this.trendItem?.bars)
-            return;
+        if (!this.trendItem?.sparklineBox || !this.trendItem?.bars) return;
         const visibleBars = this.trendItem.bars.length;
-        if (visibleBars <= 0 || this.trendItem.sparklineBox.width <= 0)
-            return;
+        if (visibleBars <= 0 || this.trendItem.sparklineBox.width <= 0) return;
         const totalSpacing = TREND_BAR_SPACING * Math.max(0, visibleBars - 1);
-        const availableWidth = Math.max(visibleBars, this.trendItem.sparklineBox.width - totalSpacing);
+        const availableWidth = Math.max(
+            visibleBars,
+            this.trendItem.sparklineBox.width - totalSpacing,
+        );
         const baseBarWidth = Math.max(1, Math.floor(availableWidth / visibleBars));
-        const extraPixels = Math.max(0, availableWidth - (baseBarWidth * visibleBars));
+        const extraPixels = Math.max(0, availableWidth - baseBarWidth * visibleBars);
         for (let index = 0; index < this.trendItem.bars.length; index += 1) {
             this.trendItem.bars[index].width = baseBarWidth + (index < extraPixels ? 1 : 0);
         }
     }
 }
+
 function setPredictionStyleClass(label, style) {
     removeColorStyleClasses(label);
     label.add_style_class_name(getPredictionColorStyleClass(style));
 }
+
 function getPredictionColorStyleClass(style) {
-    if (style === "safe")
-        return "cx-color-green";
-    if (style === "muted")
-        return "cx-muted";
+    if (style === "safe") return "cx-color-green";
+    if (style === "muted") return "cx-muted";
     return `cx-color-${style}`;
 }
+
 function removeColorStyleClasses(actor) {
     actor.remove_style_class_name("cx-color-green");
     actor.remove_style_class_name("cx-color-warning");

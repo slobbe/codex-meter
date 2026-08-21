@@ -3,6 +3,7 @@ import Gtk from "gi://Gtk";
 import { ExtensionPreferences } from "resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js";
 import { readCachedCodexBankedResets } from "./banked-resets/api.js";
 import { PreferencesPage } from "./preferences/page.js";
+
 export default class CodexMeterPreferences extends ExtensionPreferences {
     async fillPreferencesWindow(window) {
         const settings = this.getSettings();

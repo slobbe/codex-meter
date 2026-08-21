@@ -1,5 +1,6 @@
 import Clutter from "gi://Clutter";
 import St from "gi://St";
+
 export function createTextButton({ text, styleClass, onClick }) {
     const label = new St.Label({
         text,
@@ -14,7 +15,8 @@ export function createTextButton({ text, styleClass, onClick }) {
     button.connect("clicked", () => onClick(button));
     return { button, label };
 }
-export function createIconButton({ iconName, accessibleName, styleClass, onClick, }) {
+
+export function createIconButton({ iconName, accessibleName, styleClass, onClick }) {
     const icon = new St.Icon({
         icon_name: iconName,
         style_class: "popup-menu-icon",
