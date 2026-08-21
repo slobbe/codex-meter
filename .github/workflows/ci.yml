@@ -1,122 +1,122 @@
 name: CI
 
 on:
-  pull_request:
-  push:
-  workflow_dispatch:
+    pull_request:
+    push:
+    workflow_dispatch:
 
 permissions:
-  contents: read
+    contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+    group: ci-${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
 
 jobs:
-  validate:
-    runs-on: ubuntu-latest
+    validate:
+        runs-on: ubuntu-latest
 
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v6
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          cache: "npm"
+            - name: Set up Node.js
+              uses: actions/setup-node@v6
+              with:
+                  node-version: "24"
+                  cache: "npm"
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
+            - name: Set up Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: "3.13"
 
-      - name: Install validation dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y gjs jq libglib2.0-bin unzip zip
+            - name: Install validation dependencies
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  sudo apt-get update
+                  sudo apt-get install -y gjs jq libglib2.0-bin unzip zip
 
-          python -m pip install --upgrade pip
-          # shexli 0.2.1 currently segfaults with tree-sitter 0.26.0.
-          pip install -U shexli "tree-sitter==0.25.2"
+                  python -m pip install --upgrade pip
+                  # shexli 0.2.1 currently segfaults with tree-sitter 0.26.0.
+                  pip install -U shexli "tree-sitter==0.25.2"
 
-      - name: Install Node.js dependencies
-        run: npm ci
+            - name: Install Node.js dependencies
+              run: npm ci
 
-      - name: Validate metadata
-        shell: bash
-        run: |
-          set -euo pipefail
-          jq empty metadata.json
-          jq -e '
-            .uuid == "codex-meter@slobbe.github.io"
-            and (.name | type == "string" and length > 0)
-            and (.description | type == "string" and length > 0)
-            and (."version-name" | test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))
-            and (."shell-version" | type == "array" and length > 0)
-            and (."settings-schema" == "org.gnome.shell.extensions.codex-meter")
-          ' metadata.json
+            - name: Validate metadata
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  jq empty metadata.json
+                  jq -e '
+                    .uuid == "codex-meter@slobbe.github.io"
+                    and (.name | type == "string" and length > 0)
+                    and (.description | type == "string" and length > 0)
+                    and (."version-name" | test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))
+                    and (."shell-version" | type == "array" and length > 0)
+                    and (."settings-schema" == "org.gnome.shell.extensions.codex-meter")
+                  ' metadata.json
 
-          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
-          METADATA_VERSION="$(jq -r '."version-name"' metadata.json)"
+                  PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+                  METADATA_VERSION="$(jq -r '."version-name"' metadata.json)"
 
-          if [[ "${PACKAGE_VERSION}" != "${METADATA_VERSION}" ]]; then
-            echo "package.json version ${PACKAGE_VERSION} does not match metadata.json version-name ${METADATA_VERSION}" >&2
-            exit 1
-          fi
+                  if [[ "${PACKAGE_VERSION}" != "${METADATA_VERSION}" ]]; then
+                    echo "package.json version ${PACKAGE_VERSION} does not match metadata.json version-name ${METADATA_VERSION}" >&2
+                    exit 1
+                  fi
 
-      - name: Run tests
-        run: npm test
+            - name: Run tests
+              run: npm test
 
-      - name: Validate schemas
-        shell: bash
-        run: |
-          set -euo pipefail
-          glib-compile-schemas --strict schemas
+            - name: Validate schemas
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  glib-compile-schemas --strict schemas
 
-      - name: Build extension bundle
-        shell: bash
-        run: |
-          set -euo pipefail
-          make clean pack
+            - name: Build extension bundle
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  make clean pack
 
-      - name: Validate extension bundle
-        shell: bash
-        run: |
-          set -euo pipefail
-          VERSION="$(node -p "require('./package.json').version")"
-          UUID="$(jq -r '.uuid' metadata.json)"
-          ZIP="${UUID}-v${VERSION}.zip"
+            - name: Validate extension bundle
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  VERSION="$(node -p "require('./package.json').version")"
+                  UUID="$(jq -r '.uuid' metadata.json)"
+                  ZIP="${UUID}-v${VERSION}.zip"
 
-          test -f "${ZIP}"
-          unzip -p "${ZIP}" metadata.json | jq empty
-          unzip -p "${ZIP}" schemas/org.gnome.shell.extensions.codex-meter.gschema.xml >/dev/null
+                  test -f "${ZIP}"
+                  unzip -p "${ZIP}" metadata.json | jq empty
+                  unzip -p "${ZIP}" schemas/org.gnome.shell.extensions.codex-meter.gschema.xml >/dev/null
 
-          for file in \
-            metadata.json \
-            extension.js \
-            prefs.js \
-            stylesheet.css \
-            schemas/org.gnome.shell.extensions.codex-meter.gschema.xml
-          do
-            unzip -Z1 "${ZIP}" | grep -Fx "${file}"
-          done
+                  for file in \
+                    metadata.json \
+                    extension.js \
+                    prefs.js \
+                    stylesheet.css \
+                    schemas/org.gnome.shell.extensions.codex-meter.gschema.xml
+                  do
+                    unzip -Z1 "${ZIP}" | grep -Fx "${file}"
+                  done
 
-      - name: Run Shexli static analyzer
-        shell: bash
-        run: |
-          set -euo pipefail
-          VERSION="$(node -p "require('./package.json').version")"
-          UUID="$(jq -r '.uuid' metadata.json)"
-          ZIP="${UUID}-v${VERSION}.zip"
+            - name: Run Shexli static analyzer
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  VERSION="$(node -p "require('./package.json').version")"
+                  UUID="$(jq -r '.uuid' metadata.json)"
+                  ZIP="${UUID}-v${VERSION}.zip"
 
-          shexli "${ZIP}"
+                  shexli "${ZIP}"
 
-      - name: Upload extension bundle
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-bundle
-          path: codex-meter@slobbe.github.io-*.zip
-          if-no-files-found: error
+            - name: Upload extension bundle
+              uses: actions/upload-artifact@v7
+              with:
+                  name: release-bundle
+                  path: codex-meter@slobbe.github.io-*.zip
+                  if-no-files-found: error

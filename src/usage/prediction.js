@@ -25,8 +25,8 @@ export function createUnknownUsagePrediction(snapshot) {
 
     return {
         quotas,
-        primary: primaryId ? quotas[primaryId] ?? unknownPrediction() : unknownPrediction(),
-        secondary: secondaryId ? quotas[secondaryId] ?? unknownPrediction() : unknownPrediction(),
+        primary: primaryId ? (quotas[primaryId] ?? unknownPrediction()) : unknownPrediction(),
+        secondary: secondaryId ? (quotas[secondaryId] ?? unknownPrediction()) : unknownPrediction(),
     };
 }
 
@@ -61,8 +61,7 @@ function predictQuota(history, snapshot, quota) {
         return unknownPrediction();
     }
 
-    const startedAt = snapshot.fetchedAt -
-        (quota.limitWindowSeconds - quota.resetAfterSeconds);
+    const startedAt = snapshot.fetchedAt - (quota.limitWindowSeconds - quota.resetAfterSeconds);
     const historyWithSnapshot = [
         ...history,
         {
@@ -96,10 +95,12 @@ function predictQuota(history, snapshot, quota) {
  * @returns {quota is PredictionReadyQuota}
  */
 function hasPredictionMetadata(quota) {
-    return Number.isFinite(quota.limitWindowSeconds) &&
+    return (
+        Number.isFinite(quota.limitWindowSeconds) &&
         Number.isFinite(quota.resetAfterSeconds) &&
         Number.isFinite(quota.resetAt) &&
-        (quota.limitWindowSeconds ?? 0) > 0;
+        (quota.limitWindowSeconds ?? 0) > 0
+    );
 }
 
 /** @returns {WindowPrediction} */

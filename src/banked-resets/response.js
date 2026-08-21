@@ -124,8 +124,7 @@ function sortByExpiry(credits) {
  * @returns {boolean}
  */
 function hasValidExpiresAt(credit) {
-    return typeof credit.expires_at === "string" &&
-        Number.isFinite(Date.parse(credit.expires_at));
+    return typeof credit.expires_at === "string" && Number.isFinite(Date.parse(credit.expires_at));
 }
 
 /**

@@ -1,124 +1,124 @@
 name: Release
 
 on:
-  workflow_run:
-    workflows:
-      - "CI"
-    types:
-      - completed
+    workflow_run:
+        workflows:
+            - "CI"
+        types:
+            - completed
 
 permissions:
-  contents: write
-  actions: read
+    contents: write
+    actions: read
 
 concurrency:
-  group: release-${{ github.event.workflow_run.head_branch || github.event.workflow_run.head_sha }}
-  cancel-in-progress: false
+    group: release-${{ github.event.workflow_run.head_branch || github.event.workflow_run.head_sha }}
+    cancel-in-progress: false
 
 jobs:
-  release:
-    if: >
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      startsWith(github.event.workflow_run.head_branch, 'v')
-    runs-on: ubuntu-latest
+    release:
+        if: >
+            github.event.workflow_run.conclusion == 'success' &&
+            github.event.workflow_run.event == 'push' &&
+            startsWith(github.event.workflow_run.head_branch, 'v')
+        runs-on: ubuntu-latest
 
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-          fetch-depth: 0
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v6
+              with:
+                  ref: ${{ github.event.workflow_run.head_sha }}
+                  fetch-depth: 0
 
-      - name: Validate release source
-        shell: bash
-        run: |
-          set -euo pipefail
-          CI_REF="${{ github.event.workflow_run.head_branch }}"
-          CI_SHA="${{ github.event.workflow_run.head_sha }}"
+            - name: Validate release source
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  CI_REF="${{ github.event.workflow_run.head_branch }}"
+                  CI_SHA="${{ github.event.workflow_run.head_sha }}"
 
-          if [[ ! "${CI_REF}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "CI ref is not a release tag: ${CI_REF}" >&2
-            exit 1
-          fi
+                  if [[ ! "${CI_REF}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                    echo "CI ref is not a release tag: ${CI_REF}" >&2
+                    exit 1
+                  fi
 
-          git fetch --force --tags
-          TAG_SHA="$(git rev-list -n 1 "${CI_REF}")"
+                  git fetch --force --tags
+                  TAG_SHA="$(git rev-list -n 1 "${CI_REF}")"
 
-          if [[ "${TAG_SHA}" != "${CI_SHA}" ]]; then
-            echo "Tag ${CI_REF} points to ${TAG_SHA}, but CI ran on ${CI_SHA}" >&2
-            exit 1
-          fi
+                  if [[ "${TAG_SHA}" != "${CI_SHA}" ]]; then
+                    echo "Tag ${CI_REF} points to ${TAG_SHA}, but CI ran on ${CI_SHA}" >&2
+                    exit 1
+                  fi
 
-      - name: Install release dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y jq unzip
+            - name: Install release dependencies
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  sudo apt-get update
+                  sudo apt-get install -y jq unzip
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24"
+            - name: Set up Node.js
+              uses: actions/setup-node@v6
+              with:
+                  node-version: "24"
 
-      - name: Validate release metadata
-        shell: bash
-        run: |
-          set -euo pipefail
-          CI_REF="${{ github.event.workflow_run.head_branch }}"
-          TAG_VERSION="${CI_REF#v}"
-          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
-          METADATA_VERSION="$(jq -r '."version-name"' metadata.json)"
+            - name: Validate release metadata
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  CI_REF="${{ github.event.workflow_run.head_branch }}"
+                  TAG_VERSION="${CI_REF#v}"
+                  PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+                  METADATA_VERSION="$(jq -r '."version-name"' metadata.json)"
 
-          if [[ "${PACKAGE_VERSION}" != "${TAG_VERSION}" ]]; then
-            echo "Tag ${CI_REF} does not match package version ${PACKAGE_VERSION}" >&2
-            exit 1
-          fi
+                  if [[ "${PACKAGE_VERSION}" != "${TAG_VERSION}" ]]; then
+                    echo "Tag ${CI_REF} does not match package version ${PACKAGE_VERSION}" >&2
+                    exit 1
+                  fi
 
-          if [[ "${METADATA_VERSION}" != "${TAG_VERSION}" ]]; then
-            echo "Tag ${CI_REF} does not match metadata version-name ${METADATA_VERSION}" >&2
-            exit 1
-          fi
+                  if [[ "${METADATA_VERSION}" != "${TAG_VERSION}" ]]; then
+                    echo "Tag ${CI_REF} does not match metadata version-name ${METADATA_VERSION}" >&2
+                    exit 1
+                  fi
 
-      - name: Download extension bundle
-        uses: actions/download-artifact@v8
-        with:
-          name: release-bundle
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ github.token }}
-          path: release-artifacts
+            - name: Download extension bundle
+              uses: actions/download-artifact@v8
+              with:
+                  name: release-bundle
+                  run-id: ${{ github.event.workflow_run.id }}
+                  github-token: ${{ github.token }}
+                  path: release-artifacts
 
-      - name: Validate release artifact
-        shell: bash
-        run: |
-          set -euo pipefail
-          CI_REF="${{ github.event.workflow_run.head_branch }}"
-          TAG_VERSION="${CI_REF#v}"
-          UUID="$(jq -r '.uuid' metadata.json)"
-          ZIP="release-artifacts/${UUID}-v${TAG_VERSION}.zip"
+            - name: Validate release artifact
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  CI_REF="${{ github.event.workflow_run.head_branch }}"
+                  TAG_VERSION="${CI_REF#v}"
+                  UUID="$(jq -r '.uuid' metadata.json)"
+                  ZIP="release-artifacts/${UUID}-v${TAG_VERSION}.zip"
 
-          test -f "${ZIP}"
-          unzip -p "${ZIP}" metadata.json | jq empty
-          unzip -p "${ZIP}" extension.js >/dev/null
-          unzip -p "${ZIP}" prefs.js >/dev/null
+                  test -f "${ZIP}"
+                  unzip -p "${ZIP}" metadata.json | jq empty
+                  unzip -p "${ZIP}" extension.js >/dev/null
+                  unzip -p "${ZIP}" prefs.js >/dev/null
 
-      - name: Create GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          CI_REF="${{ github.event.workflow_run.head_branch }}"
-          TAG_VERSION="${CI_REF#v}"
-          UUID="$(jq -r '.uuid' metadata.json)"
-          ZIP="release-artifacts/${UUID}-v${TAG_VERSION}.zip"
+            - name: Create GitHub release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  CI_REF="${{ github.event.workflow_run.head_branch }}"
+                  TAG_VERSION="${CI_REF#v}"
+                  UUID="$(jq -r '.uuid' metadata.json)"
+                  ZIP="release-artifacts/${UUID}-v${TAG_VERSION}.zip"
 
-          if gh release view "${CI_REF}" >/dev/null 2>&1; then
-            gh release upload "${CI_REF}" "${ZIP}" --clobber
-          else
-            gh release create "${CI_REF}" "${ZIP}" \
-              --title "${CI_REF}" \
-              --generate-notes \
-              --verify-tag
-          fi
+                  if gh release view "${CI_REF}" >/dev/null 2>&1; then
+                    gh release upload "${CI_REF}" "${ZIP}" --clobber
+                  else
+                    gh release create "${CI_REF}" "${ZIP}" \
+                      --title "${CI_REF}" \
+                      --generate-notes \
+                      --verify-tag
+                  fi

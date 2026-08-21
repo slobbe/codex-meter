@@ -114,11 +114,7 @@ test("uses the secondary quota id for usage trend", () => {
     };
     const trend = createUsageTrendViewModel(
         snapshot,
-        [
-            entry(600, 90, "session"),
-            entry(300, 1, "week"),
-            entry(60, 5, "week"),
-        ],
+        [entry(600, 90, "session"), entry(300, 1, "week"), entry(60, 5, "week")],
         now,
     );
 
@@ -127,24 +123,32 @@ test("uses the secondary quota id for usage trend", () => {
 });
 
 test("calculates recent positive delta and ignores resets", () => {
-    assert.equal(calculateRecentPositiveDelta([
-        { timestamp: now - 300, usedPercent: 80 },
-        { timestamp: now - 200, usedPercent: 2 },
-        { timestamp: now - 100, usedPercent: 9 },
-    ]), 7);
+    assert.equal(
+        calculateRecentPositiveDelta([
+            { timestamp: now - 300, usedPercent: 80 },
+            { timestamp: now - 200, usedPercent: 2 },
+            { timestamp: now - 100, usedPercent: 9 },
+        ]),
+        7,
+    );
 });
 
 test("calculates average burn rate over observed span", () => {
-    assert.equal(calculateAverageBurnRatePercentPerDay([
-        { timestamp: now - 86_400, usedPercent: 1 },
-        { timestamp: now, usedPercent: 2.8 },
-    ]), 1.7999999999999998);
+    assert.equal(
+        calculateAverageBurnRatePercentPerDay([
+            { timestamp: now - 86_400, usedPercent: 1 },
+            { timestamp: now, usedPercent: 2.8 },
+        ]),
+        1.7999999999999998,
+    );
 });
 
 test("calculates average burn rate with six hour minimum observed span", () => {
-    assert.equal(calculateAverageBurnRatePercentPerDay([
-        { timestamp: now - 3_600, usedPercent: 1 },
-        { timestamp: now, usedPercent: 2 },
-    ]), 4);
+    assert.equal(
+        calculateAverageBurnRatePercentPerDay([
+            { timestamp: now - 3_600, usedPercent: 1 },
+            { timestamp: now, usedPercent: 2 },
+        ]),
+        4,
+    );
 });
-

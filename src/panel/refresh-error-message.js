@@ -1,4 +1,5 @@
 import { isRefreshFailureError } from "../refresh/error.js";
+
 export function formatRefreshFailure(error) {
     if (isRefreshFailureError(error)) {
         return error.message;

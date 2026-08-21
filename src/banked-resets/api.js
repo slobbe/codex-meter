@@ -1,24 +1,29 @@
 import GLib from "gi://GLib";
 import { fetchJson } from "../io/http.js";
 import { RefreshFailureError } from "../refresh/error.js";
-import { readBankedResetSnapshot, writeBankedResetSnapshot, } from "./store.js";
+import { readBankedResetSnapshot, writeBankedResetSnapshot } from "./store.js";
 import { getCodexCredentials } from "../codex/auth.js";
-import { selectCreditToRedeem, toListResponse, } from "./response.js";
+import { selectCreditToRedeem, toListResponse } from "./response.js";
+
 const CODEX_BANKED_RESETS_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
+
 const CODEX_REDEEM_BANKED_RESET_URL = `${CODEX_BANKED_RESETS_URL}/consume`;
+
 const CODEX_BANKED_RESETS_API_CONFIG = {
     providerName: "Codex",
     usageUrl: CODEX_BANKED_RESETS_URL,
     messages: {
         malformedResponse: "Codex returned a malformed banked reset response.",
         unexpectedResponseFormat: "Codex returned an unexpected banked reset response format.",
-        networkUnavailable: "Codex banked resets could not be reached. Check your network and try again.",
+        networkUnavailable:
+            "Codex banked resets could not be reached. Check your network and try again.",
         responseTooLarge: "Codex returned a banked reset response that is too large.",
         unauthorized: "Codex authentication expired. Please run `codex login` again.",
         refreshFailed: "Codex banked reset request failed. Try again later.",
         emptyResponse: "Codex returned an empty banked reset response.",
     },
 };
+
 export async function listCodexBankedResets(options = {}) {
     const credentials = await getCodexCredentials();
     const response = await fetchJson(CODEX_BANKED_RESETS_URL, CODEX_BANKED_RESETS_API_CONFIG, {
@@ -28,41 +33,45 @@ export async function listCodexBankedResets(options = {}) {
     const listResponse = toListResponse(response);
     try {
         await writeBankedResetSnapshot(listResponse);
-    }
-    catch (error) {
+    } catch (error) {
         console.error("Unable to write Codex banked reset snapshot cache", error);
     }
     return listResponse;
 }
+
 export async function readCachedCodexBankedResets() {
     return await readBankedResetSnapshot();
 }
+
 export async function redeemNextCodexBankedReset(options = {}) {
     const list = await listCodexBankedResets(options);
     const credit = selectCreditToRedeem(list.credits);
     if (!credit) {
-        throw new RefreshFailureError("unexpected-response", "No banked Codex resets are available to redeem.", "Codex banked reset redemption was requested with zero available credits.");
+        throw new RefreshFailureError(
+            "unexpected-response",
+            "No banked Codex resets are available to redeem.",
+            "Codex banked reset redemption was requested with zero available credits.",
+        );
     }
     await redeemCodexBankedReset(credit.id, options);
     return credit;
 }
+
 export async function redeemCodexBankedReset(creditId, options = {}) {
     const response = await consumeCodexBankedReset(creditId, options);
     try {
         await markCachedBankedResetRedeemed(creditId);
-    }
-    catch (error) {
+    } catch (error) {
         console.error("Unable to update Codex banked reset snapshot cache", error);
     }
     return response;
 }
+
 async function markCachedBankedResetRedeemed(creditId) {
     const snapshot = await readBankedResetSnapshot();
-    if (!snapshot)
-        return;
+    if (!snapshot) return;
     const credits = snapshot.credits.map((credit) => {
-        if (credit.id !== creditId)
-            return credit;
+        if (credit.id !== creditId) return credit;
         return {
             ...credit,
             status: "redeemed",
@@ -73,6 +82,7 @@ async function markCachedBankedResetRedeemed(creditId) {
         credits,
     });
 }
+
 async function consumeCodexBankedReset(creditId, options = {}) {
     const credentials = await getCodexCredentials();
     const request = {
@@ -90,6 +100,7 @@ async function consumeCodexBankedReset(creditId, options = {}) {
         cancellable: options.cancellable ?? null,
     });
 }
+
 function createCodexBankedResetHeaders(accessToken, accountId) {
     const headers = {
         Authorization: `Bearer ${accessToken}`,

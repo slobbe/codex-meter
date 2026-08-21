@@ -18,7 +18,11 @@ const sessionQuota = {
 
 test("formats reached limits explicitly", () => {
     assert.equal(
-        formatLimitPrediction({ trend: "limit reached", estimatedLimitAt: null }, sessionQuota, "primary"),
+        formatLimitPrediction(
+            { trend: "limit reached", estimatedLimitAt: null },
+            sessionQuota,
+            "primary",
+        ),
         "Limit reached",
     );
 });
@@ -32,7 +36,11 @@ test("formats safe limits actionably", () => {
 
 test("keeps unknown predictions blank", () => {
     assert.equal(
-        formatLimitPrediction({ trend: "unknown", estimatedLimitAt: null }, sessionQuota, "primary"),
+        formatLimitPrediction(
+            { trend: "unknown", estimatedLimitAt: null },
+            sessionQuota,
+            "primary",
+        ),
         "",
     );
 });
@@ -94,14 +102,16 @@ test("omits the session UI when only weekly usage is available", () => {
     const snapshot = {
         fetchedAt: 1_700_000_000,
         planType: "plus",
-        quotas: [{
-            id: "weekly",
-            label: "Week",
-            usedPercent: 12,
-            limitWindowSeconds: 604_800,
-            resetAfterSeconds: 86_400,
-            resetAt: 1_700_086_400,
-        }],
+        quotas: [
+            {
+                id: "weekly",
+                label: "Week",
+                usedPercent: 12,
+                limitWindowSeconds: 604_800,
+                resetAfterSeconds: 86_400,
+                resetAt: 1_700_086_400,
+            },
+        ],
     };
     const prediction = {
         quotas: { weekly: { trend: "safe", estimatedLimitAt: null } },

@@ -61,39 +61,45 @@ test("maps valid Codex usage response to usage snapshot", () => {
 });
 
 test("maps a weekly-only Codex response without a session quota", () => {
-    const snapshot = toUsageSnapshot(validUsageResponse({
-        rate_limit: {
-            limit_reached: false,
-            primary_window: {
-                used_percent: 0,
-                limit_window_seconds: 604_800,
-                reset_after_seconds: 604_762,
-                reset_at: 1_784_488_950,
+    const snapshot = toUsageSnapshot(
+        validUsageResponse({
+            rate_limit: {
+                limit_reached: false,
+                primary_window: {
+                    used_percent: 0,
+                    limit_window_seconds: 604_800,
+                    reset_after_seconds: 604_762,
+                    reset_at: 1_784_488_950,
+                },
+                secondary_window: null,
             },
-            secondary_window: null,
-        },
-    }));
+        }),
+    );
 
-    assert.deepEqual(snapshot.quotas, [{
-        id: "weekly",
-        label: "Week",
-        usedPercent: 0,
-        limitWindowSeconds: 604_800,
-        resetAfterSeconds: 604_762,
-        resetAt: 1_784_488_950,
-        limitReached: false,
-    }]);
+    assert.deepEqual(snapshot.quotas, [
+        {
+            id: "weekly",
+            label: "Week",
+            usedPercent: 0,
+            limitWindowSeconds: 604_800,
+            resetAfterSeconds: 604_762,
+            resetAt: 1_784_488_950,
+            limitReached: false,
+        },
+    ]);
 });
 
 test("maps Codex credit balance when present", () => {
-    const snapshot = toUsageSnapshot(validUsageResponse({
-        credits: {
-            has_credits: true,
-            unlimited: false,
-            overage_limit_reached: false,
-            balance: "$4.21",
-        },
-    }));
+    const snapshot = toUsageSnapshot(
+        validUsageResponse({
+            credits: {
+                has_credits: true,
+                unlimited: false,
+                overage_limit_reached: false,
+                balance: "$4.21",
+            },
+        }),
+    );
 
     assert.deepEqual(snapshot.credits, {
         balance: "$4.21",
