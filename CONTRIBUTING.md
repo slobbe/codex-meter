@@ -6,8 +6,7 @@ For local development, run the following commands to try out changes:
 
 ```sh
 make clean install
-gnome-extensions disable codex-meter@slobbe.github.io
-gnome-extensions enable codex-meter@slobbe.github.io
+make reload
 ```
 
 You may need to log out and back in to see changes.
@@ -22,11 +21,16 @@ make clean pack
 
 ## Checks
 
-Run the test suite before submitting changes:
+Run the checked-JavaScript validation and test suite before submitting changes:
 
 ```sh
+npm run check
 npm test
 ```
+
+Source files run directly as JavaScript. Critical pure modules opt into TypeScript's
+no-output checker with `// @ts-check` and JSDoc annotations; dynamic GJS UI modules
+are covered by runtime tests and manual extension testing.
 
 ## Guidelines
 

@@ -3,7 +3,7 @@ DOMAIN=slobbe.github.io
 VERSION=$(shell node -p "require('./package.json').version")
 TAG_VERSION=v$(VERSION)
 ZIP=$(NAME)@$(DOMAIN)-$(TAG_VERSION).zip
-TS_SOURCES=$(shell find . -path ./dist -prune -o -path ./node_modules -prune -o -name "*.ts" -print)
+SOURCES=$(shell find src -type f -print)
 
 .PHONY: all pack install reload clean
 
@@ -12,7 +12,7 @@ all: dist/extension.js
 node_modules/.package-lock.json: package.json
 	npm install
 
-dist/extension.js dist/prefs.js &: node_modules/.package-lock.json $(TS_SOURCES)
+dist/extension.js dist/prefs.js &: node_modules/.package-lock.json $(SOURCES)
 	rm -rf dist
 	npm run build
 
