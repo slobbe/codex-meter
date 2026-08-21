@@ -16,205 +16,133 @@ import {
     type TopPanelIndicatorIcon,
     type TopPanelDisplayMode,
 } from "../app/settings.js";
-import { isRefreshFailureError } from "../domain/refresh-failure.js";
 import {
     type CodexBankedResetCredit,
     type CodexBankedResetListResponse,
-    listCodexBankedResets,
 } from "../infra/providers/codex_banked_resets.js";
 
 
 type Metadata = Record<string, any>;
 
-export const DisplayPage = GObject.registerClass(
-    class DisplayPage extends Adw.PreferencesPage {
-        _init(settings: Gio.Settings) {
+export const PreferencesPage = GObject.registerClass(
+    class PreferencesPage extends Adw.PreferencesPage {
+        _init(
+            settings: Gio.Settings,
+            snapshot: CodexBankedResetListResponse | null,
+            metadata: Metadata,
+        ) {
             super._init({
-                title: "Options",
-                icon_name: "preferences-system-symbolic",
+                title: "Codex Meter",
+                icon_name: "codex-symbolic",
             });
 
             this.add(createBehaviorGroup(settings));
             this.add(createTopPanelGroup(settings));
+            this.add(createBankedResetsGroup(settings, snapshot));
+            this.add(createFooterGroup(metadata));
         }
     },
 );
 
-export const CodexPage = GObject.registerClass(
-    class CodexPage extends Adw.PreferencesPage {
-        private _group: Adw.PreferencesGroup;
-        private _statusRow: Adw.ActionRow;
-        private _rows: Gtk.Widget[];
-        private _credits: CodexBankedResetCredit[];
-        private _loading: boolean;
+function createBankedResetsGroup(
+    settings: Gio.Settings,
+    snapshot: CodexBankedResetListResponse | null,
+): Adw.PreferencesGroup {
+    const group = new Adw.PreferencesGroup({ title: "Banked resets" });
+    group.add(
+        createBoundSwitchRow({
+            settings,
+            key: SETTINGS_AUTO_APPLY_BANKED_RESET,
+            title: "Auto-apply expiring resets",
+            subtitle: "Apply a banked reset automatically within 1 hour of expiry",
+        }),
+    );
 
-        _init(settings: Gio.Settings, snapshot: CodexBankedResetListResponse | null = null) {
-            this._rows = [];
-            this._credits = snapshot?.credits ?? [];
-            this._loading = false;
+    if (!snapshot) {
+        group.add(new Adw.ActionRow({ title: getNoCodexCreditSnapshotMessage() }));
+        return group;
+    }
 
-            super._init({
-                title: "Codex",
-                icon_name: "codex-symbolic",
-            });
+    if (snapshot.credits.length === 0) {
+        group.add(new Adw.ActionRow({
+            title: "No banked Codex resets are available.",
+        }));
+        return group;
+    }
 
-            this._group = new Adw.PreferencesGroup({
-                title: "Banked resets",
-            });
-            this._group.add(
-                createBoundSwitchRow({
-                    settings,
-                    key: SETTINGS_AUTO_APPLY_BANKED_RESET,
-                    title: "Auto-apply expiring resets",
-                    subtitle: "Apply a banked reset automatically within 1 hour of expiry",
-                }),
-            );
+    for (const credit of snapshot.credits) {
+        group.add(createCreditRow(credit));
+    }
 
-            this._statusRow = new Adw.ActionRow();
-            this._addRow(this._statusRow);
-            this.add(this._group);
-            this._render(snapshot ? undefined : { status: getNoCodexCreditSnapshotMessage() });
-        }
+    return group;
+}
 
-        private async _loadCredits() {
-            if (this._loading) return;
+function createCreditRow(credit: CodexBankedResetCredit): Adw.PreferencesRow {
+    const row = new Adw.PreferencesRow();
+    const box = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
+        spacing: 6,
+        margin_top: 12,
+        margin_bottom: 12,
+        margin_start: 12,
+        margin_end: 12,
+    });
+    const titleRow = new Gtk.Box({
+        orientation: Gtk.Orientation.HORIZONTAL,
+        spacing: 12,
+    });
+    const title = new Gtk.Label({
+        label: createCreditTitle(credit),
+        xalign: 0,
+        wrap: true,
+        hexpand: true,
+        halign: Gtk.Align.FILL,
+    });
+    const description = new Gtk.Label({
+        label: credit.description ?? "",
+        xalign: 0,
+        wrap: true,
+        hexpand: true,
+        halign: Gtk.Align.FILL,
+    });
+    const status = new Gtk.Label({
+        label: formatCreditStatus(credit),
+        valign: Gtk.Align.CENTER,
+        halign: Gtk.Align.END,
+    });
+    const dates = new Gtk.Box({
+        orientation: Gtk.Orientation.HORIZONTAL,
+        spacing: 12,
+    });
+    const granted = new Gtk.Label({
+        label: `Granted ${formatCreditDate(credit.granted_at)}`,
+        xalign: 0,
+        hexpand: true,
+        halign: Gtk.Align.FILL,
+    });
+    const expires = new Gtk.Label({
+        label: `Expires ${formatCreditDate(credit.expires_at)}`,
+        xalign: 1,
+        halign: Gtk.Align.END,
+    });
 
-            this._loading = true;
-            if (this._credits.length === 0) {
-                this._render({ status: "Loading Codex credits…" });
-            }
+    title.add_css_class("heading");
+    description.add_css_class("dim-label");
+    granted.add_css_class("dim-label");
+    expires.add_css_class("dim-label");
+    status.add_css_class("dim-label");
 
-            try {
-                const response = await listCodexBankedResets();
-                this._credits = response.credits;
-                this._render();
-            } catch (error) {
-                this._render({ status: formatCodexPreferencesError(error) });
-                throw error;
-            } finally {
-                this._loading = false;
-            }
-        }
+    titleRow.append(title);
+    titleRow.append(status);
+    dates.append(granted);
+    dates.append(expires);
+    box.append(titleRow);
+    box.append(description);
+    box.append(dates);
+    row.set_child(box);
 
-
-        private _render({ status }: { status?: string } = {}) {
-            this._removeRows();
-
-            if (status) {
-                this._statusRow = new Adw.ActionRow({ title: status });
-                this._addRow(this._statusRow);
-                return;
-            }
-
-            if (this._credits.length === 0) {
-                this._statusRow = new Adw.ActionRow({
-                    title: "No banked Codex resets are available.",
-                });
-                this._addRow(this._statusRow);
-                return;
-            }
-
-            for (const credit of this._credits) {
-                this._addRow(this._createCreditRow(credit));
-            }
-        }
-
-        private _addRow(row: Gtk.Widget) {
-            this._group.add(row);
-            this._rows.push(row);
-        }
-
-        private _removeRows() {
-            for (const row of this._rows) {
-                this._group.remove(row);
-            }
-
-            this._rows = [];
-        }
-
-        private _createCreditRow(credit: CodexBankedResetCredit) {
-            const row = new Adw.PreferencesRow();
-            const box = new Gtk.Box({
-                orientation: Gtk.Orientation.VERTICAL,
-                spacing: 6,
-                margin_top: 12,
-                margin_bottom: 12,
-                margin_start: 12,
-                margin_end: 12,
-            });
-            const titleRow = new Gtk.Box({
-                orientation: Gtk.Orientation.HORIZONTAL,
-                spacing: 12,
-            });
-            const title = new Gtk.Label({
-                label: createCreditTitle(credit),
-                xalign: 0,
-                wrap: true,
-                hexpand: true,
-                halign: Gtk.Align.FILL,
-            });
-            const description = new Gtk.Label({
-                label: credit.description ?? "",
-                xalign: 0,
-                wrap: true,
-                hexpand: true,
-                halign: Gtk.Align.FILL,
-            });
-            const status = new Gtk.Label({
-                label: formatCreditStatus(credit),
-                valign: Gtk.Align.CENTER,
-                halign: Gtk.Align.END,
-            });
-            const dates = new Gtk.Box({
-                orientation: Gtk.Orientation.HORIZONTAL,
-                spacing: 12,
-            });
-            const granted = new Gtk.Label({
-                label: `Granted ${formatCreditDate(credit.granted_at)}`,
-                xalign: 0,
-                hexpand: true,
-                halign: Gtk.Align.FILL,
-            });
-            const expires = new Gtk.Label({
-                label: `Expires ${formatCreditDate(credit.expires_at)}`,
-                xalign: 1,
-                halign: Gtk.Align.END,
-            });
-
-            title.add_css_class("heading");
-            description.add_css_class("dim-label");
-            granted.add_css_class("dim-label");
-            expires.add_css_class("dim-label");
-            status.add_css_class("dim-label");
-
-            titleRow.append(title);
-            titleRow.append(status);
-            dates.append(granted);
-            dates.append(expires);
-            box.append(titleRow);
-            box.append(description);
-            box.append(dates);
-            row.set_child(box);
-
-            return row;
-        }
-
-    },
-);
-
-export const AboutPage = GObject.registerClass(
-    class AboutPage extends Adw.PreferencesPage {
-        _init(metadata: Metadata, extensionPath: string) {
-            super._init({
-                title: "About",
-                icon_name: "help-about-symbolic",
-            });
-
-            this.add(createAboutHeaderGroup(metadata, extensionPath));
-            this.add(createAboutInfoGroup(metadata));
-        }
-    },
-);
+    return row;
+}
 
 function getNoCodexCreditSnapshotMessage(): string {
     return "No Codex credit snapshot is available yet. It will appear after the next successful panel refresh.";
@@ -246,17 +174,6 @@ function formatCreditStatus(credit: CodexBankedResetCredit): string {
     return credit.status === "available" ? "Available" : credit.status;
 }
 
-function formatCodexPreferencesError(error: unknown): string {
-    if (isRefreshFailureError(error)) {
-        return error.message;
-    }
-
-    const message = error instanceof Error && error.message
-        ? error.message
-        : "Unknown Codex error";
-
-    return `Unable to load Codex credits: ${message}`;
-}
 
 function createTopPanelGroup(settings: Gio.Settings) {
     const group = new Adw.PreferencesGroup({
@@ -441,140 +358,41 @@ function createRefreshIntervalRow(settings: Gio.Settings) {
     return row;
 }
 
-function createAboutHeaderGroup(metadata: Metadata, extensionPath: string) {
-    const group = new Adw.PreferencesGroup();
-    const box = new Gtk.Box({
+function createFooterGroup(metadata: Metadata): Adw.PreferencesGroup {
+    const footerGroup = new Adw.PreferencesGroup();
+    const footerBox = new Gtk.Box({
         orientation: Gtk.Orientation.VERTICAL,
+        spacing: 4,
         margin_top: 12,
-        margin_bottom: 8,
-        halign: Gtk.Align.CENTER,
-        valign: Gtk.Align.CENTER,
+        margin_bottom: 12,
     });
 
-    box.append(
-        new Gtk.Image({
-            gicon: new Gio.FileIcon({
-                file: Gio.File.new_for_path(`${extensionPath}/assets/logo.png`),
-            }),
-            pixel_size: 160,
-            halign: Gtk.Align.CENTER,
-            margin_bottom: 8,
+    footerBox.append(
+        new Gtk.Label({
+            label: `${metadata.name} v${metadata["version-name"]}`,
+            css_classes: ["caption", "dim-label"],
         }),
     );
-    box.append(
+
+    footerBox.append(
         new Gtk.Label({
-            label: `<span size="x-large"><b>${escapeMarkup(metadata.name ?? "Codex Meter")}</b></span>`,
-            use_markup: true,
-            justify: Gtk.Justification.CENTER,
-            halign: Gtk.Align.CENTER,
-            margin_bottom: 6,
-        }),
-    );
-    box.append(
-        new Gtk.Label({
-            label:
-                metadata.description ??
-                "",
-            justify: Gtk.Justification.CENTER,
+            label: "Not affiliated with or endorsed by OpenAI.",
             wrap: true,
-            max_width_chars: 48,
-            halign: Gtk.Align.CENTER,
+            justify: Gtk.Justification.CENTER,
+            css_classes: ["caption", "dim-label"],
         }),
     );
 
-    group.add(box);
-
-    return group;
-}
-
-function createAboutInfoGroup(metadata: Metadata) {
-    const group = new Adw.PreferencesGroup();
-
-    group.add(
-        createInfoRow(
-            "Version",
-            metadata["version-name"] ?? `${metadata.version ?? 1}`,
-        ),
-    );
-    group.add(createInfoRow("Author", "Sebastian Lobbe"));
-    group.add(
-        createLinkRow(
-            "License",
-            `${metadata.url ?? "https://github.com/slobbe/codex-meter"}/blob/main/LICENSE`,
-            metadata.license ?? "GPL-3.0-or-later",
-        ),
-    );
-    group.add(
-        createLinkRow("Source", metadata.url ?? "https://github.com/slobbe/codex-meter"),
-    );
-    group.add(
-        createLinkRow("Report a bug", "https://github.com/slobbe/codex-meter/issues"),
-    );
-    
-
-    return group;
-}
-
-function createInfoRow(title: string, value: string) {
-    const row = new Adw.ActionRow({
-        title,
-        activatable: false,
+    const links = new Gtk.Label({
+        css_classes: ["caption", "dim-label"],
     });
-
-    row.add_suffix(
-        new Gtk.Label({
-            label: value,
-            selectable: true,
-            hexpand: true,
-            halign: Gtk.Align.END,
-            xalign: 1,
-        }),
+    links.set_markup(
+        `<a href="${metadata.url}">Source code</a> · <a href="${metadata.url}/issues">Report a bug</a>`,
     );
+    footerBox.append(links);
 
-    return row;
-}
-
-function createLinkRow(title: string, url: string, label?: string) {
-    const row = new Adw.ActionRow({
-        title,
-        activatable: false,
-    });
-    const buttonOptions = {
-        uri: url,
-        tooltip_text: url,
-        hexpand: true,
-        halign: Gtk.Align.END,
-        valign: Gtk.Align.CENTER,
-    };
-
-    if (label) {
-        row.add_suffix(
-            new Gtk.Label({
-                label: `<a href="${escapeMarkup(url)}">${escapeMarkup(label)}</a>`,
-                use_markup: true,
-                selectable: true,
-                hexpand: true,
-                halign: Gtk.Align.END,
-                xalign: 1,
-            }),
-        );
-    } else {
-        row.add_suffix(
-            new Gtk.LinkButton({
-                ...buttonOptions,
-                icon_name: "adw-external-link-symbolic",
-            }),
-        );
-    }
-
-    return row;
-}
-
-function escapeMarkup(text: unknown) {
-    return `${text}`
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
+    footerGroup.add(footerBox);
+    return footerGroup;
 }
 
 

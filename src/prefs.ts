@@ -3,7 +3,7 @@ import Gtk from "gi://Gtk";
 import { ExtensionPreferences } from "resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js";
 
 import { readCachedCodexBankedResets } from "./infra/providers/codex_banked_resets.js";
-import { AboutPage, CodexPage, DisplayPage } from "./ui/preferences-pages.js";
+import { PreferencesPage } from "./ui/preferences-pages.js";
 
 export default class CodexMeterPreferences extends ExtensionPreferences {
     async fillPreferencesWindow(window) {
@@ -16,9 +16,9 @@ export default class CodexMeterPreferences extends ExtensionPreferences {
 
         const bankedResetSnapshot = await readCachedCodexBankedResets();
 
-        window.add(new (DisplayPage as any)(settings));
-        window.add(new (CodexPage as any)(settings, bankedResetSnapshot));
-        window.add(new (AboutPage as any)(this.metadata, this.path));
+        window.add(
+            new (PreferencesPage as any)(settings, bankedResetSnapshot, this.metadata),
+        );
         window.set_default_size(640, 720);
     }
 }
