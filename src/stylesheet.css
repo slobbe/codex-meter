@@ -7,7 +7,6 @@
 }
 
 .cx-panel-icon {
-    color: inherit;
     icon-size: 1.05em;
 }
 
@@ -46,7 +45,8 @@
 .cx-panel-bar-fill,
 .cx-usage-bar-track,
 .cx-usage-bar-fill,
-.cx-usage-bar-marker {
+.cx-usage-bar-marker,
+.cx-trend-bar {
     border-radius: 999px;
 }
 
@@ -62,7 +62,8 @@
     color: #d9534f;
 }
 
-.cx-muted {
+.cx-muted,
+.cx-usage-detail-muted {
     opacity: 0.75;
 }
 
@@ -96,7 +97,8 @@
     font-size: 1.05em;
 }
 
-.cx-usage-title {
+.cx-usage-title,
+.cx-trend-title {
     text-align: left;
 }
 
@@ -123,15 +125,6 @@
 .cx-usage-detail {
     margin-top: 2px;
     font-size: 0.9em;
-    spacing: 12px;
-}
-
-.cx-footer-label {
-    font-size: 0.95em;
-}
-
-.cx-usage-detail-muted {
-    opacity: 0.75;
 }
 
 .cx-usage-prediction {
@@ -169,10 +162,6 @@
     margin-bottom: 4px;
 }
 
-.cx-trend-title {
-    text-align: left;
-}
-
 .cx-trend-sparkline {
     min-height: 28px;
     spacing: 2px;
@@ -180,7 +169,6 @@
 
 .cx-trend-bar {
     width: 3px;
-    border-radius: 999px;
     background-color: #4f83ff;
 }
 
@@ -192,22 +180,28 @@
     min-height: 2.1em;
 }
 
+.cx-footer-label {
+    font-size: 0.95em;
+}
+
+.cx-footer-button,
+.cx-reset-button {
+    margin: 0;
+    transition-duration: 150ms;
+}
+
 .cx-footer-button {
     padding: 5px;
-    margin: 0;
     border-radius: 999px;
     background-color: transparent;
-    transition-duration: 150ms;
 }
 
 .cx-reset-button {
     padding: 6px 14px;
-    margin: 0;
     border-radius: 9px;
     background-color: rgba(255, 255, 255, 0.12);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
     font-weight: 700;
-    transition-duration: 150ms;
 }
 
 .cx-footer-button:hover,
