@@ -1,54 +1,32 @@
 name: Release
 
 on:
-    workflow_run:
-        workflows:
-            - "CI"
-        types:
-            - completed
+    push:
+        tags:
+            - "v[0-9]+.[0-9]+.[0-9]+"
 
 permissions:
     contents: write
     actions: read
 
 concurrency:
-    group: release-${{ github.event.workflow_run.head_branch || github.event.workflow_run.head_sha }}
+    group: release-${{ github.ref }}
     cancel-in-progress: false
 
 jobs:
     release:
-        if: >
-            github.event.workflow_run.conclusion == 'success' &&
-            github.event.workflow_run.event == 'push' &&
-            startsWith(github.event.workflow_run.head_branch, 'v')
         runs-on: ubuntu-latest
 
         steps:
             - name: Check out repository
               uses: actions/checkout@v7
               with:
-                  ref: ${{ github.event.workflow_run.head_sha }}
                   fetch-depth: 0
 
-            - name: Validate release source
-              shell: bash
-              run: |
-                  set -euo pipefail
-                  CI_REF="${{ github.event.workflow_run.head_branch }}"
-                  CI_SHA="${{ github.event.workflow_run.head_sha }}"
-
-                  if [[ ! "${CI_REF}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-                    echo "CI ref is not a release tag: ${CI_REF}" >&2
-                    exit 1
-                  fi
-
-                  git fetch --force --tags
-                  TAG_SHA="$(git rev-list -n 1 "${CI_REF}")"
-
-                  if [[ "${TAG_SHA}" != "${CI_SHA}" ]]; then
-                    echo "Tag ${CI_REF} points to ${TAG_SHA}, but CI ran on ${CI_SHA}" >&2
-                    exit 1
-                  fi
+            - name: Set up Node.js
+              uses: actions/setup-node@v7
+              with:
+                  node-version: "24"
 
             - name: Install release dependencies
               shell: bash
@@ -57,27 +35,85 @@ jobs:
                   sudo apt-get update
                   sudo apt-get install -y jq unzip
 
-            - name: Set up Node.js
-              uses: actions/setup-node@v7
-              with:
-                  node-version: "24"
+            - name: Validate release source and CI
+              id: source
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  TAG="${GITHUB_REF_NAME}"
+
+                  if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                    echo "Release tag must match vMAJOR.MINOR.PATCH: ${TAG}" >&2
+                    exit 1
+                  fi
+
+                  git fetch origin main --no-tags
+                  TAG_SHA="$(git rev-parse "${TAG}^{commit}")"
+
+                  if ! git merge-base --is-ancestor "${TAG_SHA}" origin/main; then
+                    echo "Tag ${TAG} does not point to a commit on main" >&2
+                    exit 1
+                  fi
+
+                  CI_RUN_ID=""
+                  for attempt in {1..20}; do
+                    CI_RUN="$(gh api \
+                      "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${TAG_SHA}&event=push&per_page=1" \
+                      --jq 'if .workflow_runs[0] then (.workflow_runs[0] | [.id, .status, .conclusion, .head_branch] | @tsv) else empty end')"
+
+                    if [[ -z "${CI_RUN}" ]]; then
+                      echo "Waiting for CI to start for ${TAG_SHA} (${attempt}/20)"
+                      sleep 30
+                      continue
+                    fi
+
+                    IFS=$'\t' read -r RUN_ID RUN_STATUS RUN_CONCLUSION RUN_BRANCH <<< "${CI_RUN}"
+
+                    if [[ "${RUN_BRANCH}" != "main" ]]; then
+                      echo "CI run ${RUN_ID} is for ${RUN_BRANCH}, not main" >&2
+                      exit 1
+                    fi
+
+                    if [[ "${RUN_STATUS}" == "completed" ]]; then
+                      if [[ "${RUN_CONCLUSION}" != "success" ]]; then
+                        echo "CI run ${RUN_ID} completed with ${RUN_CONCLUSION}" >&2
+                        exit 1
+                      fi
+
+                      CI_RUN_ID="${RUN_ID}"
+                      break
+                    fi
+
+                    echo "Waiting for CI run ${RUN_ID} (${RUN_STATUS}, ${attempt}/20)"
+                    sleep 30
+                  done
+
+                  if [[ -z "${CI_RUN_ID}" ]]; then
+                    echo "No successful CI run found for ${TAG_SHA}" >&2
+                    exit 1
+                  fi
+
+                  echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+                  echo "tag_version=${TAG#v}" >> "${GITHUB_OUTPUT}"
+                  echo "ci_run_id=${CI_RUN_ID}" >> "${GITHUB_OUTPUT}"
 
             - name: Validate release metadata
               shell: bash
               run: |
                   set -euo pipefail
-                  CI_REF="${{ github.event.workflow_run.head_branch }}"
-                  TAG_VERSION="${CI_REF#v}"
+                  TAG_VERSION="${{ steps.source.outputs.tag_version }}"
                   PACKAGE_VERSION="$(node -p "require('./package.json').version")"
                   METADATA_VERSION="$(jq -r '."version-name"' src/metadata.json)"
 
                   if [[ "${PACKAGE_VERSION}" != "${TAG_VERSION}" ]]; then
-                    echo "Tag ${CI_REF} does not match package version ${PACKAGE_VERSION}" >&2
+                    echo "Tag version ${TAG_VERSION} does not match package version ${PACKAGE_VERSION}" >&2
                     exit 1
                   fi
 
                   if [[ "${METADATA_VERSION}" != "${TAG_VERSION}" ]]; then
-                    echo "Tag ${CI_REF} does not match metadata version-name ${METADATA_VERSION}" >&2
+                    echo "Tag version ${TAG_VERSION} does not match metadata version-name ${METADATA_VERSION}" >&2
                     exit 1
                   fi
 
@@ -85,7 +121,7 @@ jobs:
               uses: actions/download-artifact@v8
               with:
                   name: release-bundle
-                  run-id: ${{ github.event.workflow_run.id }}
+                  run-id: ${{ steps.source.outputs.ci_run_id }}
                   github-token: ${{ github.token }}
                   path: release-artifacts
 
@@ -93,8 +129,7 @@ jobs:
               shell: bash
               run: |
                   set -euo pipefail
-                  CI_REF="${{ github.event.workflow_run.head_branch }}"
-                  TAG_VERSION="${CI_REF#v}"
+                  TAG_VERSION="${{ steps.source.outputs.tag_version }}"
                   UUID="$(jq -r '.uuid' src/metadata.json)"
                   ZIP="release-artifacts/${UUID}-v${TAG_VERSION}.zip"
 
@@ -109,16 +144,16 @@ jobs:
               shell: bash
               run: |
                   set -euo pipefail
-                  CI_REF="${{ github.event.workflow_run.head_branch }}"
-                  TAG_VERSION="${CI_REF#v}"
+                  TAG="${{ steps.source.outputs.tag }}"
+                  TAG_VERSION="${{ steps.source.outputs.tag_version }}"
                   UUID="$(jq -r '.uuid' src/metadata.json)"
                   ZIP="release-artifacts/${UUID}-v${TAG_VERSION}.zip"
 
-                  if gh release view "${CI_REF}" >/dev/null 2>&1; then
-                    gh release upload "${CI_REF}" "${ZIP}" --clobber
+                  if gh release view "${TAG}" >/dev/null 2>&1; then
+                    gh release upload "${TAG}" "${ZIP}" --clobber
                   else
-                    gh release create "${CI_REF}" "${ZIP}" \
-                      --title "${CI_REF}" \
+                    gh release create "${TAG}" "${ZIP}" \
+                      --title "${TAG}" \
                       --generate-notes \
                       --verify-tag
                   fi
