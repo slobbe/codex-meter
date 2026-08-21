@@ -1,9 +1,6 @@
 *.compiled
 *.po
 *.pot
-dist
 *.zip
 
 node_modules
-
-/plans/

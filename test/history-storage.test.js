@@ -5,7 +5,7 @@ import {
     appendHistoryRowToPath,
     appendHistoryToPath,
     readHistoryFromPath,
-} from "../dist/infra/storage/history.js";
+} from "../src/infra/storage/history.js";
 
 Gio._promisify(Gio.File.prototype, "load_contents_async");
 

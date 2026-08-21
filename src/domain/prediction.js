@@ -1,10 +1,10 @@
 // @ts-check
 
-/** @typedef {import("./types.js").UsageSnapshot} UsageSnapshot */
-/** @typedef {import("./types.js").UsageQuota} UsageQuota */
-/** @typedef {import("./types.js").HistoryEntry} HistoryEntry */
-/** @typedef {import("./types.js").WindowPrediction} WindowPrediction */
-/** @typedef {import("./types.js").UsagePrediction} UsagePrediction */
+/** @typedef {import("../../types/domain.js").UsageSnapshot} UsageSnapshot */
+/** @typedef {import("../../types/domain.js").UsageQuota} UsageQuota */
+/** @typedef {import("../../types/domain.js").HistoryEntry} HistoryEntry */
+/** @typedef {import("../../types/domain.js").WindowPrediction} WindowPrediction */
+/** @typedef {import("../../types/domain.js").UsagePrediction} UsagePrediction */
 /** @typedef {UsageQuota & {limitWindowSeconds: number, resetAfterSeconds: number, resetAt: number}} PredictionReadyQuota */
 /** @typedef {{timestamp: number, usedPercent: number}} HistoryEntrySlice */
 
