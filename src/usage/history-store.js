@@ -5,13 +5,10 @@ import { appendFile, readFile, writeFile } from "../io/files.js";
 export const MAX_HISTORY_ENTRIES = 25_000;
 
 const MAX_HISTORY_AGE_SECONDS = 21 * 24 * 60 * 60;
+const HISTORY_PATH = GLib.build_filenamev([STATE_DIR, "codex", "usage-history.jsonl"]);
 
-function getHistoryPath(providerId) {
-    return GLib.build_filenamev([STATE_DIR, providerId, "usage-history.jsonl"]);
-}
-
-export async function readHistory(providerId) {
-    return readHistoryFromPath(getHistoryPath(providerId));
+export async function readHistory() {
+    return readHistoryFromPath(HISTORY_PATH);
 }
 
 export async function readHistoryFromPath(path) {
@@ -24,24 +21,20 @@ export async function readHistoryFromPath(path) {
     }
 }
 
-export async function appendHistory(providerId, row) {
-    return appendHistoryToPath(getHistoryPath(providerId), row);
-}
-
 /**
  * Append a history row verbatim without reading, deduping, or normalizing existing history.
  * Callers must pre-normalize rows and decide whether appending is appropriate.
  */
-export async function appendHistoryRow(providerId, row) {
-    return appendHistoryRowToPath(getHistoryPath(providerId), row);
+export async function appendHistoryRow(row) {
+    return appendHistoryRowToPath(HISTORY_PATH, row);
 }
 
 export async function appendHistoryRowToPath(path, row) {
     await appendFile(path, JSON.stringify(row));
 }
 
-export async function rewriteHistory(providerId, rows) {
-    await rewriteHistoryToPath(getHistoryPath(providerId), normalizeHistoryEntries(rows));
+export async function rewriteHistory(rows) {
+    await rewriteHistoryToPath(HISTORY_PATH, normalizeHistoryEntries(rows));
 }
 
 export async function appendHistoryToPath(path, row, existingRows = null) {

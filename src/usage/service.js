@@ -1,6 +1,6 @@
+import { refreshCodexUsage } from "../codex/usage.js";
 import { predict } from "./prediction.js";
 import { toHistoryEntry } from "./model.js";
-import { getUsageProvider } from "./providers.js";
 import {
     appendHistoryRow,
     hasSameQuotaValues,
@@ -13,38 +13,29 @@ import {
 import { readSnapshot, writeSnapshot } from "./snapshot-store.js";
 
 export class UsageService {
-    provider;
-
     history = null;
 
-    constructor(provider = getUsageProvider()) {
-        this.provider = provider;
-    }
-
     async readCachedSnapshot() {
-        return await readSnapshot(this.provider.info.id);
+        return await readSnapshot();
     }
 
     async refresh(options = {}) {
-        const snapshot = await this.provider.refreshUsage({
+        const snapshot = await refreshCodexUsage({
             cancellable: options.cancellable ?? null,
         });
+
         try {
-            await writeSnapshot(this.provider.info.id, snapshot);
+            await writeSnapshot(snapshot);
         } catch (error) {
-            console.error(
-                `Unable to write ${this.provider.info.displayName} usage snapshot cache`,
-                error,
-            );
+            console.error("Unable to write Codex usage snapshot cache", error);
         }
+
         try {
             await this.appendSnapshotToHistory(snapshot);
         } catch (error) {
-            console.error(
-                `Unable to append ${this.provider.info.displayName} usage history`,
-                error,
-            );
+            console.error("Unable to append Codex usage history", error);
         }
+
         return snapshot;
     }
 
@@ -54,7 +45,8 @@ export class UsageService {
 
     async loadHistory() {
         if (this.history) return this.history;
-        this.history = await readHistory(this.provider.info.id);
+
+        this.history = await readHistory();
         return this.history;
     }
 
@@ -62,21 +54,25 @@ export class UsageService {
         const history = await this.loadHistory();
         const row = normalizeHistoryEntry(toHistoryEntry(snapshot));
         if (!row) return;
+
         const lastRow = history.at(-1);
         if (lastRow && hasSameQuotaValues(lastRow, row)) return;
-        await appendHistoryRow(this.provider.info.id, row);
+
+        await appendHistoryRow(row);
         history.push(row);
+
         if (history.length > MAX_HISTORY_ENTRIES) {
             this.history = normalizeHistoryEntries(history);
-            await rewriteHistory(this.provider.info.id, this.history);
+            await rewriteHistory(this.history);
         }
     }
 
     async predict(snapshot) {
-        const currentSnapshot = snapshot ?? (await readSnapshot(this.provider.info.id));
+        const currentSnapshot = snapshot ?? (await readSnapshot());
         if (!currentSnapshot) {
             throw new Error("No snapshot available");
         }
+
         const history = await this.readHistory();
         return predict(history, currentSnapshot);
     }

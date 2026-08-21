@@ -1,5 +1,3 @@
-export const SETTINGS_USAGE_PROVIDER = "usage-provider";
-
 export const SETTINGS_SHOW_PRIMARY = "show-primary";
 
 export const SETTINGS_SHOW_SECONDARY = "show-secondary";
@@ -26,7 +24,6 @@ export class SettingsService {
     getAll() {
         const backgroundRefreshIntervalMinutes = this.getBackgroundRefreshIntervalMinutes();
         return {
-            usageProvider: this.getUsageProvider(),
             showPrimary: this.getShowPrimary(),
             showSecondary: this.getShowSecondary(),
             topPanelDisplayMode: this.getTopPanelDisplayMode(),
@@ -36,14 +33,6 @@ export class SettingsService {
             backgroundRefreshIntervalSeconds: backgroundRefreshIntervalMinutes * 60,
             autoApplyBankedReset: this.getAutoApplyBankedReset(),
         };
-    }
-
-    getUsageProvider() {
-        const value = this.settings.get_string(SETTINGS_USAGE_PROVIDER);
-        if (value === "codex") {
-            return value;
-        }
-        return "codex";
     }
 
     getShowPrimary() {

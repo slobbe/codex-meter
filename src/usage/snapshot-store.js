@@ -2,17 +2,15 @@ import GLib from "gi://GLib";
 import { CACHE_DIR } from "../io/paths.js";
 import { readJsonFile, writeJsonFile } from "../io/files.js";
 
-function getSnapshotPath(providerId) {
-    return GLib.build_filenamev([CACHE_DIR, providerId, "snapshot.json"]);
+const SNAPSHOT_PATH = GLib.build_filenamev([CACHE_DIR, "codex", "snapshot.json"]);
+
+export async function writeSnapshot(snapshot) {
+    await writeJsonFile(SNAPSHOT_PATH, snapshot);
 }
 
-export async function writeSnapshot(providerId, snapshot) {
-    await writeJsonFile(getSnapshotPath(providerId), snapshot);
-}
-
-export async function readSnapshot(providerId) {
+export async function readSnapshot() {
     try {
-        const raw = await readJsonFile(getSnapshotPath(providerId));
+        const raw = await readJsonFile(SNAPSHOT_PATH);
         if (!isUsageSnapshot(raw)) {
             return null;
         }
