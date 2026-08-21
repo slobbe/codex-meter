@@ -1,4 +1,4 @@
-import { refreshCodexUsage } from "../codex/usage.js";
+import { refreshCodexUsage } from "./api.js";
 import { predict } from "./prediction.js";
 import { toHistoryEntry } from "./model.js";
 import {
@@ -9,8 +9,8 @@ import {
     normalizeHistoryEntry,
     readHistory,
     rewriteHistory,
-} from "./history-store.js";
-import { readSnapshot, writeSnapshot } from "./snapshot-store.js";
+} from "./history.js";
+import { readSnapshot, writeSnapshot } from "./snapshot.js";
 
 export class UsageService {
     history = null;

@@ -1,11 +1,11 @@
 const modules = [
-    "../src/banked-resets/api.js",
-    "../src/banked-resets/response.js",
-    "../src/banked-resets/store.js",
+    "../src/codex/banked-resets/api.js",
+    "../src/codex/banked-resets/response.js",
+    "../src/codex/banked-resets/store.js",
     "../src/codex/auth.js",
     "../src/codex/auth-parser.js",
-    "../src/codex/usage.js",
-    "../src/codex/usage-response.js",
+    "../src/codex/usage/api.js",
+    "../src/codex/usage/response.js",
     "../src/io/files.js",
     "../src/io/http.js",
     "../src/io/paths.js",
@@ -14,11 +14,11 @@ const modules = [
     "../src/preferences/settings.js",
     "../src/refresh/error.js",
     "../src/refresh/scheduler.js",
-    "../src/usage/history-store.js",
-    "../src/usage/model.js",
-    "../src/usage/prediction.js",
-    "../src/usage/service.js",
-    "../src/usage/snapshot-store.js",
+    "../src/codex/usage/history.js",
+    "../src/codex/usage/model.js",
+    "../src/codex/usage/prediction.js",
+    "../src/codex/usage/service.js",
+    "../src/codex/usage/snapshot.js",
 ];
 
 for (const module of modules) {

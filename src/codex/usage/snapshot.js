@@ -1,6 +1,6 @@
 import GLib from "gi://GLib";
-import { CACHE_DIR } from "../io/paths.js";
-import { readJsonFile, writeJsonFile } from "../io/files.js";
+import { CACHE_DIR } from "../../io/paths.js";
+import { readJsonFile, writeJsonFile } from "../../io/files.js";
 
 const SNAPSHOT_PATH = GLib.build_filenamev([CACHE_DIR, "codex", "snapshot.json"]);
 

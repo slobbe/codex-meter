@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { toUsageSnapshot } from "../src/codex/usage-response.js";
+import { toUsageSnapshot } from "../src/codex/usage/response.js";
 
 function validUsageResponse(overrides = {}) {
     return {

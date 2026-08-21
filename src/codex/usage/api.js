@@ -1,6 +1,6 @@
-import { fetchJson } from "../io/http.js";
-import { getCodexAccessToken } from "./auth.js";
-import { toUsageSnapshot } from "./usage-response.js";
+import { fetchJson } from "../../io/http.js";
+import { getCodexAccessToken } from "../auth/auth.js";
+import { toUsageSnapshot } from "./response.js";
 
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 

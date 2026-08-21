@@ -1,7 +1,7 @@
 import Gdk from "gi://Gdk";
 import Gtk from "gi://Gtk";
 import { ExtensionPreferences } from "resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js";
-import { readCachedCodexBankedResets } from "./banked-resets/api.js";
+import { readCachedCodexBankedResets } from "./codex/banked-resets/api.js";
 import { createPreferencesPage } from "./preferences/page.js";
 
 export default class CodexMeterPreferences extends ExtensionPreferences {

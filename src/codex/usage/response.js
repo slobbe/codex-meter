@@ -1,9 +1,9 @@
 // @ts-check
 
-import { RefreshFailureError } from "../refresh/error.js";
+import { RefreshFailureError } from "../../refresh/error.js";
 
-/** @typedef {import("../../types/index.js").UsageSnapshot} UsageSnapshot */
-/** @typedef {import("../../types/index.js").UsageCredits} UsageCredits */
+/** @typedef {import("../../../types/index.js").UsageSnapshot} UsageSnapshot */
+/** @typedef {import("../../../types/index.js").UsageCredits} UsageCredits */
 /** @typedef {Record<string, unknown>} JsonObject */
 /**
  * @typedef {object} CodexRateLimitWindow

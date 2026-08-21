@@ -1,7 +1,7 @@
 import GLib from "gi://GLib";
 import Gio from "gi://Gio";
 
-import { appendHistoryRow, readHistory } from "../src/usage/history-store.js";
+import { appendHistoryRow, readHistory } from "../src/codex/usage/history.js";
 
 Gio._promisify(Gio.File.prototype, "load_contents_async");
 

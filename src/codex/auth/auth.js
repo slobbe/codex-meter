@@ -1,6 +1,6 @@
 import GLib from "gi://GLib";
-import { readJsonFile } from "../io/files.js";
-import { RefreshFailureError } from "../refresh/error.js";
+import { readJsonFile } from "../../io/files.js";
+import { RefreshFailureError } from "../../refresh/error.js";
 import { parseCodexAccessToken, parseCodexAccountId } from "./auth-parser.js";
 
 const CODEX_AUTH_PATH = GLib.build_filenamev([GLib.get_home_dir(), ".codex", "auth.json"]);

@@ -1,8 +1,8 @@
 // @ts-check
 
-/** @typedef {import("../../types/index.js").UsageSnapshot} UsageSnapshot */
-/** @typedef {import("../../types/index.js").UsageQuota} UsageQuota */
-/** @typedef {import("../../types/index.js").HistoryEntry} HistoryEntry */
+/** @typedef {import("../../../types/index.js").UsageSnapshot} UsageSnapshot */
+/** @typedef {import("../../../types/index.js").UsageQuota} UsageQuota */
+/** @typedef {import("../../../types/index.js").HistoryEntry} HistoryEntry */
 
 /**
  * @param {UsageSnapshot} snapshot

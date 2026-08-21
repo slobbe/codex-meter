@@ -1,8 +1,8 @@
 import GLib from "gi://GLib";
-import { fetchJson } from "../io/http.js";
-import { RefreshFailureError } from "../refresh/error.js";
+import { fetchJson } from "../../io/http.js";
+import { RefreshFailureError } from "../../refresh/error.js";
 import { readBankedResetSnapshot, writeBankedResetSnapshot } from "./store.js";
-import { getCodexCredentials } from "../codex/auth.js";
+import { getCodexCredentials } from "../auth/auth.js";
 import { selectCreditToRedeem, toListResponse } from "./response.js";
 
 const CODEX_BANKED_RESETS_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";

@@ -11,15 +11,15 @@ import {
     SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES,
 } from "../preferences/settings.js";
 import { Scheduler } from "../refresh/scheduler.js";
-import { UsageService } from "../usage/service.js";
+import { UsageService } from "../codex/usage/service.js";
 import { isRefreshFailureError } from "../refresh/error.js";
 import {
     listCodexBankedResets,
     readCachedCodexBankedResets,
     redeemCodexBankedReset,
     redeemNextCodexBankedReset,
-} from "../banked-resets/api.js";
-import { selectCreditExpiringWithin } from "../banked-resets/response.js";
+} from "../codex/banked-resets/api.js";
+import { selectCreditExpiringWithin } from "../codex/banked-resets/response.js";
 import { CodexMeterPopupMenu } from "./menu.js";
 import { formatRefreshFailure } from "./refresh-error-message.js";
 import { UsageBar } from "./usage-bar.js";

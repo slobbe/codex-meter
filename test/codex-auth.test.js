@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseCodexAccessToken, parseCodexAccountId } from "../src/codex/auth-parser.js";
+import { parseCodexAccessToken, parseCodexAccountId } from "../src/codex/auth/auth-parser.js";
 
 test("returns access token from tokens.access_token", () => {
     assert.equal(

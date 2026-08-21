@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { predict } from "../src/usage/prediction.js";
+import { predict } from "../src/codex/usage/prediction.js";
 
 const fetchedAt = 1_700_001_800;
 

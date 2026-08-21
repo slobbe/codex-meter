@@ -1,6 +1,6 @@
 import GLib from "gi://GLib";
-import { STATE_DIR } from "../io/paths.js";
-import { appendFile, readFile, writeFile } from "../io/files.js";
+import { STATE_DIR } from "../../io/paths.js";
+import { appendFile, readFile, writeFile } from "../../io/files.js";
 
 export const MAX_HISTORY_ENTRIES = 25_000;
 
