@@ -2,10 +2,10 @@
 
 ## Development
 
-For local development, run the following commands to try out changes:
+Install the extension and reload it after making changes:
 
 ```sh
-make clean install
+make install
 make reload
 ```
 
@@ -16,15 +16,15 @@ You may need to log out and back in to see changes.
 To build a release bundle locally:
 
 ```sh
-make clean pack
+make pack
 ```
 
 ## Checks
 
-Run the checked-JavaScript validation and test suite before submitting changes:
+Install development dependencies, then run all checks before submitting changes:
 
 ```sh
-npm run check
+npm ci
 npm test
 ```
 

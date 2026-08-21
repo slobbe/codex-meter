@@ -74,28 +74,12 @@ export async function appendFile(path, line) {
     }
 }
 
-// JSON
 export async function readJsonFile(path) {
-    try {
-        const raw = await readFile(path);
-        return JSON.parse(raw);
-    } catch (error) {
-        throw new Error(
-            `Failed to read JSON file "${path}": ${error instanceof Error ? error.message : String(error)}`,
-        );
-    }
+    return JSON.parse(await readFile(path));
 }
 
 export async function writeJsonFile(path, data) {
-    try {
-        const json = JSON.stringify(data, null, 2);
-        if (json === undefined) {
-            throw new Error("JSON.stringify returned undefined");
-        }
-        await writeFile(path, `${json}\n`);
-    } catch (error) {
-        throw new Error(
-            `Failed to write JSON file "${path}": ${error instanceof Error ? error.message : String(error)}`,
-        );
-    }
+    const json = JSON.stringify(data, null, 2);
+    if (json === undefined) throw new Error("JSON.stringify returned undefined");
+    await writeFile(path, `${json}\n`);
 }

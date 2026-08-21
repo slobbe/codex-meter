@@ -67,11 +67,9 @@ export function createMenuViewModel(
     const percentDisplayMode = settings.percentDisplayMode;
     if (errorMessage) {
         return {
-            updatedAt: "--",
             errorMessage,
             statusTitle: null,
             statusMessage: null,
-            hasError: true,
             primary: createUsageItemViewModel({
                 visible: false,
                 title: "Session (5h)",
@@ -90,11 +88,9 @@ export function createMenuViewModel(
     }
     if (!snapshot) {
         return {
-            updatedAt: "--",
             errorMessage: null,
             statusTitle: null,
             statusMessage: null,
-            hasError: false,
             primary: createUsageItemViewModel({
                 title: "Session (5h)",
                 value: "Loading...",
@@ -112,11 +108,9 @@ export function createMenuViewModel(
     const primaryQuota = getQuota(snapshot, "session");
     const secondaryQuota = getQuota(snapshot, "weekly");
     return {
-        updatedAt: "",
         errorMessage: null,
         statusTitle: cachedFailureMessage ? "Showing cached data" : null,
         statusMessage: cachedFailureMessage ? `Refresh failed: ${cachedFailureMessage}` : null,
-        hasError: false,
         primary: createUsageItemViewModel({
             visible: Boolean(primaryQuota),
             title: primaryQuota?.label ?? "Primary",
@@ -179,7 +173,6 @@ export function createUsageItemViewModel({
         reset,
         percentValue: normalizedPercentValue,
         displayPercentValue: convertPercentForDisplay(normalizedPercentValue, percentDisplayMode),
-        baselinePercentValue: normalizedBaselinePercentValue,
         displayBaselinePercentValue:
             normalizedBaselinePercentValue === null
                 ? null
@@ -196,8 +189,6 @@ const TREND_LOOKBACK_SECONDS = 7 * 24 * 60 * 60;
 const TREND_BUCKET_COUNT = 56;
 
 const TREND_MIN_BAR_PERCENT = 12;
-
-const MIN_BURN_RATE_OBSERVED_SECONDS = 6 * 60 * 60;
 
 export function createUsageTrendViewModel(snapshot, history = [], nowSeconds = Date.now() / 1000) {
     const minTimestamp = nowSeconds - TREND_LOOKBACK_SECONDS;
@@ -260,25 +251,6 @@ export function getUsageTrendSamples(snapshot, history = [], nowSeconds = Date.n
                 Number.isFinite(entry.usedPercent),
         )
         .toSorted((a, b) => a.timestamp - b.timestamp);
-}
-
-export function calculateRecentPositiveDelta(samples) {
-    let total = 0;
-    for (let index = 1; index < samples.length; index += 1) {
-        const delta = samples[index].usedPercent - samples[index - 1].usedPercent;
-        if (delta > 0 && delta <= 100) total += delta;
-    }
-    return total;
-}
-
-export function calculateAverageBurnRatePercentPerDay(samples) {
-    if (samples.length < 2) return null;
-    const positiveDelta = calculateRecentPositiveDelta(samples);
-    if (positiveDelta <= 0) return null;
-    const observedSeconds = samples.at(-1).timestamp - samples[0].timestamp;
-    if (!Number.isFinite(observedSeconds) || observedSeconds <= 0) return null;
-    const observedDays = Math.max(observedSeconds, MIN_BURN_RATE_OBSERVED_SECONDS) / 86400;
-    return positiveDelta / observedDays;
 }
 
 function addTrendDeltaToBuckets({

@@ -33,7 +33,7 @@ jobs:
               run: |
                   set -euo pipefail
                   sudo apt-get update
-                  sudo apt-get install -y jq unzip
+                  sudo apt-get install -y jq zip
 
             - name: Validate release source and CI
               id: source
@@ -97,7 +97,6 @@ jobs:
 
                   echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
                   echo "tag_version=${TAG#v}" >> "${GITHUB_OUTPUT}"
-                  echo "ci_run_id=${CI_RUN_ID}" >> "${GITHUB_OUTPUT}"
 
             - name: Validate release metadata
               shell: bash
@@ -117,26 +116,8 @@ jobs:
                     exit 1
                   fi
 
-            - name: Download extension bundle
-              uses: actions/download-artifact@v8
-              with:
-                  name: release-bundle
-                  run-id: ${{ steps.source.outputs.ci_run_id }}
-                  github-token: ${{ github.token }}
-                  path: release-artifacts
-
-            - name: Validate release artifact
-              shell: bash
-              run: |
-                  set -euo pipefail
-                  TAG_VERSION="${{ steps.source.outputs.tag_version }}"
-                  UUID="$(jq -r '.uuid' src/metadata.json)"
-                  ZIP="release-artifacts/${UUID}-v${TAG_VERSION}.zip"
-
-                  test -f "${ZIP}"
-                  unzip -p "${ZIP}" metadata.json | jq empty
-                  unzip -p "${ZIP}" extension.js >/dev/null
-                  unzip -p "${ZIP}" prefs.js >/dev/null
+            - name: Build extension bundle
+              run: make pack
 
             - name: Create GitHub release
               env:
@@ -147,7 +128,7 @@ jobs:
                   TAG="${{ steps.source.outputs.tag }}"
                   TAG_VERSION="${{ steps.source.outputs.tag_version }}"
                   UUID="$(jq -r '.uuid' src/metadata.json)"
-                  ZIP="release-artifacts/${UUID}-v${TAG_VERSION}.zip"
+                  ZIP="${UUID}-v${TAG_VERSION}.zip"
 
                   if gh release view "${TAG}" >/dev/null 2>&1; then
                     gh release upload "${TAG}" "${ZIP}" --clobber

@@ -26,12 +26,6 @@ import { RefreshFailureError } from "../refresh/error.js";
  * @returns {CodexBankedResetListResponse}
  */
 export function toListResponse(response) {
-    assertListResponseShape(response);
-    return /** @type {CodexBankedResetListResponse} */ (response);
-}
-
-/** @param {JsonObject} response */
-function assertListResponseShape(response) {
     if (!Number.isFinite(response.available_count)) {
         throwUnexpected("available_count is missing or not a finite number");
     }
@@ -71,6 +65,8 @@ function assertListResponseShape(response) {
             }
         }
     }
+
+    return /** @type {CodexBankedResetListResponse} */ (response);
 }
 
 /**
@@ -79,16 +75,19 @@ function assertListResponseShape(response) {
  */
 export function selectCreditToRedeem(credits) {
     const available = credits.filter((credit) => credit.status === "available");
-
-    if (available.length === 0) {
-        return null;
-    }
-
-    if (available.some((credit) => !hasValidExpiresAt(credit))) {
+    if (available.length === 0) return null;
+    if (
+        available.some(
+            (credit) =>
+                typeof credit.expires_at !== "string" ||
+                !Number.isFinite(Date.parse(credit.expires_at)),
+        )
+    ) {
         return available[0];
     }
-
-    return sortByExpiry(available)[0];
+    return available.toSorted(
+        (left, right) => Date.parse(left.expires_at ?? "") - Date.parse(right.expires_at ?? ""),
+    )[0];
 }
 
 /**
@@ -99,32 +98,20 @@ export function selectCreditToRedeem(credits) {
  */
 export function selectCreditExpiringWithin(credits, nowMs, windowMs) {
     const expiresBy = nowMs + windowMs;
-    const expiring = credits.filter((credit) => {
-        if (credit.status !== "available" || !hasValidExpiresAt(credit)) return false;
-
-        const expiresAt = Date.parse(credit.expires_at ?? "");
-        return expiresAt > nowMs && expiresAt <= expiresBy;
-    });
-
-    return sortByExpiry(expiring)[0] ?? null;
-}
-
-/**
- * @param {CodexBankedResetCredit[]} credits
- * @returns {CodexBankedResetCredit[]}
- */
-function sortByExpiry(credits) {
-    return [...credits].sort((left, right) => {
-        return Date.parse(left.expires_at ?? "") - Date.parse(right.expires_at ?? "");
-    });
-}
-
-/**
- * @param {CodexBankedResetCredit} credit
- * @returns {boolean}
- */
-function hasValidExpiresAt(credit) {
-    return typeof credit.expires_at === "string" && Number.isFinite(Date.parse(credit.expires_at));
+    return (
+        credits
+            .filter((credit) => {
+                if (credit.status !== "available" || typeof credit.expires_at !== "string") {
+                    return false;
+                }
+                const expiresAt = Date.parse(credit.expires_at);
+                return expiresAt > nowMs && expiresAt <= expiresBy;
+            })
+            .toSorted(
+                (left, right) =>
+                    Date.parse(left.expires_at ?? "") - Date.parse(right.expires_at ?? ""),
+            )[0] ?? null
+    );
 }
 
 /**

@@ -1,6 +1,5 @@
 import Adw from "gi://Adw";
 import Gio from "gi://Gio";
-import GObject from "gi://GObject";
 import Gtk from "gi://Gtk";
 import {
     MIN_REFRESH_INTERVAL_MINUTES,
@@ -13,20 +12,17 @@ import {
     SETTINGS_TOP_PANEL_INDICATOR_ICON,
 } from "./settings.js";
 
-export const PreferencesPage = GObject.registerClass(
-    class PreferencesPage extends Adw.PreferencesPage {
-        _init(settings, snapshot, metadata) {
-            super._init({
-                title: "Codex Meter",
-                icon_name: "codex-symbolic",
-            });
-            this.add(createBehaviorGroup(settings));
-            this.add(createTopPanelGroup(settings));
-            this.add(createBankedResetsGroup(settings, snapshot));
-            this.add(createFooterGroup(metadata));
-        }
-    },
-);
+export function createPreferencesPage(settings, snapshot, metadata) {
+    const page = new Adw.PreferencesPage({
+        title: "Codex Meter",
+        icon_name: "codex-symbolic",
+    });
+    page.add(createBehaviorGroup(settings));
+    page.add(createTopPanelGroup(settings));
+    page.add(createBankedResetsGroup(settings, snapshot));
+    page.add(createFooterGroup(metadata));
+    return page;
+}
 
 function createBankedResetsGroup(settings, snapshot) {
     const group = new Adw.PreferencesGroup({ title: "Banked resets" });
@@ -39,7 +35,11 @@ function createBankedResetsGroup(settings, snapshot) {
         }),
     );
     if (!snapshot) {
-        group.add(new Adw.ActionRow({ title: getNoCodexCreditSnapshotMessage() }));
+        group.add(
+            new Adw.ActionRow({
+                title: "No Codex credit snapshot is available yet. It will appear after the next successful panel refresh.",
+            }),
+        );
         return group;
     }
     if (snapshot.credits.length === 0) {
@@ -57,71 +57,21 @@ function createBankedResetsGroup(settings, snapshot) {
 }
 
 function createCreditRow(credit) {
-    const row = new Adw.PreferencesRow();
-    const box = new Gtk.Box({
-        orientation: Gtk.Orientation.VERTICAL,
-        spacing: 6,
-        margin_top: 12,
-        margin_bottom: 12,
-        margin_start: 12,
-        margin_end: 12,
+    const subtitle = [
+        credit.description,
+        `Granted ${formatCreditDate(credit.granted_at)}`,
+        `Expires ${formatCreditDate(credit.expires_at)}`,
+    ]
+        .filter(Boolean)
+        .join("\n");
+    const row = new Adw.ActionRow({
+        title: createCreditTitle(credit),
+        subtitle,
     });
-    const titleRow = new Gtk.Box({
-        orientation: Gtk.Orientation.HORIZONTAL,
-        spacing: 12,
-    });
-    const title = new Gtk.Label({
-        label: createCreditTitle(credit),
-        xalign: 0,
-        wrap: true,
-        hexpand: true,
-        halign: Gtk.Align.FILL,
-    });
-    const description = new Gtk.Label({
-        label: credit.description ?? "",
-        xalign: 0,
-        wrap: true,
-        hexpand: true,
-        halign: Gtk.Align.FILL,
-    });
-    const status = new Gtk.Label({
-        label: formatCreditStatus(credit),
-        valign: Gtk.Align.CENTER,
-        halign: Gtk.Align.END,
-    });
-    const dates = new Gtk.Box({
-        orientation: Gtk.Orientation.HORIZONTAL,
-        spacing: 12,
-    });
-    const granted = new Gtk.Label({
-        label: `Granted ${formatCreditDate(credit.granted_at)}`,
-        xalign: 0,
-        hexpand: true,
-        halign: Gtk.Align.FILL,
-    });
-    const expires = new Gtk.Label({
-        label: `Expires ${formatCreditDate(credit.expires_at)}`,
-        xalign: 1,
-        halign: Gtk.Align.END,
-    });
-    title.add_css_class("heading");
-    description.add_css_class("dim-label");
-    granted.add_css_class("dim-label");
-    expires.add_css_class("dim-label");
+    const status = new Gtk.Label({ label: formatCreditStatus(credit) });
     status.add_css_class("dim-label");
-    titleRow.append(title);
-    titleRow.append(status);
-    dates.append(granted);
-    dates.append(expires);
-    box.append(titleRow);
-    box.append(description);
-    box.append(dates);
-    row.set_child(box);
+    row.add_suffix(status);
     return row;
-}
-
-function getNoCodexCreditSnapshotMessage() {
-    return "No Codex credit snapshot is available yet. It will appear after the next successful panel refresh.";
 }
 
 function createCreditTitle(credit) {
@@ -151,8 +101,29 @@ function createTopPanelGroup(settings) {
     const group = new Adw.PreferencesGroup({
         title: "Top panel indicator",
     });
-    group.add(createTopPanelIndicatorIconRow(settings));
-    group.add(createTopPanelStyleRow(settings));
+    group.add(
+        createBoundComboRow({
+            settings,
+            key: SETTINGS_TOP_PANEL_INDICATOR_ICON,
+            title: "Icon",
+            options: [
+                ["Codex icon", "codex"],
+                ["OpenAI icon", "openai"],
+                ["CX shortcode", "text"],
+            ],
+        }),
+    );
+    group.add(
+        createBoundComboRow({
+            settings,
+            key: SETTINGS_TOP_PANEL_DISPLAY_MODE,
+            title: "Show percentages as",
+            options: [
+                ["Progress bars", "bars"],
+                ["Raw percentages", "percentages"],
+            ],
+        }),
+    );
     group.add(
         createBoundSwitchRow({
             settings,
@@ -174,69 +145,35 @@ function createBehaviorGroup(settings) {
     const group = new Adw.PreferencesGroup({
         title: "Behavior",
     });
-    group.add(createPercentDisplayModeRow(settings));
+    group.add(
+        createBoundComboRow({
+            settings,
+            key: SETTINGS_PERCENT_DISPLAY_MODE,
+            title: "Display mode",
+            options: [
+                ["Percent used", "used"],
+                ["Percent left", "left"],
+            ],
+        }),
+    );
     group.add(createRefreshIntervalRow(settings));
     return group;
 }
 
-function createTopPanelStyleRow(settings) {
+function createBoundComboRow({ settings, key, title, options }) {
+    const getSelected = () =>
+        Math.max(
+            0,
+            options.findIndex(([, value]) => value === settings.get_string(key)),
+        );
     const row = new Adw.ComboRow({
-        title: "Show percentages as",
-        model: Gtk.StringList.new(["Progress bars", "Raw percentages"]),
-        selected: getTopPanelDisplayModeIndex(settings.get_string(SETTINGS_TOP_PANEL_DISPLAY_MODE)),
+        title,
+        model: Gtk.StringList.new(options.map(([label]) => label)),
+        selected: getSelected(),
     });
-    row.connect("notify::selected", () => {
-        settings.set_string(
-            SETTINGS_TOP_PANEL_DISPLAY_MODE,
-            getTopPanelDisplayModeValue(row.selected),
-        );
-    });
-    settings.connect(`changed::${SETTINGS_TOP_PANEL_DISPLAY_MODE}`, () => {
-        row.selected = getTopPanelDisplayModeIndex(
-            settings.get_string(SETTINGS_TOP_PANEL_DISPLAY_MODE),
-        );
-    });
-    return row;
-}
-
-function createPercentDisplayModeRow(settings) {
-    const row = new Adw.ComboRow({
-        title: "Display mode",
-        model: Gtk.StringList.new(["Percent used", "Percent left"]),
-        selected: getPercentDisplayModeIndex(settings.get_string(SETTINGS_PERCENT_DISPLAY_MODE)),
-    });
-    row.connect("notify::selected", () => {
-        settings.set_string(
-            SETTINGS_PERCENT_DISPLAY_MODE,
-            getPercentDisplayModeValue(row.selected),
-        );
-    });
-    settings.connect(`changed::${SETTINGS_PERCENT_DISPLAY_MODE}`, () => {
-        row.selected = getPercentDisplayModeIndex(
-            settings.get_string(SETTINGS_PERCENT_DISPLAY_MODE),
-        );
-    });
-    return row;
-}
-
-function createTopPanelIndicatorIconRow(settings) {
-    const row = new Adw.ComboRow({
-        title: "Icon",
-        model: Gtk.StringList.new(["Codex icon", "OpenAI icon", "CX shortcode"]),
-        selected: getTopPanelIndicatorIconIndex(
-            settings.get_string(SETTINGS_TOP_PANEL_INDICATOR_ICON),
-        ),
-    });
-    row.connect("notify::selected", () => {
-        settings.set_string(
-            SETTINGS_TOP_PANEL_INDICATOR_ICON,
-            getTopPanelIndicatorIconValue(row.selected),
-        );
-    });
-    settings.connect(`changed::${SETTINGS_TOP_PANEL_INDICATOR_ICON}`, () => {
-        row.selected = getTopPanelIndicatorIconIndex(
-            settings.get_string(SETTINGS_TOP_PANEL_INDICATOR_ICON),
-        );
+    row.connect("notify::selected", () => settings.set_string(key, options[row.selected][1]));
+    settings.connect(`changed::${key}`, () => {
+        row.selected = getSelected();
     });
     return row;
 }
@@ -311,42 +248,4 @@ function createFooterGroup(metadata) {
     footerBox.append(links);
     footerGroup.add(footerBox);
     return footerGroup;
-}
-
-function getTopPanelDisplayModeIndex(value) {
-    switch (value) {
-        case "percentages":
-            return 1;
-        default:
-            return 0;
-    }
-}
-
-function getTopPanelDisplayModeValue(selected) {
-    switch (selected) {
-        case 1:
-            return "percentages";
-        default:
-            return "bars";
-    }
-}
-
-function getTopPanelIndicatorIconIndex(value) {
-    if (value === "openai") return 1;
-    if (value === "text") return 2;
-    return 0;
-}
-
-function getTopPanelIndicatorIconValue(selected) {
-    if (selected === 1) return "openai";
-    if (selected === 2) return "text";
-    return "codex";
-}
-
-function getPercentDisplayModeIndex(value) {
-    return value === "left" ? 1 : 0;
-}
-
-function getPercentDisplayModeValue(selected) {
-    return selected === 1 ? "left" : "used";
 }

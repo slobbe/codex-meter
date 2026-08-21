@@ -11,24 +11,11 @@ const BASELINE_MARKER_WIDTH = 3;
 const COLOR_STYLE_CLASSES = ["cx-color-green", "cx-color-warning", "cx-color-danger", "cx-muted"];
 
 export class UsageBar {
-    actor;
-
-    _variant;
-
-    _barTrack;
-
-    _barFill;
-
-    _barMarker;
-
-    _state;
-
     constructor(variant) {
         this._variant = variant;
         this._state = {
             percentValue: 0,
             displayPercentValue: 0,
-            baselinePercentValue: null,
             displayBaselinePercentValue: null,
         };
         this._barTrack = new St.BoxLayout({
@@ -86,7 +73,7 @@ export class UsageBar {
         if (!this._barMarker) return;
         this._barMarker.width = BASELINE_MARKER_WIDTH;
         this._barMarker.height = this.actor.height;
-        this._barMarker.visible = Number.isFinite(this._state.baselinePercentValue);
+        this._barMarker.visible = Number.isFinite(this._state.displayBaselinePercentValue);
         this._barMarker.x = calculateBarMarkerPosition(
             width,
             this._barMarker.width,

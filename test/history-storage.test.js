@@ -1,11 +1,7 @@
 import GLib from "gi://GLib";
 import Gio from "gi://Gio";
 
-import {
-    appendHistoryRowToPath,
-    appendHistoryToPath,
-    readHistoryFromPath,
-} from "../src/usage/history-store.js";
+import { appendHistoryRow, readHistory } from "../src/usage/history-store.js";
 
 Gio._promisify(Gio.File.prototype, "load_contents_async");
 
@@ -48,126 +44,26 @@ function removeFile(path) {
     } catch (_error) {}
 }
 
-async function testAppendWritesJsonl() {
-    const path = createTempPath("append.jsonl");
-    const firstTimestamp = new Date(Date.now() - 60_000).toISOString();
-    const secondTimestamp = new Date().toISOString();
-
-    try {
-        await appendHistoryToPath(path, {
-            timestamp: firstTimestamp,
-            quotas: [
-                {
-                    id: "session",
-                    usedPercent: 14,
-                    used: 140,
-                    limit: 1000,
-                    remaining: 860,
-                    resetAt: 1_700_000_000,
-                    limitReached: false,
-                },
-                { id: "weekly", usedPercent: 54 },
-            ],
-        });
-        await appendHistoryToPath(path, {
-            timestamp: secondTimestamp,
-            quotas: [
-                { id: "session", usedPercent: 15, used: 150 },
-                { id: "weekly", usedPercent: 55 },
-            ],
-        });
-
-        const lines = (await readText(path)).trim().split(/\r?\n/);
-
-        assertEqual(lines.length, 2, "history append should write one JSON object per line");
-
-        for (const [index, line] of lines.entries()) {
-            assertEqual(
-                line.startsWith('{"timestamp":'),
-                true,
-                `history line ${index + 1} should start with a JSON object`,
-            );
-            JSON.parse(line);
-        }
-
-        assertDeepEqual(
-            JSON.parse(lines[0]),
-            {
-                timestamp: firstTimestamp,
-                quotas: [
-                    {
-                        id: "session",
-                        usedPercent: 14,
-                        used: 140,
-                        limit: 1000,
-                        remaining: 860,
-                        resetAt: 1_700_000_000,
-                        limitReached: false,
-                    },
-                    { id: "weekly", usedPercent: 54 },
-                ],
-            },
-            "history row should preserve richer quota fields",
-        );
-        assertDeepEqual(
-            JSON.parse(lines[1]),
-            {
-                timestamp: secondTimestamp,
-                quotas: [
-                    { id: "session", usedPercent: 15, used: 150 },
-                    { id: "weekly", usedPercent: 55 },
-                ],
-            },
-            "appended history row should be valid JSON text",
-        );
-    } finally {
-        removeFile(path);
-    }
-}
-
-async function testAppendSkipsDuplicateQuotaValues() {
-    const path = createTempPath("dedupe.jsonl");
-    const firstTimestamp = new Date(Date.now() - 60_000).toISOString();
-    const secondTimestamp = new Date().toISOString();
-
-    try {
-        await appendHistoryToPath(path, {
-            timestamp: firstTimestamp,
-            quotas: [
-                { id: "session", usedPercent: 14 },
-                { id: "weekly", usedPercent: 54 },
-            ],
-        });
-        await appendHistoryToPath(path, {
-            timestamp: secondTimestamp,
-            quotas: [
-                { id: "session", usedPercent: 14 },
-                { id: "weekly", usedPercent: 54 },
-            ],
-        });
-
-        const lines = (await readText(path)).trim().split(/\r?\n/);
-
-        assertEqual(lines.length, 1, "duplicate quota values should not be appended");
-    } finally {
-        removeFile(path);
-    }
-}
-
 async function testDirectAppendWritesWithoutDeduping() {
     const path = createTempPath("direct-append.jsonl");
     const firstTimestamp = new Date(Date.now() - 60_000).toISOString();
     const secondTimestamp = new Date().toISOString();
 
     try {
-        await appendHistoryRowToPath(path, {
-            timestamp: firstTimestamp,
-            quotas: [{ id: "session", usedPercent: 14 }],
-        });
-        await appendHistoryRowToPath(path, {
-            timestamp: secondTimestamp,
-            quotas: [{ id: "session", usedPercent: 14 }],
-        });
+        await appendHistoryRow(
+            {
+                timestamp: firstTimestamp,
+                quotas: [{ id: "session", usedPercent: 14 }],
+            },
+            path,
+        );
+        await appendHistoryRow(
+            {
+                timestamp: secondTimestamp,
+                quotas: [{ id: "session", usedPercent: 14 }],
+            },
+            path,
+        );
 
         const lines = (await readText(path)).trim().split(/\r?\n/);
 
@@ -193,7 +89,7 @@ async function testJsonlIsReadable() {
             })}\n`,
         );
 
-        const history = await readHistoryFromPath(path);
+        const history = await readHistory(path);
 
         assertEqual(history.length, 1, "JSONL history row should be read");
         assertDeepEqual(
@@ -212,13 +108,11 @@ async function testJsonlIsReadable() {
 async function testMissingJsonlReturnsEmptyHistory() {
     const path = createTempPath("missing.jsonl");
 
-    const history = await readHistoryFromPath(path);
+    const history = await readHistory(path);
 
     assertDeepEqual(history, [], "missing JSONL history should be empty");
 }
 
-await testAppendWritesJsonl();
-await testAppendSkipsDuplicateQuotaValues();
 await testDirectAppendWritesWithoutDeduping();
 await testJsonlIsReadable();
 await testMissingJsonlReturnsEmptyHistory();

@@ -9,28 +9,6 @@
 /** @typedef {{timestamp: number, usedPercent: number}} HistoryEntrySlice */
 
 /**
- * @param {UsageSnapshot | null} [snapshot]
- * @returns {UsagePrediction}
- */
-export function createUnknownUsagePrediction(snapshot) {
-    /** @type {Record<string, WindowPrediction>} */
-    const quotas = {};
-
-    for (const quota of snapshot?.quotas ?? []) {
-        quotas[quota.id] = unknownPrediction();
-    }
-
-    const primaryId = snapshot?.quotas[0]?.id;
-    const secondaryId = snapshot?.quotas[1]?.id;
-
-    return {
-        quotas,
-        primary: primaryId ? (quotas[primaryId] ?? unknownPrediction()) : unknownPrediction(),
-        secondary: secondaryId ? (quotas[secondaryId] ?? unknownPrediction()) : unknownPrediction(),
-    };
-}
-
-/**
  * @param {HistoryEntry[]} history
  * @param {UsageSnapshot} snapshot
  * @returns {UsagePrediction}
@@ -158,11 +136,9 @@ function predictWindow(windowHistory, windowStartedAt, resetAt) {
         };
     }
 
-    const fit = calculateFit(
-        history.map((entry) => entry.timestamp),
-        history.map((entry) => entry.usedPercent),
-    );
-    const limitAt = fit(100);
+    const secondsPerPercent =
+        (latest.timestamp - oldest.timestamp) / (latest.usedPercent - oldest.usedPercent);
+    const limitAt = latest.timestamp + (100 - latest.usedPercent) * secondsPerPercent;
 
     if (!Number.isFinite(limitAt)) {
         return {
@@ -175,16 +151,4 @@ function predictWindow(windowHistory, windowStartedAt, resetAt) {
         estimatedLimitAt: limitAt,
         trend: limitAt < resetAt ? "unsafe" : "safe",
     };
-}
-
-/**
- * @param {number[]} x
- * @param {number[]} y
- * @returns {(value: number) => number}
- */
-function calculateFit(x, y) {
-    const n = x.length;
-    const secondsPerPercent = (x[n - 1] - x[0]) / (y[n - 1] - y[0]);
-
-    return (value) => x[n - 1] + (value - y[n - 1]) * secondsPerPercent;
 }

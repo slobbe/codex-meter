@@ -1,12 +1,10 @@
-import { fetchUsage } from "../io/http.js";
+import { fetchJson } from "../io/http.js";
 import { getCodexAccessToken } from "./auth.js";
 import { toUsageSnapshot } from "./usage-response.js";
 
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 
 const CODEX_API_CONFIG = {
-    providerName: "Codex",
-    usageUrl: CODEX_USAGE_URL,
     messages: {
         malformedResponse: "Codex returned a malformed response.",
         unexpectedResponseFormat: "Codex returned an unexpected response format.",
@@ -20,7 +18,8 @@ const CODEX_API_CONFIG = {
 
 export async function refreshCodexUsage(options = {}) {
     const token = await getCodexAccessToken();
-    const apiResponse = await fetchUsage(token, CODEX_API_CONFIG, {
+    const apiResponse = await fetchJson(CODEX_USAGE_URL, CODEX_API_CONFIG, {
+        headers: { Authorization: `Bearer ${token}` },
         cancellable: options.cancellable ?? null,
     });
 

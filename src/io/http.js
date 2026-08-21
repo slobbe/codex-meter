@@ -21,7 +21,7 @@ function formatErrorBody(text) {
     return `${normalized.slice(0, MAX_ERROR_BODY_LENGTH)}...`;
 }
 
-function parseApiResponse(text, url, config, allowArrayResponse = false) {
+function parseApiResponse(text, url, config) {
     let parsed;
     try {
         parsed = JSON.parse(text);
@@ -33,13 +33,11 @@ function parseApiResponse(text, url, config, allowArrayResponse = false) {
             `Failed to parse JSON response from ${url}: ${message}`,
         );
     }
-    const isObject = typeof parsed === "object" && parsed !== null;
-    const isArray = Array.isArray(parsed);
-    if (!isObject || (isArray && !allowArrayResponse)) {
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
         throw new RefreshFailureError(
             "malformed-response",
             config.messages.unexpectedResponseFormat,
-            `Expected JSON ${allowArrayResponse ? "object or array" : "object"} response from ${url}`,
+            `Expected JSON object response from ${url}`,
         );
     }
     return parsed;
@@ -48,8 +46,7 @@ function parseApiResponse(text, url, config, allowArrayResponse = false) {
 export async function fetchJson(url, config, options = {}) {
     const session = new Soup.Session();
     const message = Soup.Message.new(options.method ?? "GET", url);
-    const timeoutSeconds = options.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS;
-    session.timeout = timeoutSeconds;
+    session.timeout = DEFAULT_TIMEOUT_SECONDS;
     const headers = {
         Accept: "application/json",
         ...options.headers,
@@ -58,11 +55,10 @@ export async function fetchJson(url, config, options = {}) {
         message.request_headers.append(key, value);
     }
     if (options.body !== undefined && options.body !== null) {
-        const contentType = options.bodyContentType ?? "application/json";
         const bytes = new GLib.Bytes(new TextEncoder().encode(options.body));
         // The GIRS package set currently lacks this Soup binding in typings.
         // @ts-ignore
-        message.set_request_body_from_bytes(contentType, bytes);
+        message.set_request_body_from_bytes("application/json", bytes);
     }
     let bytes;
     try {
@@ -110,16 +106,7 @@ export async function fetchJson(url, config, options = {}) {
             `Received empty response body from ${url}`,
         );
     }
-    return parseApiResponse(text, url, config, options.allowArrayResponse ?? false);
-}
-
-export async function fetchUsage(accessToken, config, options = {}, url = config.usageUrl) {
-    return await fetchJson(url, config, {
-        ...options,
-        headers: {
-            Authorization: `Bearer ${accessToken}`,
-        },
-    });
+    return parseApiResponse(text, url, config);
 }
 
 function isCancellationError(error) {

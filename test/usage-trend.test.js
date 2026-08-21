@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-    calculateAverageBurnRatePercentPerDay,
-    calculateRecentPositiveDelta,
-    createUsageTrendViewModel,
-} from "../src/panel/view-model.js";
+import { createUsageTrendViewModel } from "../src/panel/view-model.js";
 
 const now = 1_700_000_000;
 
@@ -120,35 +116,4 @@ test("uses the secondary quota id for usage trend", () => {
 
     assert.equal(trend.visible, true);
     assert.equal(Math.max(...trend.bars), 100);
-});
-
-test("calculates recent positive delta and ignores resets", () => {
-    assert.equal(
-        calculateRecentPositiveDelta([
-            { timestamp: now - 300, usedPercent: 80 },
-            { timestamp: now - 200, usedPercent: 2 },
-            { timestamp: now - 100, usedPercent: 9 },
-        ]),
-        7,
-    );
-});
-
-test("calculates average burn rate over observed span", () => {
-    assert.equal(
-        calculateAverageBurnRatePercentPerDay([
-            { timestamp: now - 86_400, usedPercent: 1 },
-            { timestamp: now, usedPercent: 2.8 },
-        ]),
-        1.7999999999999998,
-    );
-});
-
-test("calculates average burn rate with six hour minimum observed span", () => {
-    assert.equal(
-        calculateAverageBurnRatePercentPerDay([
-            { timestamp: now - 3_600, usedPercent: 1 },
-            { timestamp: now, usedPercent: 2 },
-        ]),
-        4,
-    );
 });

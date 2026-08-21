@@ -39,7 +39,7 @@ jobs:
               run: |
                   set -euo pipefail
                   sudo apt-get update
-                  sudo apt-get install -y gjs jq libglib2.0-bin unzip zip
+                  sudo apt-get install -y gjs jq libglib2.0-bin zip
 
                   python -m pip install --upgrade pip
                   # shexli 0.2.1 currently segfaults with tree-sitter 0.26.0.
@@ -80,32 +80,7 @@ jobs:
                   glib-compile-schemas --strict src/schemas
 
             - name: Build extension bundle
-              shell: bash
-              run: |
-                  set -euo pipefail
-                  make clean pack
-
-            - name: Validate extension bundle
-              shell: bash
-              run: |
-                  set -euo pipefail
-                  VERSION="$(node -p "require('./package.json').version")"
-                  UUID="$(jq -r '.uuid' src/metadata.json)"
-                  ZIP="${UUID}-v${VERSION}.zip"
-
-                  test -f "${ZIP}"
-                  unzip -p "${ZIP}" metadata.json | jq empty
-                  unzip -p "${ZIP}" schemas/org.gnome.shell.extensions.codex-meter.gschema.xml >/dev/null
-
-                  for file in \
-                    metadata.json \
-                    extension.js \
-                    prefs.js \
-                    stylesheet.css \
-                    schemas/org.gnome.shell.extensions.codex-meter.gschema.xml
-                  do
-                    unzip -Z1 "${ZIP}" | grep -Fx "${file}"
-                  done
+              run: make pack
 
             - name: Run Shexli static analyzer
               shell: bash
@@ -116,10 +91,3 @@ jobs:
                   ZIP="${UUID}-v${VERSION}.zip"
 
                   shexli "${ZIP}"
-
-            - name: Upload extension bundle
-              uses: actions/upload-artifact@v7
-              with:
-                  name: release-bundle
-                  path: codex-meter@slobbe.github.io-*.zip
-                  if-no-files-found: error

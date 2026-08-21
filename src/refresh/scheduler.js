@@ -41,10 +41,6 @@ export class Scheduler {
         this.schedule();
     }
 
-    runNow() {
-        void this.run();
-    }
-
     schedule() {
         if (this.timeoutId !== null || this.intervalSeconds <= 0) {
             return;

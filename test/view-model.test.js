@@ -153,7 +153,6 @@ test("keeps cached data visible with refresh failure status", () => {
         "Network unavailable",
     );
 
-    assert.equal(viewModel.hasError, false);
     assert.equal(viewModel.errorMessage, null);
     assert.equal(viewModel.statusTitle, "Showing cached data");
     assert.equal(viewModel.statusMessage, "Refresh failed: Network unavailable");

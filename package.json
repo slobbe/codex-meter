@@ -19,7 +19,7 @@
         "check": "tsc && npm run format:check",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
-        "test": "npm run check && node --test test/prediction.test.js test/usage-trend.test.js test/view-model.test.js test/refresh-failure-format.test.js test/codex-usage-response.test.js test/codex-auth.test.js test/codex-banked-resets.test.js && gjs -m test/history-storage.test.js"
+        "test": "npm run check && node --test 'test/!(history-storage).test.js' && gjs -m test/history-storage.test.js"
     },
     "devDependencies": {
         "prettier": "^3.9.6",

@@ -126,18 +126,12 @@
     spacing: 12px;
 }
 
-.cx-header-detail,
 .cx-footer-label {
     font-size: 0.95em;
 }
 
-.cx-header-detail,
 .cx-usage-detail-muted {
     opacity: 0.75;
-}
-
-.cx-header-detail {
-    opacity: 0.8;
 }
 
 .cx-usage-prediction {

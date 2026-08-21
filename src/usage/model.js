@@ -36,14 +36,6 @@ export function getQuota(snapshot, quotaId) {
  * @param {UsageSnapshot | null | undefined} snapshot
  * @returns {UsageQuota | null}
  */
-export function getPrimaryQuota(snapshot) {
-    return snapshot?.quotas[0] ?? null;
-}
-
-/**
- * @param {UsageSnapshot | null | undefined} snapshot
- * @returns {UsageQuota | null}
- */
 export function getSecondaryQuota(snapshot) {
     return snapshot?.quotas[1] ?? null;
 }

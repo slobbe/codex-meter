@@ -15,26 +15,6 @@ const TREND_BAR_MIN_HEIGHT = 3;
 const TREND_BAR_SPACING = 2;
 
 export class CodexMeterPopupMenu {
-    headerItem;
-
-    errorItem;
-
-    statusItem;
-
-    primaryItem;
-
-    secondaryItem;
-
-    trendItem;
-
-    footerItem;
-
-    _onRefresh;
-
-    _onRedeemBankedReset;
-
-    _onOpenPreferences;
-
     constructor({ onRefresh, onRedeemBankedReset, onOpenPreferences }) {
         this._onRefresh = onRefresh;
         this._onRedeemBankedReset = onRedeemBankedReset;
@@ -92,18 +72,16 @@ export class CodexMeterPopupMenu {
         item.usageBar.update({
             percentValue: viewModel.percentValue,
             displayPercentValue: viewModel.displayPercentValue,
-            baselinePercentValue: viewModel.baselinePercentValue,
             displayBaselinePercentValue: viewModel.displayBaselinePercentValue,
         });
     }
 
     setError(message) {
-        const hasError = Boolean(message);
-        this.errorItem.visible = hasError;
-        this.primaryItem.visible = !hasError;
-        this.secondaryItem.visible = !hasError;
-        this.trendItem.visible = !hasError && this.trendItem.visible;
-        this.errorItem.message = message ?? "";
+        const showError = Boolean(message);
+        this.errorItem.visible = showError;
+        this.primaryItem.visible = !showError;
+        this.secondaryItem.visible = !showError;
+        this.trendItem.visible = !showError && this.trendItem.visible;
         this.errorItem.messageLabel.text = message ?? "";
     }
 
@@ -113,9 +91,9 @@ export class CodexMeterPopupMenu {
         this.statusItem.messageLabel.text = message ?? "";
     }
 
-    setBankedResets({ count, visible, redeeming }) {
+    setBankedResets({ count, redeeming }) {
         const canRedeem = !redeeming && count !== null && count > 0;
-        this.headerItem.redeemButton.visible = visible && count !== null;
+        this.headerItem.redeemButton.visible = count !== null;
         this.headerItem.redeemButton.reactive = canRedeem;
         this.headerItem.redeemButton.can_focus = canRedeem;
         this.headerItem.redeemButton.opacity = canRedeem ? 255 : 150;
@@ -228,14 +206,12 @@ export class CodexMeterPopupMenu {
     }
 
     _createErrorItem() {
-        const item = this._createBannerItem({
+        return this._createBannerItem({
             iconName: "dialog-error-symbolic",
             title: "Unable to load usage",
             colorStyleClass: "cx-color-danger",
             messageStyleClass: "cx-error-message-danger",
         });
-        item.message = "";
-        return item;
     }
 
     _createStatusItem() {
@@ -321,20 +297,11 @@ export class CodexMeterPopupMenu {
             onClick: () => this._onRefresh(),
         });
         refreshIcon.set_pivot_point(0.5, 0.5);
-        const datetimeLabel = new St.Label({
-            text: "--",
-            x_expand: true,
-            x_align: Clutter.ActorAlign.END,
-            y_align: Clutter.ActorAlign.CENTER,
-            style_class: "cx-header-detail",
-        });
         topRow.add_child(redeemButton);
         topRow.add_child(new St.Widget({ x_expand: true }));
-        topRow.add_child(datetimeLabel);
         topRow.add_child(refreshButton);
         box.add_child(topRow);
         item.add_child(box);
-        item.datetimeLabel = datetimeLabel;
         item.redeemButton = redeemButton;
         item.redeemButtonLabel = redeemButtonLabel;
         item.refreshIcon = refreshIcon;
@@ -368,7 +335,6 @@ export class CodexMeterPopupMenu {
         box.add_child(settingsButton);
         item.add_child(box);
         item.planLabel = planLabel;
-        item.settingsButton = settingsButton;
         return item;
     }
 

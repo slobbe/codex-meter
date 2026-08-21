@@ -10,8 +10,6 @@ const CODEX_BANKED_RESETS_URL = "https://chatgpt.com/backend-api/wham/rate-limit
 const CODEX_REDEEM_BANKED_RESET_URL = `${CODEX_BANKED_RESETS_URL}/consume`;
 
 const CODEX_BANKED_RESETS_API_CONFIG = {
-    providerName: "Codex",
-    usageUrl: CODEX_BANKED_RESETS_URL,
     messages: {
         malformedResponse: "Codex returned a malformed banked reset response.",
         unexpectedResponseFormat: "Codex returned an unexpected banked reset response format.",
@@ -96,7 +94,6 @@ async function consumeCodexBankedReset(creditId, options = {}) {
             "Content-Type": "application/json",
         },
         body: JSON.stringify(request),
-        bodyContentType: "application/json",
         cancellable: options.cancellable ?? null,
     });
 }
