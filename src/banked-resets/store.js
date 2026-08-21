@@ -1,5 +1,5 @@
 import GLib from "gi://GLib";
-import { CACHE_DIR } from "../config/paths.js";
+import { CACHE_DIR } from "../io/paths.js";
 import { readJsonFile, writeJsonFile } from "../io/files.js";
 function getBankedResetSnapshotPath() {
     return GLib.build_filenamev([CACHE_DIR, "codex", "banked-reset-snapshot.json"]);

@@ -1,5 +1,5 @@
 import GLib from "gi://GLib";
-import { STATE_DIR } from "../config/paths.js";
+import { STATE_DIR } from "../io/paths.js";
 import { appendFile, readFile, writeFile } from "../io/files.js";
 export const MAX_HISTORY_ENTRIES = 25_000;
 const MAX_HISTORY_AGE_SECONDS = 21 * 24 * 60 * 60;

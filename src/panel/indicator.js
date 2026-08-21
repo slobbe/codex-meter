@@ -5,17 +5,22 @@ import GObject from "gi://GObject";
 import St from "gi://St";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
-import { SettingsService } from "../config/settings.js";
+import { SettingsService } from "../preferences/settings.js";
 import { Scheduler } from "../refresh/scheduler.js";
 import { UsageService } from "../usage/service.js";
 import { DEFAULT_PROVIDER_ID, getUsageProvider } from "../usage/providers.js";
 import { isRefreshFailureError } from "../refresh/error.js";
-import { listCodexBankedResets, readCachedCodexBankedResets, redeemCodexBankedReset, redeemNextCodexBankedReset, } from "../banked-resets/api.js";
+import {
+    listCodexBankedResets,
+    readCachedCodexBankedResets,
+    redeemCodexBankedReset,
+    redeemNextCodexBankedReset,
+} from "../banked-resets/api.js";
 import { selectCreditExpiringWithin } from "../banked-resets/response.js";
 import { CodexMeterPopupMenu } from "./menu.js";
 import { formatRefreshFailure } from "./refresh-error-message.js";
 import { UsageBar } from "./usage-bar.js";
-import { createMenuViewModel, createPanelBarViewModel, } from "./view-model.js";
+import { createMenuViewModel, createPanelBarViewModel } from "./view-model.js";
 const BANKED_RESET_BACKGROUND_REFRESH_SECONDS = 20 * 60;
 const AUTO_APPLY_BANKED_RESET_WINDOW_MS = 60 * 60 * 1000;
 export class CodexMeterIndicator extends PanelMenu.Button {
@@ -29,8 +34,14 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._providerId = this._settings.getUsageProvider();
         this._autoApplyBankedReset = this._settings.getAutoApplyBankedReset();
         this._usageService = createUsageService(this._providerId);
-        this._scheduler = new Scheduler(this._settings.getBackgroundRefreshIntervalSeconds(), () => this._refreshUsage());
-        this._bankedResetScheduler = new Scheduler(BANKED_RESET_BACKGROUND_REFRESH_SECONDS, () => this._refreshBankedResetsIfStale());
+        this._scheduler = new Scheduler(
+            this._settings.getBackgroundRefreshIntervalSeconds(),
+            () => this._refreshUsage(),
+        );
+        this._bankedResetScheduler = new Scheduler(
+            BANKED_RESET_BACKGROUND_REFRESH_SECONDS,
+            () => this._refreshBankedResetsIfStale(),
+        );
         this._refreshSpinId = 0;
         this._menuSyncId = 0;
         this._refreshPromise = null;
@@ -58,14 +69,18 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         });
         this._codexIcon = new St.Icon({
             gicon: new Gio.FileIcon({
-                file: Gio.File.new_for_path(`${this._extension.path}/icons/codex-symbolic.svg`),
+                file: Gio.File.new_for_path(
+                    `${this._extension.path}/icons/codex-symbolic.svg`,
+                ),
             }),
             y_align: Clutter.ActorAlign.CENTER,
             style_class: "cx-panel-icon",
         });
         this._openAiIcon = new St.Icon({
             gicon: new Gio.FileIcon({
-                file: Gio.File.new_for_path(`${this._extension.path}/icons/openai-symbolic.svg`),
+                file: Gio.File.new_for_path(
+                    `${this._extension.path}/icons/openai-symbolic.svg`,
+                ),
             }),
             y_align: Clutter.ActorAlign.CENTER,
             style_class: "cx-panel-icon",
@@ -86,15 +101,13 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._connectSignals();
     }
     start() {
-        if (this._destroyed)
-            return;
+        if (this._destroyed) return;
         this._syncLabel();
         this._syncMenu();
         void this._loadCachedBankedResets();
         this._bankedResetScheduler.start();
         void this._loadCachedSnapshot().finally(() => {
-            if (this._destroyed)
-                return;
+            if (this._destroyed) return;
             this._scheduler.start({ runImmediately: true });
         });
     }
@@ -160,15 +173,19 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         return box;
     }
     _connectSignals() {
-        this._menuOpenChangedId = this.menu.connect("open-state-changed", (_menu, isOpen) => {
-            if (isOpen) {
-                this._queueMenuBarSync();
-                void this._refreshBankedResets();
-            }
-        });
+        this._menuOpenChangedId = this.menu.connect(
+            "open-state-changed",
+            (_menu, isOpen) => {
+                if (isOpen) {
+                    this._queueMenuBarSync();
+                    void this._refreshBankedResets();
+                }
+            },
+        );
         this._settingsChangedId = this._settings.connectChanged(() => {
             const providerId = this._settings.getUsageProvider();
-            const autoApplyBankedReset = this._settings.getAutoApplyBankedReset();
+            const autoApplyBankedReset =
+                this._settings.getAutoApplyBankedReset();
             if (providerId !== this._providerId) {
                 this._providerId = providerId;
                 this._usageService = createUsageService(providerId);
@@ -191,21 +208,19 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         });
         this._refreshIntervalChangedId =
             this._settings.connectBackgroundRefreshIntervalChanged(() => {
-                this._scheduler.setIntervalSeconds(this._settings.getBackgroundRefreshIntervalSeconds());
+                this._scheduler.setIntervalSeconds(
+                    this._settings.getBackgroundRefreshIntervalSeconds(),
+                );
             });
     }
     async _refreshUsage({ manual = false } = {}) {
-        if (this._destroyed)
-            return;
-        if (manual)
-            this._startRefreshSpin();
+        if (this._destroyed) return;
+        if (manual) this._startRefreshSpin();
         if (this._refreshPromise) {
             try {
                 await this._refreshPromise;
-            }
-            finally {
-                if (manual && !this._destroyed)
-                    this._stopRefreshSpin();
+            } finally {
+                if (manual && !this._destroyed) this._stopRefreshSpin();
             }
             return;
         }
@@ -213,105 +228,92 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._refreshPromise = this._refreshUsageOnce(this._refreshCancellable);
         try {
             await this._refreshPromise;
-        }
-        finally {
+        } finally {
             this._refreshPromise = null;
             this._refreshCancellable = null;
-            if (manual && !this._destroyed)
-                this._stopRefreshSpin();
+            if (manual && !this._destroyed) this._stopRefreshSpin();
         }
     }
     _cancelRefresh() {
-        if (!this._refreshCancellable)
-            return;
+        if (!this._refreshCancellable) return;
         this._refreshCancellable.cancel();
         this._refreshCancellable = null;
     }
     _cancelBankedResetRefresh() {
-        if (!this._bankedResetRefreshCancellable)
-            return;
+        if (!this._bankedResetRefreshCancellable) return;
         this._bankedResetRefreshCancellable.cancel();
         this._bankedResetRefreshCancellable = null;
     }
     _cancelBankedResetRedemption() {
-        if (!this._redeemBankedResetCancellable)
-            return;
+        if (!this._redeemBankedResetCancellable) return;
         this._redeemBankedResetCancellable.cancel();
         this._redeemBankedResetCancellable = null;
     }
     async _refreshUsageOnce(cancellable) {
         try {
-            if (this._destroyed)
-                return;
+            if (this._destroyed) return;
             this._snapshot = await this._usageService.refresh({ cancellable });
-            if (this._destroyed)
-                return;
+            if (this._destroyed) return;
             await this._loadHistory();
             this._errorMessage = null;
             this._cachedFailureMessage = null;
             try {
-                this._prediction = await this._usageService.predict(this._snapshot);
-            }
-            catch (error) {
+                this._prediction = await this._usageService.predict(
+                    this._snapshot,
+                );
+            } catch (error) {
                 this._prediction = null;
             }
-        }
-        catch (error) {
-            if (this._destroyed && isCancellationError(error))
-                return;
+        } catch (error) {
+            if (this._destroyed && isCancellationError(error)) return;
             const failureMessage = formatRefreshFailure(error);
             if (this._snapshot) {
                 this._errorMessage = null;
                 this._cachedFailureMessage = failureMessage;
-            }
-            else {
-                const loadedCachedSnapshot = !this._destroyed && await this._loadCachedSnapshotAfterFailure();
+            } else {
+                const loadedCachedSnapshot =
+                    !this._destroyed &&
+                    (await this._loadCachedSnapshotAfterFailure());
                 if (loadedCachedSnapshot) {
                     this._errorMessage = null;
                     this._cachedFailureMessage = failureMessage;
-                }
-                else {
+                } else {
                     this._errorMessage = failureMessage;
                     this._cachedFailureMessage = null;
                 }
             }
-        }
-        finally {
-            if (this._destroyed)
-                return;
+        } finally {
+            if (this._destroyed) return;
             this._syncLabel();
             this._syncMenu();
         }
     }
     async _loadCachedSnapshot() {
-        if (this._destroyed || this._snapshot || this._errorMessage)
-            return;
+        if (this._destroyed || this._snapshot || this._errorMessage) return;
         try {
             const snapshot = await this._usageService.readCachedSnapshot();
-            if (this._destroyed ||
+            if (
+                this._destroyed ||
                 !snapshot ||
                 this._snapshot ||
-                this._errorMessage) {
+                this._errorMessage
+            ) {
                 return;
             }
             this._snapshot = snapshot;
             await this._loadHistory();
             try {
                 this._prediction = await this._usageService.predict(snapshot);
-            }
-            catch (error) {
+            } catch (error) {
                 this._prediction = null;
             }
-            if (this._destroyed)
-                return;
+            if (this._destroyed) return;
             this._syncLabel();
             this._syncMenu();
-        }
-        catch (error) { }
+        } catch (error) {}
     }
     async _loadCachedBankedResets() {
-        if (this._destroyed || this._providerId !== "codex")
-            return;
+        if (this._destroyed || this._providerId !== "codex") return;
         try {
             const snapshot = await readCachedCodexBankedResets();
             if (this._destroyed || !snapshot || this._providerId !== "codex")
@@ -319,37 +321,30 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             this._bankedResetCount = Math.max(0, snapshot.available_count);
             this._lastBankedResetRefreshAt = snapshot.fetchedAt;
             this._syncMenu();
-        }
-        catch (error) { }
+        } catch (error) {}
     }
     async _loadCachedSnapshotAfterFailure() {
-        if (this._destroyed)
-            return false;
+        if (this._destroyed) return false;
         try {
             const snapshot = await this._usageService.readCachedSnapshot();
-            if (this._destroyed || !snapshot)
-                return false;
-            if (this._snapshot)
-                return true;
+            if (this._destroyed || !snapshot) return false;
+            if (this._snapshot) return true;
             this._snapshot = snapshot;
             await this._loadHistory();
             try {
                 this._prediction = await this._usageService.predict(snapshot);
-            }
-            catch (error) {
+            } catch (error) {
                 this._prediction = null;
             }
             return true;
-        }
-        catch (error) {
+        } catch (error) {
             return false;
         }
     }
     async _loadHistory() {
         try {
             this._history = await this._usageService.readHistory();
-        }
-        catch (error) {
+        } catch (error) {
             this._history = [];
         }
     }
@@ -366,11 +361,11 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         const refreshCancellable = cancellable ?? new Gio.Cancellable();
         if (!cancellable)
             this._bankedResetRefreshCancellable = refreshCancellable;
-        this._bankedResetRefreshPromise = this._refreshBankedResetsOnce(refreshCancellable);
+        this._bankedResetRefreshPromise =
+            this._refreshBankedResetsOnce(refreshCancellable);
         try {
             await this._bankedResetRefreshPromise;
-        }
-        finally {
+        } finally {
             this._bankedResetRefreshPromise = null;
             if (this._bankedResetRefreshCancellable === refreshCancellable) {
                 this._bankedResetRefreshCancellable = null;
@@ -378,33 +373,33 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         }
     }
     async _refreshBankedResetsIfStale() {
-        if (!this._shouldRefreshBankedResets())
-            return;
+        if (!this._shouldRefreshBankedResets()) return;
         await this._refreshBankedResets();
     }
     _shouldRefreshBankedResets() {
-        if (this._destroyed || this._providerId !== "codex")
-            return false;
+        if (this._destroyed || this._providerId !== "codex") return false;
         if (this._bankedResetCount === null || !this._lastBankedResetRefreshAt)
             return true;
         const nowSeconds = Math.floor(Date.now() / 1000);
-        return nowSeconds - this._lastBankedResetRefreshAt >= BANKED_RESET_BACKGROUND_REFRESH_SECONDS;
+        return (
+            nowSeconds - this._lastBankedResetRefreshAt >=
+            BANKED_RESET_BACKGROUND_REFRESH_SECONDS
+        );
     }
     async _refreshBankedResetsOnce(cancellable = null) {
         try {
             const response = await listCodexBankedResets({ cancellable });
-            if (this._destroyed || this._providerId !== "codex")
-                return;
+            if (this._destroyed || this._providerId !== "codex") return;
             this._bankedResetCount = Math.max(0, response.available_count);
             this._lastBankedResetRefreshAt = Math.floor(Date.now() / 1000);
-            await this._autoApplyExpiringBankedReset(response.credits, cancellable);
+            await this._autoApplyExpiringBankedReset(
+                response.credits,
+                cancellable,
+            );
             this._syncMenu();
-        }
-        catch (error) {
-            if (isCancellationError(error))
-                return;
-            if (this._destroyed)
-                return;
+        } catch (error) {
+            if (isCancellationError(error)) return;
+            if (this._destroyed) return;
             console.warn("Unable to refresh Codex banked reset count", error);
             this._bankedResetCount = null;
             this._lastBankedResetRefreshAt = null;
@@ -412,30 +407,40 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         }
     }
     async _autoApplyExpiringBankedReset(credits, cancellable) {
-        if (this._destroyed ||
+        if (
+            this._destroyed ||
             this._redeemingBankedReset ||
-            !this._settings.getAutoApplyBankedReset()) {
+            !this._settings.getAutoApplyBankedReset()
+        ) {
             return;
         }
-        const credit = selectCreditExpiringWithin(credits, Date.now(), AUTO_APPLY_BANKED_RESET_WINDOW_MS);
-        if (!credit)
-            return;
+        const credit = selectCreditExpiringWithin(
+            credits,
+            Date.now(),
+            AUTO_APPLY_BANKED_RESET_WINDOW_MS,
+        );
+        if (!credit) return;
         this._redeemingBankedReset = true;
         this._syncMenu();
         try {
             await redeemCodexBankedReset(credit.id, { cancellable });
-            if (this._destroyed)
-                return;
-            this._bankedResetCount = Math.max(0, (this._bankedResetCount ?? 1) - 1);
-            notify("Codex Meter", "Expiring banked Codex reset applied automatically.");
+            if (this._destroyed) return;
+            this._bankedResetCount = Math.max(
+                0,
+                (this._bankedResetCount ?? 1) - 1,
+            );
+            notify(
+                "Codex Meter",
+                "Expiring banked Codex reset applied automatically.",
+            );
             await this._refreshUsage();
-        }
-        catch (error) {
-            if (this._destroyed && isCancellationError(error))
-                return;
-            console.warn("Unable to auto-apply expiring Codex banked reset", error);
-        }
-        finally {
+        } catch (error) {
+            if (this._destroyed && isCancellationError(error)) return;
+            console.warn(
+                "Unable to auto-apply expiring Codex banked reset",
+                error,
+            );
+        } finally {
             if (!this._destroyed) {
                 this._redeemingBankedReset = false;
                 this._syncMenu();
@@ -443,14 +448,19 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         }
     }
     async _redeemBankedReset() {
-        if (this._destroyed || this._redeemingBankedReset)
-            return;
+        if (this._destroyed || this._redeemingBankedReset) return;
         if (this._providerId !== "codex") {
-            notify("Codex Meter", "Banked resets are only available for Codex usage.");
+            notify(
+                "Codex Meter",
+                "Banked resets are only available for Codex usage.",
+            );
             return;
         }
         if (this._bankedResetCount !== null && this._bankedResetCount <= 0) {
-            notify("Codex Meter", "No banked Codex resets are available to redeem.");
+            notify(
+                "Codex Meter",
+                "No banked Codex resets are available to redeem.",
+            );
             return;
         }
         const cancellable = new Gio.Cancellable();
@@ -459,54 +469,54 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._syncMenu();
         try {
             await redeemNextCodexBankedReset({ cancellable });
-            if (this._destroyed)
-                return;
+            if (this._destroyed) return;
             notify("Codex Meter", "Banked Codex reset redeemed.");
             await this._refreshBankedResets(cancellable);
             await this._refreshUsage({ manual: true });
-        }
-        catch (error) {
-            if (this._destroyed && isCancellationError(error))
-                return;
+        } catch (error) {
+            if (this._destroyed && isCancellationError(error)) return;
             notify("Codex Meter", formatBankedResetFailure(error));
-        }
-        finally {
+        } finally {
             if (this._redeemBankedResetCancellable === cancellable) {
                 this._redeemBankedResetCancellable = null;
             }
-            if (this._destroyed)
-                return;
+            if (this._destroyed) return;
             this._redeemingBankedReset = false;
             this._syncMenu();
         }
     }
     _startRefreshSpin() {
-        if (!this._headerItem?.refreshIcon || this._refreshSpinId)
-            return;
+        if (!this._headerItem?.refreshIcon || this._refreshSpinId) return;
         this._headerItem.refreshButton.reactive = false;
         this._headerItem.refreshButton.can_focus = false;
-        this._refreshSpinId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 30, () => {
-            if (this._destroyed)
-                return GLib.SOURCE_REMOVE;
-            this._headerItem.refreshIcon.rotation_angle_z =
-                (this._headerItem.refreshIcon.rotation_angle_z + 18) % 360;
-            return GLib.SOURCE_CONTINUE;
-        });
+        this._refreshSpinId = GLib.timeout_add(
+            GLib.PRIORITY_DEFAULT,
+            30,
+            () => {
+                if (this._destroyed) return GLib.SOURCE_REMOVE;
+                this._headerItem.refreshIcon.rotation_angle_z =
+                    (this._headerItem.refreshIcon.rotation_angle_z + 18) % 360;
+                return GLib.SOURCE_CONTINUE;
+            },
+        );
     }
     _stopRefreshSpin() {
         if (this._refreshSpinId) {
             GLib.source_remove(this._refreshSpinId);
             this._refreshSpinId = 0;
         }
-        if (!this._headerItem?.refreshIcon)
-            return;
+        if (!this._headerItem?.refreshIcon) return;
         this._headerItem.refreshIcon.rotation_angle_z = 0;
         this._headerItem.refreshButton.reactive = true;
         this._headerItem.refreshButton.can_focus = true;
     }
     _syncLabel() {
         const settings = this._settings.getAll();
-        const viewModel = createPanelBarViewModel(settings, this._snapshot, this._errorMessage);
+        const viewModel = createPanelBarViewModel(
+            settings,
+            this._snapshot,
+            this._errorMessage,
+        );
         this._panelPrimaryBar.actor.visible = viewModel.primaryVisible;
         this._panelSecondaryBar.actor.visible = viewModel.secondaryVisible;
         this._panelPrimaryBar.update({
@@ -520,16 +530,14 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._panelBars.visible = viewModel.showBars;
         if (viewModel.primaryVisible && viewModel.secondaryVisible) {
             this._panelBars.add_style_class_name("cx-panel-bars-stacked");
-        }
-        else {
+        } else {
             this._panelBars.remove_style_class_name("cx-panel-bars-stacked");
         }
         this._label.visible = viewModel.showLabel && viewModel.label !== "";
         this._label.text = viewModel.label;
         if (viewModel.label.includes("/")) {
             this._label.add_style_class_name("cx-usage-label-wide");
-        }
-        else {
+        } else {
             this._label.remove_style_class_name("cx-usage-label-wide");
         }
         this._prefixLabel.visible = settings.topPanelIndicatorIcon === "text";
@@ -537,7 +545,14 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._openAiIcon.visible = settings.topPanelIndicatorIcon === "openai";
     }
     _syncMenu() {
-        const viewModel = createMenuViewModel(this._settings.getAll(), this._snapshot, this._prediction, this._history, this._errorMessage, this._cachedFailureMessage);
+        const viewModel = createMenuViewModel(
+            this._settings.getAll(),
+            this._snapshot,
+            this._prediction,
+            this._history,
+            this._errorMessage,
+            this._cachedFailureMessage,
+        );
         this._headerItem.datetimeLabel.text = viewModel.updatedAt;
         this._headerItem.datetimeLabel.visible = false;
         this._popupMenu.setError(viewModel.errorMessage);
@@ -557,8 +572,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._footerItem.planLabel.text = viewModel.plan;
     }
     _queueMenuBarSync() {
-        if (this._menuSyncId)
-            return;
+        if (this._menuSyncId) return;
         this._menuSyncId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
             this._menuSyncId = 0;
             this._popupMenu.syncBars();
@@ -572,9 +586,11 @@ export class CodexMeterIndicator extends PanelMenu.Button {
 function createUsageService(providerId) {
     try {
         return new UsageService(getUsageProvider(providerId));
-    }
-    catch (error) {
-        console.warn(`Usage provider "${providerId}" is not supported yet; falling back to ${DEFAULT_PROVIDER_ID}.`, error);
+    } catch (error) {
+        console.warn(
+            `Usage provider "${providerId}" is not supported yet; falling back to ${DEFAULT_PROVIDER_ID}.`,
+            error,
+        );
         return new UsageService(getUsageProvider(DEFAULT_PROVIDER_ID));
     }
 }
@@ -582,15 +598,18 @@ function formatBankedResetFailure(error) {
     if (isRefreshFailureError(error)) {
         return error.message;
     }
-    const message = error instanceof Error && error.message
-        ? error.message
-        : "Unknown banked reset failure";
+    const message =
+        error instanceof Error && error.message
+            ? error.message
+            : "Unknown banked reset failure";
     return `Banked Codex reset redemption failed: ${message}`;
 }
 function notify(title, message) {
     Main.notify(title, message);
 }
 function isCancellationError(error) {
-    return (error instanceof GLib.Error &&
-        error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED));
+    return (
+        error instanceof GLib.Error &&
+        error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)
+    );
 }
