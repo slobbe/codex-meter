@@ -5,7 +5,7 @@ TAG_VERSION=v$(VERSION)
 ZIP=$(NAME)@$(DOMAIN)-$(TAG_VERSION).zip
 TS_SOURCES=$(shell find . -path ./dist -prune -o -path ./node_modules -prune -o -name "*.ts" -print)
 
-.PHONY: all pack install clean
+.PHONY: all pack install reload clean
 
 all: dist/extension.js
 
@@ -34,6 +34,10 @@ pack: $(ZIP)
 
 install: $(ZIP)
 	gnome-extensions install --force $(ZIP)
+
+reload:
+	gnome-extensions disable codex-meter@slobbe.github.io
+	gnome-extensions enable codex-meter@slobbe.github.io
 
 clean:
 	@rm -rf dist node_modules $(ZIP)
