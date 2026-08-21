@@ -18,16 +18,16 @@ jobs:
 
         steps:
             - name: Check out repository
-              uses: actions/checkout@v6
+              uses: actions/checkout@v7
 
             - name: Set up Node.js
-              uses: actions/setup-node@v6
+              uses: actions/setup-node@v7
               with:
                   node-version: "24"
                   cache: "npm"
 
             - name: Set up Python
-              uses: actions/setup-python@v6
+              uses: actions/setup-python@v7
               with:
                   python-version: "3.13"
 
@@ -49,7 +49,7 @@ jobs:
               shell: bash
               run: |
                   set -euo pipefail
-                  jq empty metadata.json
+                  jq empty src/metadata.json
                   jq -e '
                     .uuid == "codex-meter@slobbe.github.io"
                     and (.name | type == "string" and length > 0)
@@ -57,10 +57,10 @@ jobs:
                     and (."version-name" | test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))
                     and (."shell-version" | type == "array" and length > 0)
                     and (."settings-schema" == "org.gnome.shell.extensions.codex-meter")
-                  ' metadata.json
+                  ' src/metadata.json
 
                   PACKAGE_VERSION="$(node -p "require('./package.json').version")"
-                  METADATA_VERSION="$(jq -r '."version-name"' metadata.json)"
+                  METADATA_VERSION="$(jq -r '."version-name"' src/metadata.json)"
 
                   if [[ "${PACKAGE_VERSION}" != "${METADATA_VERSION}" ]]; then
                     echo "package.json version ${PACKAGE_VERSION} does not match metadata.json version-name ${METADATA_VERSION}" >&2
@@ -74,7 +74,7 @@ jobs:
               shell: bash
               run: |
                   set -euo pipefail
-                  glib-compile-schemas --strict schemas
+                  glib-compile-schemas --strict src/schemas
 
             - name: Build extension bundle
               shell: bash
@@ -87,7 +87,7 @@ jobs:
               run: |
                   set -euo pipefail
                   VERSION="$(node -p "require('./package.json').version")"
-                  UUID="$(jq -r '.uuid' metadata.json)"
+                  UUID="$(jq -r '.uuid' src/metadata.json)"
                   ZIP="${UUID}-v${VERSION}.zip"
 
                   test -f "${ZIP}"
@@ -109,7 +109,7 @@ jobs:
               run: |
                   set -euo pipefail
                   VERSION="$(node -p "require('./package.json').version")"
-                  UUID="$(jq -r '.uuid' metadata.json)"
+                  UUID="$(jq -r '.uuid' src/metadata.json)"
                   ZIP="${UUID}-v${VERSION}.zip"
 
                   shexli "${ZIP}"
