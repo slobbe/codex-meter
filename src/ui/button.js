@@ -1,21 +1,6 @@
 import Clutter from "gi://Clutter";
 import St from "gi://St";
-
-type ButtonOptions = {
-    styleClass: string;
-    onClick: (button: St.Button) => void;
-};
-
-type TextButtonOptions = ButtonOptions & {
-    text: string;
-};
-
-type IconButtonOptions = ButtonOptions & {
-    iconName: string;
-    accessibleName: string;
-};
-
-export function createTextButton({ text, styleClass, onClick }: TextButtonOptions) {
+export function createTextButton({ text, styleClass, onClick }) {
     const label = new St.Label({
         text,
         y_align: Clutter.ActorAlign.CENTER,
@@ -26,18 +11,10 @@ export function createTextButton({ text, styleClass, onClick }: TextButtonOption
         can_focus: true,
         y_align: Clutter.ActorAlign.CENTER,
     });
-
     button.connect("clicked", () => onClick(button));
-
     return { button, label };
 }
-
-export function createIconButton({
-    iconName,
-    accessibleName,
-    styleClass,
-    onClick,
-}: IconButtonOptions) {
+export function createIconButton({ iconName, accessibleName, styleClass, onClick, }) {
     const icon = new St.Icon({
         icon_name: iconName,
         style_class: "popup-menu-icon",
@@ -50,8 +27,6 @@ export function createIconButton({
         x_align: Clutter.ActorAlign.END,
         y_align: Clutter.ActorAlign.CENTER,
     });
-
     button.connect("clicked", () => onClick(button));
-
     return { button, icon };
 }

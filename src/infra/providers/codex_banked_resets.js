@@ -1,43 +1,12 @@
-import Gio from "gi://Gio";
 import GLib from "gi://GLib";
-
-import { fetchJson, JsonObject, UsageApiClientConfig } from "../api_client.js";
+import { fetchJson } from "../api_client.js";
 import { RefreshFailureError } from "../../domain/refresh-failure.js";
-import {
-    readBankedResetSnapshot,
-    writeBankedResetSnapshot,
-} from "../storage/banked-reset-snapshot.js";
+import { readBankedResetSnapshot, writeBankedResetSnapshot, } from "../storage/banked-reset-snapshot.js";
 import { getCodexCredentials } from "./codex_auth.js";
-import {
-    CodexBankedResetCredit,
-    CodexBankedResetListResponse,
-    selectCreditToRedeem,
-    toListResponse,
-} from "./codex_banked_reset_response.js";
-
-export type {
-    CodexBankedResetCredit,
-    CodexBankedResetListResponse,
-} from "./codex_banked_reset_response.js";
-
-const CODEX_BANKED_RESETS_URL =
-    "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
+import { selectCreditToRedeem, toListResponse, } from "./codex_banked_reset_response.js";
+const CODEX_BANKED_RESETS_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
 const CODEX_REDEEM_BANKED_RESET_URL = `${CODEX_BANKED_RESETS_URL}/consume`;
-
-
-
-export type CodexRedeemBankedResetRequest = {
-    credit_id: string;
-    redeem_request_id: string;
-};
-
-export type CodexRedeemBankedResetResponse = JsonObject;
-
-export type CodexBankedResetRequestOptions = {
-    cancellable?: Gio.Cancellable | null;
-};
-
-const CODEX_BANKED_RESETS_API_CONFIG: UsageApiClientConfig = {
+const CODEX_BANKED_RESETS_API_CONFIG = {
     providerName: "Codex",
     usageUrl: CODEX_BANKED_RESETS_URL,
     messages: {
@@ -50,94 +19,66 @@ const CODEX_BANKED_RESETS_API_CONFIG: UsageApiClientConfig = {
         emptyResponse: "Codex returned an empty banked reset response.",
     },
 };
-
-export async function listCodexBankedResets(
-    options: CodexBankedResetRequestOptions = {},
-): Promise<CodexBankedResetListResponse> {
+export async function listCodexBankedResets(options = {}) {
     const credentials = await getCodexCredentials();
     const response = await fetchJson(CODEX_BANKED_RESETS_URL, CODEX_BANKED_RESETS_API_CONFIG, {
         headers: createCodexBankedResetHeaders(credentials.accessToken, credentials.accountId),
         cancellable: options.cancellable ?? null,
     });
-    const listResponse = toListResponse(response as JsonObject);
-
+    const listResponse = toListResponse(response);
     try {
         await writeBankedResetSnapshot(listResponse);
-    } catch (error) {
+    }
+    catch (error) {
         console.error("Unable to write Codex banked reset snapshot cache", error);
     }
-
     return listResponse;
 }
-
 export async function readCachedCodexBankedResets() {
     return await readBankedResetSnapshot();
 }
-
-export async function redeemNextCodexBankedReset(
-    options: CodexBankedResetRequestOptions = {},
-): Promise<CodexBankedResetCredit> {
+export async function redeemNextCodexBankedReset(options = {}) {
     const list = await listCodexBankedResets(options);
     const credit = selectCreditToRedeem(list.credits);
-
     if (!credit) {
-        throw new RefreshFailureError(
-            "unexpected-response",
-            "No banked Codex resets are available to redeem.",
-            "Codex banked reset redemption was requested with zero available credits.",
-        );
+        throw new RefreshFailureError("unexpected-response", "No banked Codex resets are available to redeem.", "Codex banked reset redemption was requested with zero available credits.");
     }
-
     await redeemCodexBankedReset(credit.id, options);
-
     return credit;
 }
-
-export async function redeemCodexBankedReset(
-    creditId: string,
-    options: CodexBankedResetRequestOptions = {},
-): Promise<CodexRedeemBankedResetResponse> {
+export async function redeemCodexBankedReset(creditId, options = {}) {
     const response = await consumeCodexBankedReset(creditId, options);
-
     try {
         await markCachedBankedResetRedeemed(creditId);
-    } catch (error) {
+    }
+    catch (error) {
         console.error("Unable to update Codex banked reset snapshot cache", error);
     }
-
     return response;
 }
-
-async function markCachedBankedResetRedeemed(creditId: string): Promise<void> {
+async function markCachedBankedResetRedeemed(creditId) {
     const snapshot = await readBankedResetSnapshot();
-
-    if (!snapshot) return;
-
+    if (!snapshot)
+        return;
     const credits = snapshot.credits.map((credit) => {
-        if (credit.id !== creditId) return credit;
-
+        if (credit.id !== creditId)
+            return credit;
         return {
             ...credit,
             status: "redeemed",
         };
     });
-
     await writeBankedResetSnapshot({
         available_count: credits.filter((credit) => credit.status === "available").length,
         credits,
     });
 }
-
-async function consumeCodexBankedReset(
-    creditId: string,
-    options: CodexBankedResetRequestOptions = {},
-): Promise<CodexRedeemBankedResetResponse> {
+async function consumeCodexBankedReset(creditId, options = {}) {
     const credentials = await getCodexCredentials();
-    const request: CodexRedeemBankedResetRequest = {
+    const request = {
         credit_id: creditId,
         redeem_request_id: GLib.uuid_string_random(),
     };
-
     return await fetchJson(CODEX_REDEEM_BANKED_RESET_URL, CODEX_BANKED_RESETS_API_CONFIG, {
         method: "POST",
         headers: {
@@ -147,19 +88,15 @@ async function consumeCodexBankedReset(
         body: JSON.stringify(request),
         bodyContentType: "application/json",
         cancellable: options.cancellable ?? null,
-    }) as JsonObject;
+    });
 }
-
-function createCodexBankedResetHeaders(accessToken: string, accountId: string | null): Record<string, string> {
-    const headers: Record<string, string> = {
+function createCodexBankedResetHeaders(accessToken, accountId) {
+    const headers = {
         Authorization: `Bearer ${accessToken}`,
         originator: "Codex Desktop",
     };
-
     if (accountId) {
         headers["ChatGPT-Account-ID"] = accountId;
     }
-
     return headers;
 }
-

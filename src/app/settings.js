@@ -1,43 +1,19 @@
-import Gio from "gi://Gio";
-
-import { type ProviderId } from "../infra/providers/index.js";
-
 export const SETTINGS_USAGE_PROVIDER = "usage-provider";
 export const SETTINGS_SHOW_PRIMARY = "show-primary";
 export const SETTINGS_SHOW_SECONDARY = "show-secondary";
 export const SETTINGS_TOP_PANEL_DISPLAY_MODE = "top-panel-display-mode";
 export const SETTINGS_TOP_PANEL_INDICATOR_ICON = "top-panel-indicator-icon";
 export const SETTINGS_PERCENT_DISPLAY_MODE = "percent-display-mode";
-export const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES =
-    "background-refresh-interval-minutes";
+export const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES = "background-refresh-interval-minutes";
 export const SETTINGS_AUTO_APPLY_BANKED_RESET = "auto-apply-banked-reset";
-
 export const MIN_REFRESH_INTERVAL_MINUTES = 0;
-
-
-export type TopPanelDisplayMode = "percentages" | "bars";
-export type TopPanelIndicatorIcon = "text" | "codex" | "openai";
-export type PercentDisplayMode = "used" | "left";
-
-export type ExtensionSettings = {
-    usageProvider: ProviderId;
-    showPrimary: boolean;
-    showSecondary: boolean;
-    topPanelDisplayMode: TopPanelDisplayMode;
-    topPanelIndicatorIcon: TopPanelIndicatorIcon;
-    percentDisplayMode: PercentDisplayMode;
-    backgroundRefreshIntervalMinutes: number;
-    backgroundRefreshIntervalSeconds: number;
-    autoApplyBankedReset: boolean;
-};
-
 export class SettingsService {
-    constructor(private readonly settings: Gio.Settings) {}
-
-    getAll(): ExtensionSettings {
-        const backgroundRefreshIntervalMinutes =
-            this.getBackgroundRefreshIntervalMinutes();
-
+    settings;
+    constructor(settings) {
+        this.settings = settings;
+    }
+    getAll() {
+        const backgroundRefreshIntervalMinutes = this.getBackgroundRefreshIntervalMinutes();
         return {
             usageProvider: this.getUsageProvider(),
             showPrimary: this.getShowPrimary(),
@@ -46,91 +22,63 @@ export class SettingsService {
             topPanelIndicatorIcon: this.getTopPanelIndicatorIcon(),
             percentDisplayMode: this.getPercentDisplayMode(),
             backgroundRefreshIntervalMinutes,
-            backgroundRefreshIntervalSeconds:
-                backgroundRefreshIntervalMinutes * 60,
+            backgroundRefreshIntervalSeconds: backgroundRefreshIntervalMinutes * 60,
             autoApplyBankedReset: this.getAutoApplyBankedReset(),
         };
     }
-
-    getUsageProvider(): ProviderId {
+    getUsageProvider() {
         const value = this.settings.get_string(SETTINGS_USAGE_PROVIDER);
-
         if (value === "codex") {
             return value;
         }
-
         return "codex";
     }
-
-    getShowPrimary(): boolean {
+    getShowPrimary() {
         return this.settings.get_boolean(SETTINGS_SHOW_PRIMARY);
     }
-
-    getShowSecondary(): boolean {
+    getShowSecondary() {
         return this.settings.get_boolean(SETTINGS_SHOW_SECONDARY);
     }
-
-    getTopPanelDisplayMode(): TopPanelDisplayMode {
+    getTopPanelDisplayMode() {
         const value = this.settings.get_string(SETTINGS_TOP_PANEL_DISPLAY_MODE);
-
         if (value === "bars") {
             return value;
         }
-
         return "percentages";
     }
-
-    getTopPanelIndicatorIcon(): TopPanelIndicatorIcon {
+    getTopPanelIndicatorIcon() {
         const value = this.settings.get_string(SETTINGS_TOP_PANEL_INDICATOR_ICON);
-
         if (value === "codex" || value === "openai") {
             return value;
         }
-
         if (value === "icon") {
             return "codex";
         }
-
         return "text";
     }
-
-    getPercentDisplayMode(): PercentDisplayMode {
+    getPercentDisplayMode() {
         const value = this.settings.get_string(SETTINGS_PERCENT_DISPLAY_MODE);
-
         if (value === "left") {
             return value;
         }
-
         return "used";
     }
-
-    getBackgroundRefreshIntervalMinutes(): number {
-        return Math.max(
-            MIN_REFRESH_INTERVAL_MINUTES,
-            this.settings.get_uint(SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES),
-        );
+    getBackgroundRefreshIntervalMinutes() {
+        return Math.max(MIN_REFRESH_INTERVAL_MINUTES, this.settings.get_uint(SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES));
     }
-
-    getBackgroundRefreshIntervalSeconds(): number {
+    getBackgroundRefreshIntervalSeconds() {
         return this.getBackgroundRefreshIntervalMinutes() * 60;
     }
-
-    getAutoApplyBankedReset(): boolean {
+    getAutoApplyBankedReset() {
         return this.settings.get_boolean(SETTINGS_AUTO_APPLY_BANKED_RESET);
     }
-
-    connectChanged(callback: () => void): number {
+    connectChanged(callback) {
         return this.settings.connect("changed", callback);
     }
-
-    connectBackgroundRefreshIntervalChanged(callback: () => void): number {
-        return this.settings.connect(
-            `changed::${SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES}`,
-            callback,
-        );
+    connectBackgroundRefreshIntervalChanged(callback) {
+        return this.settings.connect(`changed::${SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES}`, callback);
     }
-
-    disconnect(signalId: number): void {
+    disconnect(signalId) {
         this.settings.disconnect(signalId);
     }
 }

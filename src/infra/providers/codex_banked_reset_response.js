@@ -1,31 +1,37 @@
+// @ts-check
+
 import { RefreshFailureError } from "../../domain/refresh-failure.js";
 
-export type CodexBankedResetCredit = {
-    id: string;
-    reset_type?: string | null;
-    status: string;
-    granted_at?: string | null;
-    expires_at?: string | null;
-    profile_image_url?: string | null;
-    profile_user_id?: string | null;
-    title?: string | null;
-    description?: string | null;
-};
+/**
+ * @typedef {object} CodexBankedResetCredit
+ * @property {string} id
+ * @property {string} status
+ * @property {string | null} [reset_type]
+ * @property {string | null} [granted_at]
+ * @property {string | null} [expires_at]
+ * @property {string | null} [profile_image_url]
+ * @property {string | null} [profile_user_id]
+ * @property {string | null} [title]
+ * @property {string | null} [description]
+ *
+ * @typedef {object} CodexBankedResetListResponse
+ * @property {number} available_count
+ * @property {CodexBankedResetCredit[]} credits
+ *
+ * @typedef {Record<string, unknown>} JsonObject
+ */
 
-export type CodexBankedResetListResponse = {
-    available_count: number;
-    credits: CodexBankedResetCredit[];
-};
-
-type JsonObject = Record<string, unknown>;
-
-export function toListResponse(response: JsonObject): CodexBankedResetListResponse {
+/**
+ * @param {JsonObject} response
+ * @returns {CodexBankedResetListResponse}
+ */
+export function toListResponse(response) {
     assertListResponseShape(response);
-
-    return response as CodexBankedResetListResponse;
+    return /** @type {CodexBankedResetListResponse} */ (response);
 }
 
-function assertListResponseShape(response: JsonObject): void {
+/** @param {JsonObject} response */
+function assertListResponseShape(response) {
     if (!Number.isFinite(response.available_count)) {
         throwUnexpected("available_count is missing or not a finite number");
     }
@@ -67,7 +73,11 @@ function assertListResponseShape(response: JsonObject): void {
     }
 }
 
-export function selectCreditToRedeem(credits: CodexBankedResetCredit[]): CodexBankedResetCredit | null {
+/**
+ * @param {CodexBankedResetCredit[]} credits
+ * @returns {CodexBankedResetCredit | null}
+ */
+export function selectCreditToRedeem(credits) {
     const available = credits.filter((credit) => credit.status === "available");
 
     if (available.length === 0) {
@@ -81,11 +91,13 @@ export function selectCreditToRedeem(credits: CodexBankedResetCredit[]): CodexBa
     return sortByExpiry(available)[0];
 }
 
-export function selectCreditExpiringWithin(
-    credits: CodexBankedResetCredit[],
-    nowMs: number,
-    windowMs: number,
-): CodexBankedResetCredit | null {
+/**
+ * @param {CodexBankedResetCredit[]} credits
+ * @param {number} nowMs
+ * @param {number} windowMs
+ * @returns {CodexBankedResetCredit | null}
+ */
+export function selectCreditExpiringWithin(credits, nowMs, windowMs) {
     const expiresBy = nowMs + windowMs;
     const expiring = credits.filter((credit) => {
         if (credit.status !== "available" || !hasValidExpiresAt(credit)) return false;
@@ -97,21 +109,38 @@ export function selectCreditExpiringWithin(
     return sortByExpiry(expiring)[0] ?? null;
 }
 
-function sortByExpiry(credits: CodexBankedResetCredit[]): CodexBankedResetCredit[] {
+/**
+ * @param {CodexBankedResetCredit[]} credits
+ * @returns {CodexBankedResetCredit[]}
+ */
+function sortByExpiry(credits) {
     return [...credits].sort((left, right) => {
         return Date.parse(left.expires_at ?? "") - Date.parse(right.expires_at ?? "");
     });
 }
 
-function hasValidExpiresAt(credit: CodexBankedResetCredit): boolean {
-    return typeof credit.expires_at === "string" && Number.isFinite(Date.parse(credit.expires_at));
+/**
+ * @param {CodexBankedResetCredit} credit
+ * @returns {boolean}
+ */
+function hasValidExpiresAt(credit) {
+    return typeof credit.expires_at === "string" &&
+        Number.isFinite(Date.parse(credit.expires_at));
 }
 
-function isObject(value: unknown): value is Record<string, any> {
+/**
+ * @param {unknown} value
+ * @returns {value is Record<string, unknown>}
+ */
+function isObject(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function throwUnexpected(message: string): never {
+/**
+ * @param {string} message
+ * @returns {never}
+ */
+function throwUnexpected(message) {
     throw new RefreshFailureError(
         "unexpected-response",
         "Codex returned banked reset data this extension does not understand.",

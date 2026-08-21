@@ -1,25 +1,27 @@
+// @ts-check
+
 import { RefreshFailureError } from "../../domain/refresh-failure.js";
-import { UsageCredits, UsageSnapshot } from "../../domain/usage.js";
 
-type JsonObject = Record<string, unknown>;
+/** @typedef {import("../../domain/types.js").UsageSnapshot} UsageSnapshot */
+/** @typedef {import("../../domain/types.js").UsageCredits} UsageCredits */
+/** @typedef {Record<string, unknown>} JsonObject */
+/**
+ * @typedef {object} CodexRateLimitWindow
+ * @property {number} used_percent
+ * @property {number} limit_window_seconds
+ * @property {number} reset_after_seconds
+ * @property {number} reset_at
+ *
+ * @typedef {object} CodexApiResponse
+ * @property {string} plan_type
+ * @property {{limit_reached: boolean, primary_window: CodexRateLimitWindow | null, secondary_window: CodexRateLimitWindow | null}} rate_limit
+ */
 
-type CodexApiResponse = {
-    plan_type: string;
-    rate_limit: {
-        limit_reached: boolean;
-        primary_window: CodexRateLimitWindow | null;
-        secondary_window: CodexRateLimitWindow | null;
-    };
-};
-
-type CodexRateLimitWindow = {
-    used_percent: number;
-    limit_window_seconds: number;
-    reset_after_seconds: number;
-    reset_at: number;
-};
-
-export function toUsageSnapshot(api: JsonObject): UsageSnapshot {
+/**
+ * @param {JsonObject} api
+ * @returns {UsageSnapshot}
+ */
+export function toUsageSnapshot(api) {
     const codexApi = toCodexApiResponse(api);
 
     return {
@@ -31,12 +33,17 @@ export function toUsageSnapshot(api: JsonObject): UsageSnapshot {
     };
 }
 
-function toCodexApiResponse(api: JsonObject): CodexApiResponse {
+/**
+ * @param {JsonObject} api
+ * @returns {CodexApiResponse}
+ */
+function toCodexApiResponse(api) {
     assertApiResponseShape(api);
-    return api as CodexApiResponse;
+    return /** @type {CodexApiResponse} */ (/** @type {unknown} */ (api));
 }
 
-function assertApiResponseShape(api: JsonObject): void {
+/** @param {JsonObject} api */
+function assertApiResponseShape(api) {
     if (typeof api.plan_type !== "string") {
         throwUnexpected("plan_type is missing or not a string");
     }
@@ -57,7 +64,11 @@ function assertApiResponseShape(api: JsonObject): void {
     }
 }
 
-function toUsageQuotas(api: CodexApiResponse): UsageSnapshot["quotas"] {
+/**
+ * @param {CodexApiResponse} api
+ * @returns {UsageSnapshot["quotas"]}
+ */
+function toUsageQuotas(api) {
     const { primary_window: primary, secondary_window: secondary } = api.rate_limit;
 
     if (primary && secondary) {
@@ -75,12 +86,14 @@ function toUsageQuotas(api: CodexApiResponse): UsageSnapshot["quotas"] {
     return [toUsageQuota("weekly", "Week", weeklyWindow, api.rate_limit.limit_reached)];
 }
 
-function toUsageQuota(
-    id: string,
-    label: string,
-    window: CodexRateLimitWindow,
-    limitReached: boolean,
-): UsageSnapshot["quotas"][number] {
+/**
+ * @param {string} id
+ * @param {string} label
+ * @param {CodexRateLimitWindow} window
+ * @param {boolean} limitReached
+ * @returns {UsageSnapshot["quotas"][number]}
+ */
+function toUsageQuota(id, label, window, limitReached) {
     return {
         id,
         label,
@@ -92,12 +105,20 @@ function toUsageQuota(
     };
 }
 
-function assertOptionalWindow(value: unknown, path: string): void {
+/**
+ * @param {unknown} value
+ * @param {string} path
+ */
+function assertOptionalWindow(value, path) {
     if (value === null || value === undefined) return;
     assertWindow(value, path);
 }
 
-function toUsageCredits(value: unknown): UsageCredits | undefined {
+/**
+ * @param {unknown} value
+ * @returns {UsageCredits | undefined}
+ */
+function toUsageCredits(value) {
     if (!isObject(value)) return undefined;
 
     const balance = typeof value.balance === "string" && value.balance.trim().length > 0
@@ -114,23 +135,40 @@ function toUsageCredits(value: unknown): UsageCredits | undefined {
     };
 }
 
-function assertWindow(value: unknown, path: string): void {
+/**
+ * @param {unknown} value
+ * @param {string} path
+ */
+function assertWindow(value, path) {
     if (!isObject(value)) {
         throwUnexpected(`${path} is missing or not an object`);
     }
 
-    for (const key of ["used_percent", "limit_window_seconds", "reset_after_seconds", "reset_at"]) {
+    for (const key of [
+        "used_percent",
+        "limit_window_seconds",
+        "reset_after_seconds",
+        "reset_at",
+    ]) {
         if (!Number.isFinite(value[key])) {
             throwUnexpected(`${path}.${key} is missing or not a finite number`);
         }
     }
 }
 
-function isObject(value: unknown): value is Record<string, any> {
+/**
+ * @param {unknown} value
+ * @returns {value is Record<string, any>}
+ */
+function isObject(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function throwUnexpected(message: string): never {
+/**
+ * @param {string} message
+ * @returns {never}
+ */
+function throwUnexpected(message) {
     throw new RefreshFailureError(
         "unexpected-response",
         "Codex returned data this extension does not understand.",

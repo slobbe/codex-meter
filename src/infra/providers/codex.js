@@ -1,12 +1,8 @@
-import { fetchProviderUsage, UsageApiClientConfig } from "../api_client.js";
+import { fetchProviderUsage } from "../api_client.js";
 import { getCodexAccessToken } from "./codex_auth.js";
 import { toUsageSnapshot } from "./codex_usage_response.js";
-import type { UsageProvider, UsageProviderRefreshOptions } from "./types.js";
-
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
-
-
-const CODEX_API_CONFIG: UsageApiClientConfig = {
+const CODEX_API_CONFIG = {
     providerName: "Codex",
     usageUrl: CODEX_USAGE_URL,
     messages: {
@@ -19,17 +15,13 @@ const CODEX_API_CONFIG: UsageApiClientConfig = {
         emptyResponse: "Codex returned an empty response.",
     },
 };
-
-export class CodexUsageProvider implements UsageProvider {
-    readonly info = { id: "codex", displayName: "Codex" } as const;
-
-    async refreshUsage(options: UsageProviderRefreshOptions = {}) {
+export class CodexUsageProvider {
+    info = { id: "codex", displayName: "Codex" };
+    async refreshUsage(options = {}) {
         const token = await getCodexAccessToken();
         const apiResponse = await fetchProviderUsage(token, CODEX_API_CONFIG, {
             cancellable: options.cancellable ?? null,
         });
-
         return toUsageSnapshot(apiResponse);
     }
 }
-
