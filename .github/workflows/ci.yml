@@ -39,7 +39,7 @@ jobs:
               run: |
                   set -euo pipefail
                   sudo apt-get update
-                  sudo apt-get install -y gjs jq libglib2.0-bin zip
+                  sudo apt-get install -y gir1.2-soup-3.0 gjs jq libglib2.0-bin zip
 
                   python -m pip install --upgrade pip
                   # shexli 0.2.1 currently segfaults with tree-sitter 0.26.0.
@@ -70,14 +70,8 @@ jobs:
                     exit 1
                   fi
 
-            - name: Run tests
-              run: npm test
-
-            - name: Validate schemas
-              shell: bash
-              run: |
-                  set -euo pipefail
-                  glib-compile-schemas --strict src/schemas
+            - name: Run checks
+              run: make check
 
             - name: Build extension bundle
               run: make pack

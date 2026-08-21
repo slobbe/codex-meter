@@ -25,12 +25,12 @@ Install development dependencies, then run all checks before submitting changes:
 
 ```sh
 npm ci
-npm test
+make check
 ```
 
-Source files run directly as JavaScript. Critical pure modules opt into TypeScript's
-no-output checker with `// @ts-check` and JSDoc annotations; dynamic GJS UI modules
-are covered by runtime tests and manual extension testing.
+`make check` runs formatting and JSDoc checks, Node unit tests, GJS storage and module
+compatibility tests, and GSettings schema validation. Dynamic GNOME Shell UI modules
+still require manual extension testing.
 
 ## Guidelines
 

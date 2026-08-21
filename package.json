@@ -19,7 +19,7 @@
         "check": "tsc && npm run format:check",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
-        "test": "npm run check && node --test 'test/!(history-storage).test.js' && gjs -m test/history-storage.test.js"
+        "test": "node --test 'test/!(history-storage|gjs-smoke).test.js'"
     },
     "devDependencies": {
         "prettier": "^3.9.6",
