@@ -4,7 +4,7 @@ import test from "node:test";
 import {
     parseCodexAccessToken,
     parseCodexAccountId,
-} from "../dist/infra/providers/codex_auth_parser.js";
+} from "../src/infra/providers/codex_auth_parser.js";
 
 test("returns access token from tokens.access_token", () => {
     assert.equal(parseCodexAccessToken({ tokens: { access_token: "fake-access-token" } }), "fake-access-token");

@@ -6,7 +6,7 @@ import {
     createPanelBarViewModel,
     formatFooter,
     formatLimitPrediction,
-} from "../dist/ui/view-model.js";
+} from "../src/ui/view-model.js";
 
 const sessionQuota = {
     id: "session",

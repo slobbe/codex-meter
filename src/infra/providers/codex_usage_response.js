@@ -2,8 +2,8 @@
 
 import { RefreshFailureError } from "../../domain/refresh-failure.js";
 
-/** @typedef {import("../../domain/types.js").UsageSnapshot} UsageSnapshot */
-/** @typedef {import("../../domain/types.js").UsageCredits} UsageCredits */
+/** @typedef {import("../../../types/domain.js").UsageSnapshot} UsageSnapshot */
+/** @typedef {import("../../../types/domain.js").UsageCredits} UsageCredits */
 /** @typedef {Record<string, unknown>} JsonObject */
 /**
  * @typedef {object} CodexRateLimitWindow

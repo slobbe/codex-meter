@@ -5,7 +5,7 @@ import {
     calculateAverageBurnRatePercentPerDay,
     calculateRecentPositiveDelta,
     createUsageTrendViewModel,
-} from "../dist/ui/view-model.js";
+} from "../src/ui/view-model.js";
 
 const now = 1_700_000_000;
 

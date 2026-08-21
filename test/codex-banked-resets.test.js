@@ -5,7 +5,7 @@ import {
     selectCreditExpiringWithin,
     selectCreditToRedeem,
     toListResponse,
-} from "../dist/infra/providers/codex_banked_reset_response.js";
+} from "../src/infra/providers/codex_banked_reset_response.js";
 
 function assertUnexpectedResponse(fn) {
     assert.throws(fn, (error) => {
