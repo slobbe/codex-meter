@@ -129,12 +129,14 @@ jobs:
                   TAG_VERSION="${{ steps.source.outputs.tag_version }}"
                   UUID="$(jq -r '.uuid' src/metadata.json)"
                   ZIP="${UUID}-v${TAG_VERSION}.zip"
+                  RELEASE_TITLE="CodexMeter ${TAG}"
 
                   if gh release view "${TAG}" >/dev/null 2>&1; then
+                    gh release edit "${TAG}" --title "${RELEASE_TITLE}"
                     gh release upload "${TAG}" "${ZIP}" --clobber
                   else
                     gh release create "${TAG}" "${ZIP}" \
-                      --title "${TAG}" \
+                      --title "${RELEASE_TITLE}" \
                       --generate-notes \
                       --verify-tag
                   fi
