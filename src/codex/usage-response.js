@@ -26,7 +26,6 @@ export function toUsageSnapshot(api) {
 
     return {
         fetchedAt: Math.floor(Date.now() / 1000),
-        providerId: "codex",
         planType: codexApi.plan_type,
         credits: toUsageCredits(api.credits),
         quotas: toUsageQuotas(codexApi),

@@ -36,7 +36,6 @@ function assertUnexpectedResponse(fn) {
 test("maps valid Codex usage response to usage snapshot", () => {
     const snapshot = toUsageSnapshot(validUsageResponse());
 
-    assert.equal(snapshot.providerId, "codex");
     assert.equal(snapshot.planType, "pro");
     assert.equal(snapshot.quotas.length, 2);
     assert.deepEqual(snapshot.quotas[0], {

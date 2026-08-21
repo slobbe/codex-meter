@@ -1,4 +1,4 @@
-import { fetchProviderUsage } from "../io/http.js";
+import { fetchUsage } from "../io/http.js";
 import { getCodexAccessToken } from "./auth.js";
 import { toUsageSnapshot } from "./usage-response.js";
 
@@ -18,14 +18,11 @@ const CODEX_API_CONFIG = {
     },
 };
 
-export class CodexUsageProvider {
-    info = { id: "codex", displayName: "Codex" };
+export async function refreshCodexUsage(options = {}) {
+    const token = await getCodexAccessToken();
+    const apiResponse = await fetchUsage(token, CODEX_API_CONFIG, {
+        cancellable: options.cancellable ?? null,
+    });
 
-    async refreshUsage(options = {}) {
-        const token = await getCodexAccessToken();
-        const apiResponse = await fetchProviderUsage(token, CODEX_API_CONFIG, {
-            cancellable: options.cancellable ?? null,
-        });
-        return toUsageSnapshot(apiResponse);
-    }
+    return toUsageSnapshot(apiResponse);
 }

@@ -4,7 +4,7 @@
  *
  * @typedef {object} UsageSnapshot
  * @property {number} fetchedAt UNIX timestamp in seconds
- * @property {string} [providerId]
+
  * @property {string} planType
  * @property {UsageCredits} [credits]
  * @property {UsageQuota[]} quotas

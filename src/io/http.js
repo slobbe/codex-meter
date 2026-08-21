@@ -113,7 +113,7 @@ export async function fetchJson(url, config, options = {}) {
     return parseApiResponse(text, url, config, options.allowArrayResponse ?? false);
 }
 
-export async function fetchProviderUsage(accessToken, config, options = {}, url = config.usageUrl) {
+export async function fetchUsage(accessToken, config, options = {}, url = config.usageUrl) {
     return await fetchJson(url, config, {
         ...options,
         headers: {
