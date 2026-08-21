@@ -15,7 +15,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
     }
 
     constructor(extension, monitor) {
-        super(0.0, "CodexMeter");
+        super(0.5, "CodexMeter");
         this._extension = extension;
         this._settings = extension.getSettings();
         this._monitor = monitor;
@@ -109,7 +109,6 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             },
         });
         this._popupMenu.addToMenu(this.menu);
-        this.menu.setSourceAlignment(0.0);
     }
 
     _createPanelBars() {
