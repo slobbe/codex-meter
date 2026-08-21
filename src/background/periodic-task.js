@@ -1,6 +1,6 @@
 import GLib from "gi://GLib";
 
-export class Scheduler {
+export class PeriodicTask {
     intervalSeconds;
 
     task;
@@ -75,7 +75,7 @@ export class Scheduler {
         try {
             await this.task();
         } catch (err) {
-            console.error("Scheduler task failed", err);
+            console.error("Periodic task failed", err);
         } finally {
             this.running = false;
         }

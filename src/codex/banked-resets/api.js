@@ -1,6 +1,6 @@
 import GLib from "gi://GLib";
 import { fetchJson } from "../../io/http.js";
-import { RefreshFailureError } from "../../refresh/error.js";
+import { CodexError } from "../error.js";
 import { readBankedResetSnapshot, writeBankedResetSnapshot } from "./store.js";
 import { getCodexCredentials } from "../auth/auth.js";
 import { selectCreditToRedeem, toListResponse } from "./response.js";
@@ -45,7 +45,7 @@ export async function redeemNextCodexBankedReset(options = {}) {
     const list = await listCodexBankedResets(options);
     const credit = selectCreditToRedeem(list.credits);
     if (!credit) {
-        throw new RefreshFailureError(
+        throw new CodexError(
             "unexpected-response",
             "No banked Codex resets are available to redeem.",
             "Codex banked reset redemption was requested with zero available credits.",

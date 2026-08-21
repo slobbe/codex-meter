@@ -1,6 +1,6 @@
 // @ts-check
 
-import { RefreshFailureError } from "../../refresh/error.js";
+import { CodexError } from "../error.js";
 
 /**
  * @typedef {object} CodexBankedResetCredit
@@ -127,7 +127,7 @@ function isObject(value) {
  * @returns {never}
  */
 function throwUnexpected(message) {
-    throw new RefreshFailureError(
+    throw new CodexError(
         "unexpected-response",
         "Codex returned banked reset data this extension does not understand.",
         `Unexpected Codex banked reset API response shape: ${message}`,

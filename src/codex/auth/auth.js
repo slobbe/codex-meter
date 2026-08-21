@@ -1,6 +1,6 @@
 import GLib from "gi://GLib";
 import { readJsonFile } from "../../io/files.js";
-import { RefreshFailureError } from "../../refresh/error.js";
+import { CodexError } from "../error.js";
 import { parseCodexAccessToken, parseCodexAccountId } from "./auth-parser.js";
 
 const CODEX_AUTH_PATH = GLib.build_filenamev([GLib.get_home_dir(), ".codex", "auth.json"]);
@@ -17,7 +17,7 @@ export async function getCodexCredentials() {
         accessToken.trim().length === 0 ||
         /\s/.test(accessToken.trim())
     ) {
-        throw new RefreshFailureError(
+        throw new CodexError(
             "missing-auth",
             "Codex access token is missing. Run `codex login` and try again.",
             "Codex auth data does not contain a valid access token",
@@ -31,7 +31,7 @@ export async function getCodexCredentials() {
 
 async function readCodexAuth() {
     if (!GLib.file_test(CODEX_AUTH_PATH, GLib.FileTest.EXISTS)) {
-        throw new RefreshFailureError(
+        throw new CodexError(
             "missing-auth",
             "Codex auth file is missing. Run `codex login` and try again.",
             `Codex auth file does not exist at "${CODEX_AUTH_PATH}"`,
@@ -40,7 +40,7 @@ async function readCodexAuth() {
     try {
         const auth = await readJsonFile(CODEX_AUTH_PATH);
         if (typeof auth !== "object" || auth === null || Array.isArray(auth)) {
-            throw new RefreshFailureError(
+            throw new CodexError(
                 "missing-auth",
                 "Codex auth file is malformed. Run `codex login` and try again.",
                 `Codex auth file at "${CODEX_AUTH_PATH}" does not contain a valid JSON object`,
@@ -48,8 +48,8 @@ async function readCodexAuth() {
         }
         return auth;
     } catch (error) {
-        if (error instanceof RefreshFailureError) throw error;
-        throw new RefreshFailureError(
+        if (error instanceof CodexError) throw error;
+        throw new CodexError(
             "missing-auth",
             "Codex auth file could not be read. Run `codex login` and try again.",
             `Failed to read Codex auth file at "${CODEX_AUTH_PATH}": Failed to read JSON file "${CODEX_AUTH_PATH}": ${formatError(error)}`,

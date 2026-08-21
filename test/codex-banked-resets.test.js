@@ -9,7 +9,7 @@ import {
 
 function assertUnexpectedResponse(fn) {
     assert.throws(fn, (error) => {
-        assert.equal(error.name, "RefreshFailureError");
+        assert.equal(error.name, "CodexError");
         assert.equal(error.kind, "unexpected-response");
         return true;
     });

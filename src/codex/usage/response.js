@@ -1,6 +1,6 @@
 // @ts-check
 
-import { RefreshFailureError } from "../../refresh/error.js";
+import { CodexError } from "../error.js";
 
 /** @typedef {import("../../../types/index.js").UsageSnapshot} UsageSnapshot */
 /** @typedef {import("../../../types/index.js").UsageCredits} UsageCredits */
@@ -163,7 +163,7 @@ function isObject(value) {
  * @returns {never}
  */
 function throwUnexpected(message) {
-    throw new RefreshFailureError(
+    throw new CodexError(
         "unexpected-response",
         "Codex returned data this extension does not understand.",
         `Unexpected Codex API response shape: ${message}`,

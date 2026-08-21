@@ -1,6 +1,6 @@
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
-import { RefreshFailureError } from "../refresh/error.js";
+import { CodexError } from "../codex/error.js";
 // The GIRS package set used by this project does not ship Soup typings.
 // @ts-ignore
 import Soup from "gi://Soup?version=3.0";
@@ -27,14 +27,14 @@ function parseApiResponse(text, url, config) {
         parsed = JSON.parse(text);
     } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown JSON parse error";
-        throw new RefreshFailureError(
+        throw new CodexError(
             "malformed-response",
             config.messages.malformedResponse,
             `Failed to parse JSON response from ${url}: ${message}`,
         );
     }
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-        throw new RefreshFailureError(
+        throw new CodexError(
             "malformed-response",
             config.messages.unexpectedResponseFormat,
             `Expected JSON object response from ${url}`,
@@ -72,14 +72,14 @@ export async function fetchJson(url, config, options = {}) {
             throw error;
         }
         const message = error instanceof Error ? error.message : String(error);
-        throw new RefreshFailureError(
+        throw new CodexError(
             "network",
             config.messages.networkUnavailable,
             `Request to ${url} failed before receiving a response: ${message}`,
         );
     }
     if (bytes.get_size() > MAX_RESPONSE_BYTES) {
-        throw new RefreshFailureError(
+        throw new CodexError(
             "malformed-response",
             config.messages.responseTooLarge,
             `Response from ${url} exceeded ${MAX_RESPONSE_BYTES} bytes`,
@@ -91,16 +91,12 @@ export async function fetchJson(url, config, options = {}) {
         const errorBody = formatErrorBody(text);
         const technicalMessage = `Request to ${url} failed with HTTP ${message.statusCode}: ${errorBody}`;
         if (message.statusCode === 401 || message.statusCode === 403) {
-            throw new RefreshFailureError(
-                "unauthorized",
-                config.messages.unauthorized,
-                technicalMessage,
-            );
+            throw new CodexError("unauthorized", config.messages.unauthorized, technicalMessage);
         }
-        throw new RefreshFailureError("network", config.messages.refreshFailed, technicalMessage);
+        throw new CodexError("network", config.messages.refreshFailed, technicalMessage);
     }
     if (!data) {
-        throw new RefreshFailureError(
+        throw new CodexError(
             "malformed-response",
             config.messages.emptyResponse,
             `Received empty response body from ${url}`,

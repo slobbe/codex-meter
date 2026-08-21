@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { RefreshFailureError } from "../src/refresh/error.js";
-import { formatRefreshFailure } from "../src/panel/refresh-error-message.js";
+import { CodexError } from "../src/codex/error.js";
+import { formatRefreshFailure } from "../src/background/refresh-error-message.js";
 
 test("refresh failure UI shows only the user-facing message", () => {
     const message = "Codex authentication expired. Please run `codex login` again.";
-    const error = new RefreshFailureError(
+    const error = new CodexError(
         "unauthorized",
         message,
         "Codex auth file does not exist at /home/example/.codex/auth.json",

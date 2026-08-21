@@ -1,7 +1,7 @@
-import { isRefreshFailureError } from "../refresh/error.js";
+import { isCodexError } from "../codex/error.js";
 
 export function formatRefreshFailure(error) {
-    if (isRefreshFailureError(error)) {
+    if (isCodexError(error)) {
         return error.message;
     }
     return "Codex usage refresh failed. Try again later.";
