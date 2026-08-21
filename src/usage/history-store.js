@@ -1,6 +1,6 @@
 import GLib from "gi://GLib";
-import { STATE_DIR } from "../config.js";
-import { appendFile, readFile, writeFile } from "../filesystem.js";
+import { STATE_DIR } from "../config/paths.js";
+import { appendFile, readFile, writeFile } from "../io/files.js";
 export const MAX_HISTORY_ENTRIES = 25_000;
 const MAX_HISTORY_AGE_SECONDS = 21 * 24 * 60 * 60;
 function getHistoryPath(providerId) {

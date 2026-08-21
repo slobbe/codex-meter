@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { RefreshFailureError } from "../src/domain/refresh-failure.js";
-import { formatRefreshFailure } from "../src/ui/refresh-error-message.js";
+import { RefreshFailureError } from "../src/refresh/error.js";
+import { formatRefreshFailure } from "../src/panel/refresh-error-message.js";
 
 test("refresh failure UI shows only the user-facing message", () => {
     const message = "Codex authentication expired. Please run `codex login` again.";
