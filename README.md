@@ -11,6 +11,7 @@ Monitor and manage Codex usage limits.
 - Displays current 5-hour session and weekly Codex usage.
 - Shows a weekly usage trend and predicts whether limits will be hit before reset.
 - Shows and redeems available banked resets.
+- Can automatically apply a banked reset within one hour of expiry.
 
 ## Requirements
 
