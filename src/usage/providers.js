@@ -1,4 +1,4 @@
-import { CodexUsageProvider } from "./codex.js";
+import { CodexUsageProvider } from "../codex/usage-provider.js";
 export const DEFAULT_PROVIDER_ID = "codex";
 const providers = {
     codex: new CodexUsageProvider(),

@@ -1,4 +1,4 @@
-import { getQuota, getSecondaryQuota } from "../domain/usage.js";
+import { getQuota, getSecondaryQuota } from "../usage/model.js";
 export function createPanelBarViewModel(settings, snapshot, errorMessage) {
     const sessionQuota = getQuota(snapshot, "session");
     const weeklyQuota = getQuota(snapshot, "weekly");

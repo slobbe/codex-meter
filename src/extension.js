@@ -17,7 +17,7 @@
  */
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
-import { CodexMeterIndicator } from "./ui/panel-indicator.js";
+import { CodexMeterIndicator } from "./panel/indicator.js";
 export default class CodexMeterExtension extends Extension {
     _indicator = null;
     enable() {

@@ -1,6 +1,6 @@
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
-import { RefreshFailureError } from "../domain/refresh-failure.js";
+import { RefreshFailureError } from "../refresh/error.js";
 // The GIRS package set used by this project does not ship Soup typings.
 // @ts-ignore
 import Soup from "gi://Soup?version=3.0";

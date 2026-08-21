@@ -1,8 +1,8 @@
-import { predict } from "../domain/prediction.js";
-import { toHistoryEntry } from "../domain/usage.js";
-import { getUsageProvider } from "../infra/providers/index.js";
-import { appendHistoryRow, hasSameQuotaValues, MAX_HISTORY_ENTRIES, normalizeHistoryEntries, normalizeHistoryEntry, readHistory, rewriteHistory, } from "../infra/storage/history.js";
-import { readSnapshot, writeSnapshot } from "../infra/storage/snapshot-cache.js";
+import { predict } from "./prediction.js";
+import { toHistoryEntry } from "./model.js";
+import { getUsageProvider } from "./providers.js";
+import { appendHistoryRow, hasSameQuotaValues, MAX_HISTORY_ENTRIES, normalizeHistoryEntries, normalizeHistoryEntry, readHistory, rewriteHistory, } from "./history-store.js";
+import { readSnapshot, writeSnapshot } from "./snapshot-store.js";
 export class UsageService {
     provider;
     history = null;

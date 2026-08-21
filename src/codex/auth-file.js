@@ -1,6 +1,6 @@
 import GLib from "gi://GLib";
-import { RefreshFailureError } from "../../domain/refresh-failure.js";
-import { readJsonFile } from "../filesystem.js";
+import { RefreshFailureError } from "../refresh/error.js";
+import { readJsonFile } from "../io/files.js";
 export async function getLocalAccessToken(config) {
     if (!isNonEmptyString(config.authPath)) {
         throw new RefreshFailureError("missing-auth", `${config.providerName} auth is unavailable. Run \`${config.loginCommand}\` and try again.`, `${config.providerName} auth path must be a non-empty string`);

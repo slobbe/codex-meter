@@ -1,6 +1,6 @@
 // @ts-check
 
-import { RefreshFailureError } from "../../domain/refresh-failure.js";
+import { RefreshFailureError } from "../refresh/error.js";
 
 /**
  * @typedef {object} CodexBankedResetCredit
