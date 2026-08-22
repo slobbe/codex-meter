@@ -42,7 +42,8 @@ function createBankedResetsGroup(settings, snapshot) {
         );
         return group;
     }
-    if (snapshot.credits.length === 0) {
+    const availableCredits = snapshot.credits.filter((credit) => credit.status === "available");
+    if (availableCredits.length === 0) {
         group.add(
             new Adw.ActionRow({
                 title: "No banked Codex resets are available.",
@@ -50,40 +51,28 @@ function createBankedResetsGroup(settings, snapshot) {
         );
         return group;
     }
-    for (const credit of snapshot.credits) {
+    for (const credit of availableCredits) {
         group.add(createCreditRow(credit));
     }
     return group;
 }
 
 function createCreditRow(credit) {
-    const subtitle = [
-        credit.description,
-        `Granted ${formatCreditDate(credit.granted_at)}`,
-        `Expires ${formatCreditDate(credit.expires_at)}`,
-    ]
-        .filter(Boolean)
-        .join("\n");
-    const row = new Adw.ActionRow({
+    return new Adw.ActionRow({
         title: createCreditTitle(credit),
-        subtitle,
+        subtitle: formatCreditExpiry(credit.expires_at),
     });
-    const status = new Gtk.Label({ label: formatCreditStatus(credit) });
-    status.add_css_class("dim-label");
-    row.add_suffix(status);
-    return row;
 }
 
 function createCreditTitle(credit) {
-    const title = credit.title || "Codex rate limit reset";
-    return credit.profile_user_id ? `${title} from ${credit.profile_user_id}` : title;
+    return credit.title || "Usage limit reset";
 }
 
-function formatCreditDate(value) {
-    if (!value) return "Unknown";
+function formatCreditExpiry(value) {
+    if (!value) return "Expiry unknown";
     const date = new Date(value);
-    if (!Number.isFinite(date.getTime())) return "Unknown";
-    return date.toLocaleString("en-GB", {
+    if (!Number.isFinite(date.getTime())) return "Expiry unknown";
+    const exact = date.toLocaleString("en-GB", {
         day: "2-digit",
         month: "short",
         year: "numeric",
@@ -91,10 +80,17 @@ function formatCreditDate(value) {
         minute: "2-digit",
         hour12: false,
     });
+    return `Expires ${exact} (${formatRelativeExpiry(date.getTime() - Date.now())})`;
 }
 
-function formatCreditStatus(credit) {
-    return credit.status === "available" ? "Available" : credit.status;
+function formatRelativeExpiry(remainingMs) {
+    if (remainingMs <= 0) return "expired";
+    const minutes = Math.ceil(remainingMs / (60 * 1000));
+    if (minutes < 60) return `in ${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+    const hours = Math.ceil(remainingMs / (60 * 60 * 1000));
+    if (hours < 24) return `in ${hours} ${hours === 1 ? "hour" : "hours"}`;
+    const days = Math.ceil(remainingMs / (24 * 60 * 60 * 1000));
+    return `in ${days} ${days === 1 ? "day" : "days"}`;
 }
 
 function createTopPanelGroup(settings) {
