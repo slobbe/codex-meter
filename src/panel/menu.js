@@ -91,15 +91,18 @@ export class CodexMeterPopupMenu {
         this.statusItem.messageLabel.text = message ?? "";
     }
 
-    setBankedResets({ count, redeeming }) {
-        const canRedeem = !redeeming && count !== null && count > 0;
+    setBankedResets({ count, preparing, redeeming }) {
+        const busy = preparing || redeeming;
+        const canRedeem = !busy && count !== null && count > 0;
         this.headerItem.redeemButton.visible = count !== null;
         this.headerItem.redeemButton.reactive = canRedeem;
         this.headerItem.redeemButton.can_focus = canRedeem;
         this.headerItem.redeemButton.opacity = canRedeem ? 255 : 150;
-        this.headerItem.redeemButtonLabel.text = redeeming
-            ? "Resetting…"
-            : `Reset limits (${count ?? 0})`;
+        this.headerItem.redeemButtonLabel.text = preparing
+            ? "Loading…"
+            : redeeming
+              ? "Resetting…"
+              : `Reset limits (${count ?? 0})`;
     }
 
     _createUsageItem(title) {

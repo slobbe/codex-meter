@@ -222,3 +222,39 @@
 .cx-reset-button:active {
     background-color: rgba(255, 255, 255, 0.24);
 }
+
+.cx-reset-dialog-content {
+    width: 28em;
+    spacing: 12px;
+}
+
+.cx-reset-dialog-title {
+    font-size: 1.2em;
+    font-weight: 700;
+}
+
+.cx-reset-dialog-message,
+.cx-reset-dialog-description,
+.cx-reset-dialog-detail-label {
+    opacity: 0.75;
+}
+
+.cx-reset-dialog-credit-title {
+    font-weight: 700;
+}
+
+.cx-reset-dialog-details {
+    spacing: 6px;
+}
+
+.cx-reset-dialog-detail-row {
+    spacing: 12px;
+}
+
+.cx-reset-dialog-detail-label {
+    min-width: 5.5em;
+}
+
+.cx-reset-dialog-detail-value {
+    text-align: right;
+}

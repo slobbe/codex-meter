@@ -42,6 +42,7 @@ reload:
 	gnome-extensions disable codex-meter@slobbe.github.io
 	$(MAKE) install
 	gnome-extensions enable codex-meter@slobbe.github.io
+	$(MAKE) clean
 
 clean:
 	@rm -f $(ZIP)

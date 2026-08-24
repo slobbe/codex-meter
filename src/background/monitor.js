@@ -12,9 +12,11 @@ import {
     listCodexBankedResets,
     readCachedCodexBankedResets,
     redeemCodexBankedReset,
-    redeemNextCodexBankedReset,
 } from "../codex/banked-resets/api.js";
-import { selectCreditExpiringWithin } from "../codex/banked-resets/response.js";
+import {
+    selectCreditExpiringWithin,
+    selectCreditToRedeem,
+} from "../codex/banked-resets/response.js";
 import { PeriodicTask } from "./periodic-task.js";
 import { formatRefreshFailure } from "./refresh-error-message.js";
 
@@ -49,6 +51,8 @@ export class CodexMonitor {
         this._lastBankedResetRefreshAt = null;
         this._bankedResetRefreshPromise = null;
         this._bankedResetRefreshCancellable = null;
+        this._preparingBankedReset = false;
+        this._prepareBankedResetCancellable = null;
         this._redeemingBankedReset = false;
         this._redeemBankedResetCancellable = null;
         this._stopped = false;
@@ -63,6 +67,7 @@ export class CodexMonitor {
             errorMessage: this._errorMessage,
             cachedFailureMessage: this._cachedFailureMessage,
             bankedResetCount: this._bankedResetCount,
+            preparingBankedReset: this._preparingBankedReset,
             redeemingBankedReset: this._redeemingBankedReset,
         };
     }
@@ -85,6 +90,8 @@ export class CodexMonitor {
         this._refreshCancellable = null;
         this._bankedResetRefreshCancellable?.cancel();
         this._bankedResetRefreshCancellable = null;
+        this._prepareBankedResetCancellable?.cancel();
+        this._prepareBankedResetCancellable = null;
         this._redeemBankedResetCancellable?.cancel();
         this._redeemBankedResetCancellable = null;
         this._settings.disconnect(this._autoApplyChangedId);
@@ -126,18 +133,46 @@ export class CodexMonitor {
         }
     }
 
-    async redeemBankedReset() {
-        if (this._stopped || this._redeemingBankedReset) return;
-        if (this._bankedResetCount !== null && this._bankedResetCount <= 0) {
-            this._notify("No banked Codex resets are available to redeem.");
-            return;
+    async prepareBankedReset() {
+        if (this._stopped || this._preparingBankedReset || this._redeemingBankedReset) return null;
+        const cancellable = new Gio.Cancellable();
+        this._preparingBankedReset = true;
+        this._prepareBankedResetCancellable = cancellable;
+        this._emitChange();
+        try {
+            const response = await listCodexBankedResets({ cancellable });
+            if (this._stopped) return null;
+            this._bankedResetCount = Math.max(0, response.available_count);
+            this._lastBankedResetRefreshAt = Math.floor(Date.now() / 1000);
+            const credit = selectCreditToRedeem(response.credits);
+            if (!credit) {
+                this._bankedResetCount = 0;
+                this._notify("No banked Codex resets are available to redeem.");
+            }
+            return credit;
+        } catch (error) {
+            if (isCancellationError(error) || this._stopped) return null;
+            this._notify(formatBankedResetPreparationFailure(error));
+            return null;
+        } finally {
+            if (this._prepareBankedResetCancellable === cancellable) {
+                this._prepareBankedResetCancellable = null;
+            }
+            if (!this._stopped) {
+                this._preparingBankedReset = false;
+                this._emitChange();
+            }
         }
+    }
+
+    async redeemBankedReset(creditId) {
+        if (this._stopped || this._redeemingBankedReset) return;
         const cancellable = new Gio.Cancellable();
         this._redeemingBankedReset = true;
         this._redeemBankedResetCancellable = cancellable;
         this._emitChange();
         try {
-            await redeemNextCodexBankedReset({ cancellable });
+            await redeemCodexBankedReset(creditId, { cancellable });
             if (this._stopped) return;
             this._notify("Banked Codex reset redeemed.");
             await this.refreshBankedResets(cancellable);
@@ -326,6 +361,11 @@ export class CodexMonitor {
     _emitChange() {
         this.onChange?.(this.state);
     }
+}
+
+function formatBankedResetPreparationFailure(error) {
+    if (isCodexError(error)) return error.message;
+    return "Unable to load banked Codex reset details. Try again later.";
 }
 
 function formatBankedResetFailure(error) {
