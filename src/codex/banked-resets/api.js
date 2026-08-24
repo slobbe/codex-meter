@@ -1,9 +1,8 @@
 import GLib from "gi://GLib";
 import { fetchJson } from "../../io/http.js";
-import { CodexError } from "../error.js";
 import { readBankedResetSnapshot, writeBankedResetSnapshot } from "./store.js";
 import { getCodexCredentials } from "../auth/auth.js";
-import { selectCreditToRedeem, toListResponse } from "./response.js";
+import { toListResponse } from "./response.js";
 
 const CODEX_BANKED_RESETS_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
 
@@ -39,20 +38,6 @@ export async function listCodexBankedResets(options = {}) {
 
 export async function readCachedCodexBankedResets() {
     return await readBankedResetSnapshot();
-}
-
-export async function redeemNextCodexBankedReset(options = {}) {
-    const list = await listCodexBankedResets(options);
-    const credit = selectCreditToRedeem(list.credits);
-    if (!credit) {
-        throw new CodexError(
-            "unexpected-response",
-            "No banked Codex resets are available to redeem.",
-            "Codex banked reset redemption was requested with zero available credits.",
-        );
-    }
-    await redeemCodexBankedReset(credit.id, options);
-    return credit;
 }
 
 export async function redeemCodexBankedReset(creditId, options = {}) {

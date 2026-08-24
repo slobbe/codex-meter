@@ -6,6 +6,7 @@ import St from "gi://St";
 import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
 import { readSettings } from "../preferences/settings.js";
 import { CodexMeterPopupMenu } from "./menu.js";
+import { showBankedResetConfirmation } from "./reset-confirmation.js";
 import { UsageBar } from "./usage-bar.js";
 import { createMenuViewModel, createPanelBarViewModel } from "./view-model.js";
 
@@ -26,6 +27,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         };
         this._refreshSpinId = 0;
         this._menuSyncId = 0;
+        this._resetConfirmationDialog = null;
         this._destroyed = false;
         this._panelBox = new St.BoxLayout({
             y_align: Clutter.ActorAlign.CENTER,
@@ -91,6 +93,8 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             this._settings.disconnect(this._settingsChangedId);
             this._settingsChangedId = 0;
         }
+        this._resetConfirmationDialog?.destroy();
+        this._resetConfirmationDialog = null;
 
         super.destroy();
     }
@@ -101,7 +105,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
                 void this._refreshUsage();
             },
             onRedeemBankedReset: () => {
-                void this._redeemBankedReset();
+                void this._confirmBankedReset();
             },
             onOpenPreferences: () => {
                 this.menu.close();
@@ -147,11 +151,30 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         }
     }
 
-    async _redeemBankedReset() {
+    async _confirmBankedReset() {
+        if (this._destroyed || this._resetConfirmationDialog) return;
+        const credit = await this._monitor.prepareBankedReset();
+        if (this._destroyed || !credit) return;
+        this.menu.close();
+        let dialog = null;
+        const clearDialog = () => {
+            if (this._resetConfirmationDialog === dialog) this._resetConfirmationDialog = null;
+        };
+        dialog = showBankedResetConfirmation(credit, {
+            onConfirm: () => {
+                clearDialog();
+                void this._redeemBankedReset(credit.id);
+            },
+            onCancel: clearDialog,
+        });
+        this._resetConfirmationDialog = dialog;
+    }
+
+    async _redeemBankedReset(creditId) {
         if (this._destroyed) return;
         this._startRefreshSpin();
         try {
-            await this._monitor.redeemBankedReset();
+            await this._monitor.redeemBankedReset(creditId);
         } finally {
             if (!this._destroyed) this._stopRefreshSpin();
         }
@@ -220,6 +243,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             errorMessage,
             cachedFailureMessage,
             bankedResetCount,
+            preparingBankedReset,
             redeemingBankedReset,
         } = this._monitor.state;
         const viewModel = createMenuViewModel(
@@ -241,6 +265,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._popupMenu.setTrend(viewModel.trend);
         this._popupMenu.setBankedResets({
             count: bankedResetCount,
+            preparing: preparingBankedReset,
             redeeming: redeemingBankedReset,
         });
         this._popupMenu.footerItem.planLabel.text = viewModel.plan;
