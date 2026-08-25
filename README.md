@@ -1,7 +1,7 @@
-# Codex Meter
-
-Monitor and manage Codex usage limits.
-
+<div align="center">
+  <h1>Codex Meter</h1>
+  <p>Monitor and manage Codex usage limits.</p>
+</div>
 <p align="center">
   <img src="docs/assets/screens/popup.png" width="325" alt="Codex Meter popup preview">
 </p>
