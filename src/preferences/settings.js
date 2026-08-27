@@ -1,7 +1,3 @@
-export const SETTINGS_SHOW_PRIMARY = "show-primary";
-
-export const SETTINGS_SHOW_SECONDARY = "show-secondary";
-
 export const SETTINGS_TOP_PANEL_DISPLAY_MODE = "top-panel-display-mode";
 
 export const SETTINGS_TOP_PANEL_INDICATOR_ICON = "top-panel-indicator-icon";
@@ -28,8 +24,6 @@ export function readSettings(settings) {
     const topPanelIndicatorIcon = settings.get_string(SETTINGS_TOP_PANEL_INDICATOR_ICON);
 
     return {
-        showPrimary: settings.get_boolean(SETTINGS_SHOW_PRIMARY),
-        showSecondary: settings.get_boolean(SETTINGS_SHOW_SECONDARY),
         topPanelDisplayMode: topPanelDisplayMode === "bars" ? "bars" : "percentages",
         topPanelIndicatorIcon:
             topPanelIndicatorIcon === "icon"

@@ -95,8 +95,6 @@ test("formats footer without zero credits", () => {
 test("omits the session UI when only weekly usage is available", () => {
     const settings = {
         percentDisplayMode: "used",
-        showPrimary: true,
-        showSecondary: true,
         topPanelDisplayMode: "label",
     };
     const snapshot = {
@@ -134,8 +132,6 @@ test("keeps cached data visible with refresh failure status", () => {
     const viewModel = createMenuViewModel(
         {
             percentDisplayMode: "used",
-            showPrimary: true,
-            showSecondary: true,
             topPanelDisplayMode: "label",
         },
         {

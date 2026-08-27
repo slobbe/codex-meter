@@ -6,8 +6,6 @@ import {
     SETTINGS_AUTO_APPLY_BANKED_RESET,
     SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES,
     SETTINGS_PERCENT_DISPLAY_MODE,
-    SETTINGS_SHOW_PRIMARY,
-    SETTINGS_SHOW_SECONDARY,
     SETTINGS_TOP_PANEL_DISPLAY_MODE,
     SETTINGS_TOP_PANEL_INDICATOR_ICON,
 } from "./settings.js";
@@ -121,20 +119,7 @@ function createTopPanelGroup(settings) {
             ],
         }),
     );
-    group.add(
-        createBoundSwitchRow({
-            settings,
-            key: SETTINGS_SHOW_PRIMARY,
-            title: "Display 5-hour session usage",
-        }),
-    );
-    group.add(
-        createBoundSwitchRow({
-            settings,
-            key: SETTINGS_SHOW_SECONDARY,
-            title: "Display weekly usage",
-        }),
-    );
+
     return group;
 }
 

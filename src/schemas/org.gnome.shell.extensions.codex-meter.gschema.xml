@@ -19,14 +19,7 @@
         <choice value='openai'/>
       </choices>
     </key>
-    <key name="show-primary" type="b">
-      <default>true</default>
-      <summary>Display 5-hour session usage</summary>
-    </key>
-    <key name="show-secondary" type="b">
-      <default>true</default>
-      <summary>Display weekly usage</summary>
-    </key>
+
     <key name="percent-display-mode" type="s">
       <default>'used'</default>
       <summary>Display mode</summary>

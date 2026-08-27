@@ -3,8 +3,8 @@ import { getQuota, getSecondaryQuota } from "../codex/usage/model.js";
 export function createPanelBarViewModel(settings, snapshot, errorMessage) {
     const sessionQuota = getQuota(snapshot, "session");
     const weeklyQuota = getQuota(snapshot, "weekly");
-    const showPrimary = settings.showPrimary && (!snapshot || Boolean(sessionQuota));
-    const showSecondary = settings.showSecondary && (!snapshot || Boolean(weeklyQuota));
+    const showPrimary = !snapshot || Boolean(sessionQuota);
+    const showSecondary = !snapshot || Boolean(weeklyQuota);
     const displayMode = settings.topPanelDisplayMode;
     const hasTopPanelUsage = showPrimary || showSecondary;
     const showSplitBars = displayMode === "bars" && hasTopPanelUsage;
