@@ -82,13 +82,13 @@ export class CodexMeterPopupMenu {
         this.primaryItem.visible = !showError;
         this.secondaryItem.visible = !showError;
         this.trendItem.visible = !showError && this.trendItem.visible;
-        this.errorItem.messageLabel.text = message ?? "";
+        this.errorItem.setDetails(message, true);
     }
 
     setStatus({ title, message, visible }) {
         this.statusItem.visible = Boolean(visible);
         this.statusItem.titleLabel.text = title ?? "";
-        this.statusItem.messageLabel.text = message ?? "";
+        this.statusItem.setDetails(message, false);
     }
 
     setBankedResets({ count, preparing, redeeming }) {
@@ -214,6 +214,7 @@ export class CodexMeterPopupMenu {
             title: "Unable to load usage",
             colorStyleClass: "cx-color-danger",
             messageStyleClass: "cx-error-message-danger",
+            expanded: true,
         });
     }
 
@@ -223,16 +224,18 @@ export class CodexMeterPopupMenu {
             title: "",
             colorStyleClass: "cx-color-warning",
             messageStyleClass: "cx-error-message-warning",
+            expanded: false,
         });
     }
 
-    _createBannerItem({ iconName, title, colorStyleClass, messageStyleClass }) {
+    _createBannerItem({ iconName, title, colorStyleClass, messageStyleClass, expanded }) {
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
         });
         const box = new St.BoxLayout({
             vertical: true,
+            x_expand: true,
             style_class: "cx-error-menu-item",
         });
         box.width = POPUP_CONTENT_WIDTH;
@@ -252,6 +255,18 @@ export class CodexMeterPopupMenu {
             y_align: Clutter.ActorAlign.CENTER,
             style_class: `cx-error-title ${colorStyleClass}`,
         });
+        const expander = new St.Icon({
+            icon_name: "pan-end-symbolic",
+            style_class: "popup-menu-icon cx-error-expander",
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        const headingButton = new St.Button({
+            child: headingBox,
+            x_expand: true,
+            x_align: Clutter.ActorAlign.FILL,
+            can_focus: true,
+            style_class: "cx-error-heading-button",
+        });
         const messageLabel = new St.Label({
             text: "",
             x_expand: true,
@@ -261,12 +276,33 @@ export class CodexMeterPopupMenu {
         messageLabel.clutter_text.ellipsize = 0;
         headingBox.add_child(icon);
         headingBox.add_child(titleLabel);
-        box.add_child(headingBox);
+        headingBox.add_child(expander);
+        box.add_child(headingButton);
         box.add_child(messageLabel);
         item.add_child(box);
         item.visible = false;
         item.titleLabel = titleLabel;
         item.messageLabel = messageLabel;
+
+        let isExpanded = expanded;
+        const setExpanded = (value) => {
+            isExpanded = value && messageLabel.text !== "";
+            messageLabel.visible = isExpanded;
+            expander.icon_name = isExpanded ? "pan-down-symbolic" : "pan-end-symbolic";
+            headingButton.accessible_name = `${isExpanded ? "Hide" : "Show"} ${titleLabel.text.toLowerCase()} details`;
+        };
+        headingButton.connect("clicked", () => setExpanded(!isExpanded));
+        item.setDetails = (message, expandWhenChanged) => {
+            const nextMessage = message ?? "";
+            const changed = messageLabel.text !== nextMessage;
+            messageLabel.text = nextMessage;
+            const hasDetails = nextMessage !== "";
+            expander.visible = hasDetails;
+            headingButton.reactive = hasDetails;
+            headingButton.can_focus = hasDetails;
+            setExpanded(changed ? expandWhenChanged : isExpanded);
+        };
+        item.setDetails("", expanded);
         return item;
     }
 

@@ -91,6 +91,23 @@
     spacing: 8px;
 }
 
+.cx-error-heading-button {
+    padding: 4px;
+    margin: 0;
+    border-radius: 7px;
+    background-color: transparent;
+    transition-duration: 150ms;
+}
+
+.cx-error-heading-button:hover,
+.cx-error-heading-button:focus {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.cx-error-expander {
+    opacity: 0.75;
+}
+
 .cx-error-title,
 .cx-usage-heading {
     font-weight: 700;
