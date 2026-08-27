@@ -80,7 +80,8 @@ function formatCreditExpiry(value) {
         minute: "2-digit",
         hour12: false,
     });
-    return `Expires ${exact} (${formatRelativeExpiry(date.getTime() - Date.now())})`;
+    const relative = formatRelativeExpiry(date.getTime() - Date.now());
+    return relative === "expired" ? `Expired (${exact})` : `Expires ${relative} (${exact})`;
 }
 
 function formatRelativeExpiry(remainingMs) {
