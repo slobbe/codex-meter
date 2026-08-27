@@ -102,9 +102,9 @@ function createTopPanelGroup(settings) {
             key: SETTINGS_TOP_PANEL_INDICATOR_ICON,
             title: "Icon",
             options: [
-                ["Codex icon", "codex"],
-                ["OpenAI icon", "openai"],
-                ["CX shortcode", "text"],
+                ["Codex logo", "codex"],
+                ["OpenAI logo", "openai"],
+                ["'CX'", "text"],
             ],
         }),
     );
@@ -114,8 +114,8 @@ function createTopPanelGroup(settings) {
             key: SETTINGS_TOP_PANEL_DISPLAY_MODE,
             title: "Show percentages as",
             options: [
-                ["Progress bars", "bars"],
-                ["Raw percentages", "percentages"],
+                ["Progress bar", "bars"],
+                ["Number", "percentages"],
             ],
         }),
     );
