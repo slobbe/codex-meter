@@ -28,6 +28,7 @@ function isUsageSnapshot(value) {
     return (
         isFiniteNumber(snapshot.fetchedAt) &&
         typeof snapshot.planType === "string" &&
+        isOptionalFiniteNumber(snapshot.bankedResetCount) &&
         Array.isArray(snapshot.quotas) &&
         snapshot.quotas.length > 0 &&
         snapshot.quotas.every(isUsageQuota)

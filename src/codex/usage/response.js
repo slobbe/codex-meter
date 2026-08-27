@@ -28,6 +28,7 @@ export function toUsageSnapshot(api) {
         fetchedAt: Math.floor(Date.now() / 1000),
         planType: codexApi.plan_type,
         credits: toUsageCredits(api.credits),
+        bankedResetCount: toBankedResetCount(api.rate_limit_reset_credits),
         quotas: toUsageQuotas(codexApi),
     };
 }
@@ -125,13 +126,14 @@ function toUsageCredits(value) {
 
     return {
         balance,
-        hasCredits: typeof value.has_credits === "boolean" ? value.has_credits : undefined,
         unlimited: typeof value.unlimited === "boolean" ? value.unlimited : undefined,
-        overageLimitReached:
-            typeof value.overage_limit_reached === "boolean"
-                ? value.overage_limit_reached
-                : undefined,
     };
+}
+
+/** @param {unknown} value */
+function toBankedResetCount(value) {
+    if (!isObject(value) || !Number.isFinite(value.available_count)) return undefined;
+    return Math.max(0, Math.trunc(value.available_count));
 }
 
 /**

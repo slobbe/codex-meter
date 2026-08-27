@@ -37,7 +37,7 @@ function createBankedResetsGroup(settings, snapshot) {
     if (!snapshot) {
         group.add(
             new Adw.ActionRow({
-                title: "No Codex credit snapshot is available yet. It will appear after the next successful panel refresh.",
+                title: "Banked reset details are unavailable.",
             }),
         );
         return group;

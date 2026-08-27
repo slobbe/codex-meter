@@ -130,10 +130,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
 
     _connectSignals() {
         this._menuOpenChangedId = this.menu.connect("open-state-changed", (_menu, isOpen) => {
-            if (isOpen) {
-                this._queueMenuBarSync();
-                void this._monitor.refreshBankedResets();
-            }
+            if (isOpen) this._queueMenuBarSync();
         });
         this._settingsChangedId = this._settings.connect("changed", () => {
             this._syncLabel();

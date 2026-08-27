@@ -8,11 +8,7 @@ import {
 } from "../preferences/settings.js";
 import { UsageService } from "../codex/usage/service.js";
 import { isCodexError } from "../codex/error.js";
-import {
-    listCodexBankedResets,
-    readCachedCodexBankedResets,
-    redeemCodexBankedReset,
-} from "../codex/banked-resets/api.js";
+import { listCodexBankedResets, redeemCodexBankedReset } from "../codex/banked-resets/api.js";
 import {
     selectCreditExpiringWithin,
     selectCreditToRedeem,
@@ -38,7 +34,7 @@ export class CodexMonitor {
         );
         this._bankedResetRefreshTask = new PeriodicTask(
             BANKED_RESET_BACKGROUND_REFRESH_SECONDS,
-            () => this._refreshBankedResetsIfStale(),
+            () => this._refreshBankedResetsForAutoApply(),
         );
         this._refreshPromise = null;
         this._refreshCancellable = null;
@@ -47,9 +43,6 @@ export class CodexMonitor {
         this._history = [];
         this._errorMessage = null;
         this._cachedFailureMessage = null;
-        this._bankedResetCount = null;
-        this._lastBankedResetRefreshAt = null;
-        this._bankedResetRefreshPromise = null;
         this._bankedResetRefreshCancellable = null;
         this._preparingBankedReset = false;
         this._prepareBankedResetCancellable = null;
@@ -66,7 +59,7 @@ export class CodexMonitor {
             history: this._history,
             errorMessage: this._errorMessage,
             cachedFailureMessage: this._cachedFailureMessage,
-            bankedResetCount: this._bankedResetCount,
+            bankedResetCount: this._snapshot?.bankedResetCount ?? null,
             preparingBankedReset: this._preparingBankedReset,
             redeemingBankedReset: this._redeemingBankedReset,
         };
@@ -74,8 +67,9 @@ export class CodexMonitor {
 
     start() {
         if (this._stopped) return;
-        void this._loadCachedBankedResets();
-        this._bankedResetRefreshTask.start();
+        if (this._autoApplyBankedReset) {
+            this._bankedResetRefreshTask.start({ runImmediately: true });
+        }
         void this._loadCachedSnapshot().finally(() => {
             if (this._stopped) return;
             this._usageRefreshTask.start({ runImmediately: true });
@@ -115,24 +109,6 @@ export class CodexMonitor {
         }
     }
 
-    async refreshBankedResets(cancellable = null) {
-        if (this._bankedResetRefreshPromise) {
-            await this._bankedResetRefreshPromise;
-            return;
-        }
-        const refreshCancellable = cancellable ?? new Gio.Cancellable();
-        if (!cancellable) this._bankedResetRefreshCancellable = refreshCancellable;
-        this._bankedResetRefreshPromise = this._refreshBankedResetsOnce(refreshCancellable);
-        try {
-            await this._bankedResetRefreshPromise;
-        } finally {
-            this._bankedResetRefreshPromise = null;
-            if (this._bankedResetRefreshCancellable === refreshCancellable) {
-                this._bankedResetRefreshCancellable = null;
-            }
-        }
-    }
-
     async prepareBankedReset() {
         if (this._stopped || this._preparingBankedReset || this._redeemingBankedReset) return null;
         const cancellable = new Gio.Cancellable();
@@ -142,13 +118,8 @@ export class CodexMonitor {
         try {
             const response = await listCodexBankedResets({ cancellable });
             if (this._stopped) return null;
-            this._bankedResetCount = Math.max(0, response.available_count);
-            this._lastBankedResetRefreshAt = Math.floor(Date.now() / 1000);
             const credit = selectCreditToRedeem(response.credits);
-            if (!credit) {
-                this._bankedResetCount = 0;
-                this._notify("No banked Codex resets are available to redeem.");
-            }
+            if (!credit) this._notify("No banked Codex resets are available to redeem.");
             return credit;
         } catch (error) {
             if (isCancellationError(error) || this._stopped) return null;
@@ -175,7 +146,6 @@ export class CodexMonitor {
             await redeemCodexBankedReset(creditId, { cancellable });
             if (this._stopped) return;
             this._notify("Banked Codex reset redeemed.");
-            await this.refreshBankedResets(cancellable);
             await this.refreshUsage();
         } catch (error) {
             if (this._stopped && isCancellationError(error)) return;
@@ -195,10 +165,14 @@ export class CodexMonitor {
             `changed::${SETTINGS_AUTO_APPLY_BANKED_RESET}`,
             () => {
                 const enabled = this._settings.get_boolean(SETTINGS_AUTO_APPLY_BANKED_RESET);
-                if (enabled && !this._autoApplyBankedReset) {
-                    void this.refreshBankedResets();
-                }
+                const wasEnabled = this._autoApplyBankedReset;
                 this._autoApplyBankedReset = enabled;
+                if (enabled && !wasEnabled) {
+                    this._bankedResetRefreshTask.start({ runImmediately: true });
+                } else if (!enabled && wasEnabled) {
+                    this._bankedResetRefreshTask.stop();
+                    this._bankedResetRefreshCancellable?.cancel();
+                }
             },
         );
         this._refreshIntervalChangedId = this._settings.connect(
@@ -262,17 +236,6 @@ export class CodexMonitor {
         } catch (error) {}
     }
 
-    async _loadCachedBankedResets() {
-        if (this._stopped) return;
-        try {
-            const snapshot = await readCachedCodexBankedResets();
-            if (this._stopped || !snapshot) return;
-            this._bankedResetCount = Math.max(0, snapshot.available_count);
-            this._lastBankedResetRefreshAt = snapshot.fetchedAt;
-            this._emitChange();
-        } catch (error) {}
-    }
-
     async _loadCachedSnapshotAfterFailure() {
         if (this._stopped) return false;
         try {
@@ -300,34 +263,20 @@ export class CodexMonitor {
         }
     }
 
-    async _refreshBankedResetsIfStale() {
-        if (!this._shouldRefreshBankedResets()) return;
-        await this.refreshBankedResets();
-    }
-
-    _shouldRefreshBankedResets() {
-        if (this._stopped) return false;
-        if (this._bankedResetCount === null || !this._lastBankedResetRefreshAt) return true;
-        const nowSeconds = Math.floor(Date.now() / 1000);
-        return (
-            nowSeconds - this._lastBankedResetRefreshAt >= BANKED_RESET_BACKGROUND_REFRESH_SECONDS
-        );
-    }
-
-    async _refreshBankedResetsOnce(cancellable = null) {
+    async _refreshBankedResetsForAutoApply() {
+        const cancellable = new Gio.Cancellable();
+        this._bankedResetRefreshCancellable = cancellable;
         try {
             const response = await listCodexBankedResets({ cancellable });
             if (this._stopped) return;
-            this._bankedResetCount = Math.max(0, response.available_count);
-            this._lastBankedResetRefreshAt = Math.floor(Date.now() / 1000);
             await this._autoApplyExpiringBankedReset(response.credits, cancellable);
-            this._emitChange();
         } catch (error) {
             if (isCancellationError(error) || this._stopped) return;
-            console.warn("Unable to refresh Codex banked reset count", error);
-            this._bankedResetCount = null;
-            this._lastBankedResetRefreshAt = null;
-            this._emitChange();
+            console.warn("Unable to refresh Codex banked resets", error);
+        } finally {
+            if (this._bankedResetRefreshCancellable === cancellable) {
+                this._bankedResetRefreshCancellable = null;
+            }
         }
     }
 
@@ -344,7 +293,6 @@ export class CodexMonitor {
         try {
             await redeemCodexBankedReset(credit.id, { cancellable });
             if (this._stopped) return;
-            this._bankedResetCount = Math.max(0, (this._bankedResetCount ?? 1) - 1);
             this._notify("Expiring banked Codex reset applied automatically.");
             await this.refreshUsage();
         } catch (error) {

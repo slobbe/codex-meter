@@ -7,13 +7,12 @@
 
  * @property {string} planType
  * @property {UsageCredits} [credits]
+ * @property {number} [bankedResetCount]
  * @property {UsageQuota[]} quotas
  *
  * @typedef {object} UsageCredits
  * @property {string | null} balance
- * @property {boolean} [hasCredits]
  * @property {boolean} [unlimited]
- * @property {boolean} [overageLimitReached]
  *
  * @typedef {object} UsageQuota
  * @property {string} id

@@ -6,6 +6,10 @@ import { toUsageSnapshot } from "../src/codex/usage/response.js";
 function validUsageResponse(overrides = {}) {
     return {
         plan_type: "pro",
+        rate_limit_reset_credits: {
+            available_count: 2,
+            applicable_available_count: 1,
+        },
         rate_limit: {
             limit_reached: false,
             primary_window: {
@@ -37,6 +41,7 @@ test("maps valid Codex usage response to usage snapshot", () => {
     const snapshot = toUsageSnapshot(validUsageResponse());
 
     assert.equal(snapshot.planType, "pro");
+    assert.equal(snapshot.bankedResetCount, 2);
     assert.equal(snapshot.quotas.length, 2);
     assert.deepEqual(snapshot.quotas[0], {
         id: "session",
@@ -57,6 +62,13 @@ test("maps valid Codex usage response to usage snapshot", () => {
         limitReached: false,
     });
     assert.equal(typeof snapshot.fetchedAt, "number");
+});
+
+test("supports usage responses without a banked-reset summary", () => {
+    const response = validUsageResponse();
+    delete response.rate_limit_reset_credits;
+
+    assert.equal(toUsageSnapshot(response).bankedResetCount, undefined);
 });
 
 test("maps a weekly-only Codex response without a session quota", () => {
@@ -102,9 +114,7 @@ test("maps Codex credit balance when present", () => {
 
     assert.deepEqual(snapshot.credits, {
         balance: "$4.21",
-        hasCredits: true,
         unlimited: false,
-        overageLimitReached: false,
     });
 });
 
