@@ -209,7 +209,7 @@ function createFooterGroup(metadata) {
     });
     footerBox.append(
         new Gtk.Label({
-            label: `${metadata.name} v${metadata["version-name"]}`,
+            label: `${metadata.name} ${metadata["version-name"]}`,
             css_classes: ["caption", "dim-label"],
         }),
     );
