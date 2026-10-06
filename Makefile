@@ -3,9 +3,27 @@ DOMAIN=slobbe.github.io
 VERSION=$(shell node -p "require('./package.json').version")
 TAG_VERSION=v$(VERSION)
 ZIP=$(NAME)@$(DOMAIN)-$(TAG_VERSION).zip
-.PHONY: all check check-js check-gjs check-schemas version pack release install reload clean
+.PHONY: all help check check-js check-gjs check-schemas version pack release install reload clean
 
-all: check
+all: help
+
+help:
+	@printf '%s\n' \
+		'Development workflow commands:' \
+		'  make help                    Show this help' \
+		'  make check                   Run all checks and tests' \
+		'  make check-js                Run formatting, JSDoc checks, and Node tests' \
+		'  make check-gjs               Run GJS module and storage tests' \
+		'  make check-schemas           Validate GSettings schemas' \
+		'  make pack                    Build the versioned extension zip' \
+		'  make install                 Build and install the extension' \
+		'  make reload                  Disable, rebuild, reinstall, enable, and clean' \
+		'  make version VERSION=x.y.z   Update version declarations (no commit or tag)' \
+		'  make release                 Run all checks and build the release zip' \
+		'  make clean                   Remove the extension zip for the current version' \
+		'' \
+		'Run npm ci first to install development dependencies.' \
+		'After installing or reloading, log out and back in if changes do not appear.'
 
 check: check-js check-gjs check-schemas
 
