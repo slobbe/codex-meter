@@ -21,7 +21,7 @@
     </key>
 
     <key name="percent-display-mode" type="s">
-      <default>'used'</default>
+      <default>'left'</default>
       <summary>Display mode</summary>
       <choices>
         <choice value='used'/>
