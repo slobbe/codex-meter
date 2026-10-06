@@ -1,26 +1,27 @@
-NAME=codex-meter
-DOMAIN=slobbe.github.io
+UUID=codex-meter@slobbe.github.io
 VERSION=$(shell node -p "require('./package.json').version")
-TAG_VERSION=v$(VERSION)
-ZIP=$(NAME)@$(DOMAIN)-$(TAG_VERSION).zip
-.PHONY: all help check check-js check-gjs check-schemas version pack release install reload clean
+DEV=0
+BUILD_VERSION=$(VERSION)$(if $(filter 1,$(DEV)),-dev)
+ZIP=$(UUID)-v$(BUILD_VERSION).zip
 
-all: help
+.DEFAULT_GOAL := help
+.PHONY: help check check-js check-gjs check-schemas version pack install reload clean
 
 help:
 	@printf '%s\n' \
-		'Development workflow commands:' \
-		'  make help                    Show this help' \
+		'Pipeline commands:' \
 		'  make check                   Run all checks and tests' \
 		'  make check-js                Run formatting, JSDoc checks, and Node tests' \
 		'  make check-gjs               Run GJS module and storage tests' \
 		'  make check-schemas           Validate GSettings schemas' \
-		'  make pack                    Build the versioned extension zip' \
-		'  make install                 Build and install the extension' \
+		'  make pack                    Build a release-format zip (does not publish)' \
+		'' \
+		'Local development commands:' \
+		'  make help                    Show this help (also the default target)' \
+		'  make install                 Build and install a dev-marked extension' \
 		'  make reload                  Disable, rebuild, reinstall, enable, and clean' \
 		'  make version VERSION=x.y.z   Update version declarations (no commit or tag)' \
-		'  make release                 Run all checks and build the release zip' \
-		'  make clean                   Remove the extension zip for the current version' \
+		'  make clean                   Remove release and dev zips for the current version' \
 		'' \
 		'Run npm ci first to install development dependencies.' \
 		'After installing or reloading, log out and back in if changes do not appear.'
@@ -47,20 +48,23 @@ version:
 	@echo "Version set to $(VERSION)."
 
 pack:
-	@rm -f $(ZIP)
-	@(cd src && zip ../$(ZIP) -9r . -x '*.compiled')
+	@set -eu; \
+	stage=$$(mktemp -d); \
+	trap 'rm -rf "$$stage"' EXIT HUP INT TERM; \
+	cp -R src/. "$$stage/"; \
+	node -e 'const fs = require("node:fs"); const path = process.argv[1]; const metadata = JSON.parse(fs.readFileSync(path, "utf8")); metadata["version-name"] = process.argv[2]; fs.writeFileSync(path, JSON.stringify(metadata, null, 4) + "\n");' "$$stage/metadata.json" "$(BUILD_VERSION)"; \
+	rm -f "$(ZIP)"; \
+	(cd "$$stage" && zip "$(CURDIR)/$(ZIP)" -9r . -x '*.compiled')
 
-release: check
-	$(MAKE) pack
-
+install: DEV=1
 install: pack
 	gnome-extensions install --force $(ZIP)
 
 reload:
-	gnome-extensions disable codex-meter@slobbe.github.io
+	gnome-extensions disable $(UUID)
 	$(MAKE) install
-	gnome-extensions enable codex-meter@slobbe.github.io
+	gnome-extensions enable $(UUID)
 	$(MAKE) clean
 
 clean:
-	@rm -f $(ZIP)
+	@rm -f $(UUID)-v$(VERSION).zip $(UUID)-v$(VERSION)-dev.zip
