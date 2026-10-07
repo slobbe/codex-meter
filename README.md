@@ -25,6 +25,16 @@
 
 ## Install
 
+Install the latest stable release with the [installer script](scripts/install.sh) directly:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/slobbe/codex-meter/main/scripts/install.sh | sh
+```
+
+Run the script again to update.
+
+### Manual installation
+
 1. Download the [latest release](https://github.com/slobbe/codex-meter/releases/latest) zip.
 2. Install and enable the extension with:
 
@@ -35,9 +45,7 @@ gnome-extensions enable codex-meter@slobbe.github.io
 
 If GNOME does not pick it up immediately, log out and back in.
 
-## Update and uninstall
-
-To update, download the latest release and repeat the install steps, then log out and back in.
+## Uninstall
 
 To uninstall:
 
