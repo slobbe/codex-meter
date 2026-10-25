@@ -2,9 +2,9 @@
   <h1>Codex Meter</h1>
   <p>A GNOME Shell extension to monitor and manage Codex usage limits from your top bar.</p>
   <p>
-    <a href="https://github.com/slobbe/codex-meter/releases/latest"><img src="https://img.shields.io/github/v/release/slobbe/codex-meter?style=flat" alt="Latest release"></a>
     <a href="https://github.com/slobbe/codex-meter/actions/workflows/ci.yml"><img src="https://github.com/slobbe/codex-meter/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"></a>
-    <a href="#requirements"><img src="https://img.shields.io/badge/GNOME_Shell-45%2B-blue?style=flat" alt="GNOME Shell 45+"></a>
+    <a href="https://github.com/slobbe/codex-meter/releases/latest"><img src="https://img.shields.io/github/v/release/slobbe/codex-meter?style=flat" alt="Latest release"></a>
+    <a href="#requirements"><img src="https://img.shields.io/badge/GNOME_Shell-45_%7C_46_%7C_47_%7C_48_%7C_49_%7C_50-blue?style=flat" alt="GNOME Shell 45-50"></a>
   </p>
 </div>
 <p align="center">
