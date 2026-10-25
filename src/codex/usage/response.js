@@ -1,6 +1,7 @@
 // @ts-check
 
 import { CodexError } from "../error.js";
+import { getUsageWindowMetadata, sortUsageQuotas } from "./model.js";
 
 /** @typedef {import("../../../types/index.js").UsageSnapshot} UsageSnapshot */
 /** @typedef {import("../../../types/index.js").UsageCredits} UsageCredits */
@@ -14,7 +15,7 @@ import { CodexError } from "../error.js";
  *
  * @typedef {object} CodexApiResponse
  * @property {string} plan_type
- * @property {{limit_reached: boolean, primary_window: CodexRateLimitWindow | null, secondary_window: CodexRateLimitWindow | null}} rate_limit
+ * @property {{limit_reached: boolean} & Record<string, unknown>} rate_limit
  */
 
 /**
@@ -56,11 +57,10 @@ function assertApiResponseShape(api) {
         throwUnexpected("rate_limit.limit_reached is missing or not a boolean");
     }
 
-    assertOptionalWindow(api.rate_limit.primary_window, "rate_limit.primary_window");
-    assertOptionalWindow(api.rate_limit.secondary_window, "rate_limit.secondary_window");
-
-    if (api.rate_limit.primary_window === null && api.rate_limit.secondary_window === null) {
-        throwUnexpected("rate_limit does not contain a usage window");
+    for (const [name, window] of Object.entries(api.rate_limit)) {
+        if (name.endsWith("_window")) {
+            assertOptionalWindow(window, `rate_limit.${name}`);
+        }
     }
 }
 
@@ -69,34 +69,46 @@ function assertApiResponseShape(api) {
  * @returns {UsageSnapshot["quotas"]}
  */
 function toUsageQuotas(api) {
-    const { primary_window: primary, secondary_window: secondary } = api.rate_limit;
-
-    if (primary && secondary) {
-        return [
-            toUsageQuota("session", "Session (5h)", primary, api.rate_limit.limit_reached),
-            toUsageQuota("weekly", "Week", secondary, api.rate_limit.limit_reached),
-        ];
-    }
-
-    const weeklyWindow = primary ?? secondary;
-    if (!weeklyWindow) {
+    const windows = /** @type {[string, CodexRateLimitWindow][]} */ (
+        Object.entries(api.rate_limit).filter(
+            ([name, window]) => name.endsWith("_window") && window != null,
+        )
+    );
+    if (windows.length === 0) {
         throwUnexpected("rate_limit does not contain a usage window");
     }
 
-    return [toUsageQuota("weekly", "Week", weeklyWindow, api.rate_limit.limit_reached)];
+    const durationCounts = new Map();
+    for (const [, window] of windows) {
+        const seconds = window.limit_window_seconds;
+        durationCounts.set(seconds, (durationCounts.get(seconds) ?? 0) + 1);
+    }
+
+    return sortUsageQuotas(
+        windows.map(([name, window]) => {
+            const quota = toUsageQuota(window, api.rate_limit.limit_reached);
+            // Colliding durations need field-based IDs, never insertion-order suffixes.
+            if (durationCounts.get(window.limit_window_seconds) > 1) {
+                quota.id = `${quota.id}-${name}`;
+            }
+            return quota;
+        }),
+    );
 }
 
 /**
- * @param {string} id
- * @param {string} label
  * @param {CodexRateLimitWindow} window
  * @param {boolean} limitReached
  * @returns {UsageSnapshot["quotas"][number]}
  */
-function toUsageQuota(id, label, window, limitReached) {
+function toUsageQuota(window, limitReached) {
+    const seconds = window.limit_window_seconds;
+    const id =
+        seconds === 18_000 ? "session" : seconds === 604_800 ? "weekly" : `window-${seconds}`;
+
     return {
         id,
-        label,
+        ...getUsageWindowMetadata(seconds),
         usedPercent: window.used_percent,
         limitWindowSeconds: window.limit_window_seconds,
         resetAfterSeconds: window.reset_after_seconds,
@@ -149,6 +161,10 @@ function assertWindow(value, path) {
         if (!Number.isFinite(value[key])) {
             throwUnexpected(`${path}.${key} is missing or not a finite number`);
         }
+    }
+
+    if (value.limit_window_seconds <= 0) {
+        throwUnexpected(`${path}.limit_window_seconds must be positive`);
     }
 }
 

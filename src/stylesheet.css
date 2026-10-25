@@ -37,10 +37,6 @@
     background-color: rgba(255, 255, 255, 0.14);
 }
 
-.cx-panel-bars-stacked .cx-panel-bar-track {
-    height: 0.26em;
-}
-
 .cx-panel-bar-track,
 .cx-usage-bar-track,
 .cx-usage-bar-fill,

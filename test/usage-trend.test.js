@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createUsageTrendViewModel } from "../src/panel/view-model.js";
+import { createUsageTrendViewModel, getUsageTrendSamples } from "../src/panel/view-model.js";
 
 const now = 1_700_000_000;
 
@@ -12,12 +12,14 @@ function createSnapshot() {
         quotas: [
             {
                 id: "session",
-                label: "Session (5h)",
+                label: "5 hours",
+                limitWindowSeconds: 18_000,
                 usedPercent: 10,
             },
             {
                 id: "weekly",
-                label: "Week",
+                label: "Weekly",
+                limitWindowSeconds: 604_800,
                 usedPercent: 10,
             },
         ],
@@ -30,6 +32,46 @@ function entry(secondsAgo, usedPercent, id = "weekly") {
         quotas: [{ id, usedPercent }],
     };
 }
+
+test("hides weekly activity for snapshots without an exact weekly quota", () => {
+    const history = [entry(600, 1), entry(60, 5)];
+    for (const quotas of [
+        [],
+        [{ id: "window-3600", limitWindowSeconds: 3_600 }],
+        [{ id: "weekly", limitWindowSeconds: 3_600 }],
+        [{ id: "weekly", limitWindowSeconds: 1_209_600 }],
+        [{ id: "weekly", limitWindowSeconds: 0 }],
+        [{ id: "secondary" }],
+    ]) {
+        const snapshot = { quotas };
+        assert.equal(createUsageTrendViewModel(snapshot, history, now).visible, false);
+        assert.deepEqual(getUsageTrendSamples(snapshot, history, now), []);
+    }
+});
+
+test("retains legacy weekly history for missing metadata and null snapshots", () => {
+    const history = [entry(600, 1), entry(60, 5)];
+    for (const snapshot of [null, { quotas: [{ id: "weekly" }] }]) {
+        assert.equal(createUsageTrendViewModel(snapshot, history, now).visible, true);
+    }
+});
+
+test("does not fall back to unrelated weekly history for a selected quota", () => {
+    const snapshot = { quotas: [{ id: "week", limitWindowSeconds: 604_800 }] };
+    const history = [entry(600, 1), entry(300, 3, "week"), entry(60, 5)];
+    assert.deepEqual(getUsageTrendSamples(snapshot, history, now), [
+        { timestamp: now - 300, usedPercent: 3 },
+    ]);
+    assert.equal(createUsageTrendViewModel(snapshot, history, now).visible, false);
+});
+
+test("prefers duration metadata over a legacy weekly id", () => {
+    const snapshot = {
+        quotas: [{ id: "weekly" }, { id: "week", limitWindowSeconds: 604_800 }],
+    };
+    const history = [entry(600, 1), entry(60, 5)];
+    assert.equal(createUsageTrendViewModel(snapshot, history, now).visible, false);
+});
 
 test("hides usage trend when history is empty", () => {
     const trend = createUsageTrendViewModel(createSnapshot(), [], now);
@@ -100,20 +142,18 @@ test("ignores usage outside the last seven days", () => {
     assert.deepEqual(trend.bars, []);
 });
 
-test("uses the secondary quota id for usage trend", () => {
-    const snapshot = {
-        ...createSnapshot(),
-        quotas: [
-            { id: "session", label: "Session (5h)", usedPercent: 10 },
-            { id: "week", label: "Week", usedPercent: 10 },
-        ],
-    };
-    const trend = createUsageTrendViewModel(
-        snapshot,
-        [entry(600, 90, "session"), entry(300, 1, "week"), entry(60, 5, "week")],
-        now,
-    );
-
-    assert.equal(trend.visible, true);
-    assert.equal(Math.max(...trend.bars), 100);
+test("uses the exact seven-day quota id regardless of position", () => {
+    const weekly = { id: "week", limitWindowSeconds: 604_800, usedPercent: 10 };
+    const hourly = { id: "window-3600", limitWindowSeconds: 3_600, usedPercent: 10 };
+    const history = [entry(600, 90, hourly.id), entry(300, 1, weekly.id), entry(60, 5, weekly.id)];
+    for (const quotas of [[weekly, hourly], [hourly, weekly], [weekly]]) {
+        const snapshot = { quotas };
+        const trend = createUsageTrendViewModel(snapshot, history, now);
+        assert.equal(trend.visible, true);
+        assert.equal(Math.max(...trend.bars), 100);
+        assert.deepEqual(
+            getUsageTrendSamples(snapshot, history, now).map((sample) => sample.usedPercent),
+            [1, 5],
+        );
+    }
 });

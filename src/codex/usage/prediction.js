@@ -21,11 +21,7 @@ export function predict(history, snapshot) {
         quotas[quota.id] = predictQuota(history, snapshot, quota);
     }
 
-    return {
-        quotas,
-        primary: quotas[snapshot.quotas[0]?.id] ?? unknownPrediction(),
-        secondary: quotas[snapshot.quotas[1]?.id] ?? unknownPrediction(),
-    };
+    return { quotas };
 }
 
 /**

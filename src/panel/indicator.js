@@ -121,10 +121,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             y_align: Clutter.ActorAlign.CENTER,
             style_class: "cx-panel-bars",
         });
-        this._panelPrimaryBar = new UsageBar("panel");
-        this._panelSecondaryBar = new UsageBar("panel");
-        box.add_child(this._panelPrimaryBar.actor);
-        box.add_child(this._panelSecondaryBar.actor);
+        this._panelUsageBars = [];
         return box;
     }
 
@@ -204,18 +201,27 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         const settings = readSettings(this._settings);
         const { snapshot, errorMessage } = this._monitor.state;
         const viewModel = createPanelBarViewModel(settings, snapshot, errorMessage);
-        this._panelPrimaryBar.actor.visible = viewModel.primaryVisible;
-        this._panelSecondaryBar.actor.visible = viewModel.secondaryVisible;
-        this._panelPrimaryBar.update({
-            percentValue: viewModel.primaryPercent,
-            displayPercentValue: viewModel.primaryDisplayPercent,
-        });
-        this._panelSecondaryBar.update({
-            percentValue: viewModel.secondaryPercent,
-            displayPercentValue: viewModel.secondaryDisplayPercent,
-        });
+        while (this._panelUsageBars.length > viewModel.bars.length) {
+            this._panelUsageBars.pop().actor.destroy();
+        }
+        while (this._panelUsageBars.length < viewModel.bars.length) {
+            const bar = new UsageBar("panel");
+            this._panelBars.add_child(bar.actor);
+            this._panelUsageBars.push(bar);
+        }
+        const barCount = viewModel.bars.length;
+        for (let index = 0; index < barCount; index += 1) {
+            const bar = this._panelUsageBars[index];
+            bar.actor.set_style(barCount > 1 ? `height: ${0.52 / barCount}em;` : null);
+            bar.update({
+                percentValue: viewModel.bars[index].percentValue,
+                displayPercentValue: viewModel.bars[index].displayPercentValue,
+            });
+        }
+        // Keep the two-bar stack's total spacing as the collection grows.
+        this._panelBars.set_style(barCount > 2 ? `spacing: ${3 / (barCount - 1)}px;` : null);
         this._panelBars.visible = viewModel.showBars;
-        if (viewModel.primaryVisible && viewModel.secondaryVisible) {
+        if (barCount > 1) {
             this._panelBars.add_style_class_name("cx-panel-bars-stacked");
         } else {
             this._panelBars.remove_style_class_name("cx-panel-bars-stacked");
@@ -257,8 +263,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             message: viewModel.statusMessage,
             visible: Boolean(viewModel.statusTitle || viewModel.statusMessage),
         });
-        this._popupMenu.setUsageItem(this._popupMenu.primaryItem, viewModel.primary);
-        this._popupMenu.setUsageItem(this._popupMenu.secondaryItem, viewModel.secondary);
+        this._popupMenu.setUsageItems(viewModel.usageItems);
         this._popupMenu.setTrend(viewModel.trend);
         this._popupMenu.setBankedResets({
             count: bankedResetCount,

@@ -17,6 +17,7 @@
  * @typedef {object} UsageQuota
  * @property {string} id
  * @property {string} label
+ * @property {"hour" | "week" | "unknown"} [type]
  * @property {number} usedPercent
  * @property {number | null} [used]
  * @property {number | null} [limit]
@@ -48,8 +49,6 @@
  *
  * @typedef {object} UsagePrediction
  * @property {Record<string, WindowPrediction>} quotas
- * @property {WindowPrediction} primary
- * @property {WindowPrediction} secondary
  */
 
 export {};

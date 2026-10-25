@@ -1,59 +1,30 @@
-import { getQuota, getSecondaryQuota } from "../codex/usage/model.js";
+import { getUsageWindowMetadata, sortUsageQuotas } from "../codex/usage/model.js";
 
 export function createPanelBarViewModel(settings, snapshot, errorMessage) {
-    const sessionQuota = getQuota(snapshot, "session");
-    const weeklyQuota = getQuota(snapshot, "weekly");
-    const showPrimary = !snapshot || Boolean(sessionQuota);
-    const showSecondary = !snapshot || Boolean(weeklyQuota);
-    const displayMode = settings.topPanelDisplayMode;
-    const hasTopPanelUsage = showPrimary || showSecondary;
-    const showSplitBars = displayMode === "bars" && hasTopPanelUsage;
-    const percentDisplayMode = settings.percentDisplayMode;
-    const viewModel = {
-        primaryVisible: showPrimary,
-        secondaryVisible: showSecondary,
-        primaryPercent: 0,
-        secondaryPercent: 0,
-        primaryDisplayPercent: 0,
-        secondaryDisplayPercent: 0,
-        showBars: Boolean(showSplitBars),
-        showLabel: !showSplitBars,
-        label: "",
-    };
     if (errorMessage) {
-        viewModel.primaryVisible = false;
-        viewModel.secondaryVisible = false;
-        viewModel.showBars = false;
-        viewModel.showLabel = false;
-        return viewModel;
+        return { bars: [], showBars: false, showLabel: false, label: "" };
     }
-    if (snapshot) {
-        viewModel.primaryPercent = normalizePercent(sessionQuota?.usedPercent);
-        viewModel.secondaryPercent = normalizePercent(weeklyQuota?.usedPercent);
-        viewModel.primaryDisplayPercent = convertPercentForDisplay(
-            viewModel.primaryPercent,
-            percentDisplayMode,
-        );
-        viewModel.secondaryDisplayPercent = convertPercentForDisplay(
-            viewModel.secondaryPercent,
-            percentDisplayMode,
-        );
-    }
-    if (!viewModel.showLabel) return viewModel;
-    if (!hasTopPanelUsage) return viewModel;
     if (!snapshot) {
-        viewModel.label = "--";
-        return viewModel;
+        return { bars: [], showBars: false, showLabel: true, label: "--" };
     }
-    const parts = [];
-    if (showPrimary) {
-        parts.push(formatPercentForDisplay(sessionQuota?.usedPercent, percentDisplayMode));
-    }
-    if (showSecondary) {
-        parts.push(formatPercentForDisplay(weeklyQuota?.usedPercent, percentDisplayMode));
-    }
-    viewModel.label = parts.join("/");
-    return viewModel;
+    const quotas = sortUsageQuotas(snapshot.quotas);
+    const percentDisplayMode = settings.percentDisplayMode;
+    const showBars = settings.topPanelDisplayMode === "bars" && quotas.length > 0;
+    const showLabel = !showBars && quotas.length > 0;
+    return {
+        bars: quotas.map((quota) => ({
+            id: quota.id,
+            percentValue: normalizePercent(quota.usedPercent),
+            displayPercentValue: convertPercentForDisplay(quota.usedPercent, percentDisplayMode),
+        })),
+        showBars,
+        showLabel,
+        label: showLabel
+            ? quotas
+                  .map((quota) => formatPercentForDisplay(quota.usedPercent, percentDisplayMode))
+                  .join("/")
+            : "",
+    };
 }
 
 export function createMenuViewModel(
@@ -70,18 +41,7 @@ export function createMenuViewModel(
             errorMessage,
             statusTitle: null,
             statusMessage: null,
-            primary: createUsageItemViewModel({
-                visible: false,
-                title: "Session (5h)",
-                value: "--",
-                percentDisplayMode,
-            }),
-            secondary: createUsageItemViewModel({
-                visible: false,
-                title: "Week",
-                value: "--",
-                percentDisplayMode,
-            }),
+            usageItems: [],
             plan: "--",
             trend: createUsageTrendViewModel(null, []),
         };
@@ -91,46 +51,45 @@ export function createMenuViewModel(
             errorMessage: null,
             statusTitle: null,
             statusMessage: null,
-            primary: createUsageItemViewModel({
-                title: "Session (5h)",
-                value: "Loading...",
-                percentDisplayMode,
-            }),
-            secondary: createUsageItemViewModel({
-                title: "Week",
-                value: "--",
-                percentDisplayMode,
-            }),
+            usageItems: [
+                {
+                    id: "loading",
+                    ...createUsageItemViewModel({
+                        title: "Usage",
+                        value: "Loading...",
+                        percentDisplayMode,
+                    }),
+                },
+            ],
             plan: "--",
             trend: createUsageTrendViewModel(null, []),
         };
     }
-    const primaryQuota = getQuota(snapshot, "session");
-    const secondaryQuota = getQuota(snapshot, "weekly");
+    const quotas = sortUsageQuotas(snapshot.quotas);
     return {
         errorMessage: null,
         statusTitle: cachedFailureMessage ? "Showing cached data" : null,
         statusMessage: cachedFailureMessage ? `Refresh failed: ${cachedFailureMessage}` : null,
-        primary: createQuotaRowViewModel(primaryQuota, prediction, "primary", percentDisplayMode),
-        secondary: createQuotaRowViewModel(
-            secondaryQuota,
-            prediction,
-            "secondary",
-            percentDisplayMode,
-        ),
+        usageItems: quotas.map((quota) => ({
+            id: quota.id,
+            ...createQuotaRowViewModel(quota, prediction, percentDisplayMode),
+        })),
         plan: formatFooter(snapshot),
         trend: createUsageTrendViewModel(snapshot, history),
     };
 }
 
-function createQuotaRowViewModel(quota, prediction, windowType, percentDisplayMode) {
-    const quotaPrediction = quota ? prediction?.quotas?.[quota.id] : prediction?.[windowType];
+function createQuotaRowViewModel(quota, prediction, percentDisplayMode) {
+    const quotaPrediction = prediction?.quotas?.[quota.id];
     return createUsageItemViewModel({
         visible: Boolean(quota),
-        title: quota?.label ?? (windowType === "primary" ? "Primary" : "Secondary"),
+        title:
+            quota?.limitWindowSeconds != null
+                ? getUsageWindowMetadata(quota.limitWindowSeconds).label
+                : (quota?.label ?? "Usage"),
         value: formatPercentForDisplay(quota?.usedPercent, percentDisplayMode),
         prediction: formatLimitPrediction(quotaPrediction, quota),
-        reset: formatReset(quota, windowType),
+        reset: formatReset(quota),
         percentValue: quota?.usedPercent,
         baselinePercentValue: calculateBaselinePercent(quota),
         percentDisplayMode,
@@ -219,14 +178,16 @@ function createHiddenUsageTrendViewModel() {
 }
 
 export function getUsageTrendSamples(snapshot, history = [], nowSeconds = Date.now() / 1000) {
-    const quotaId = getSecondaryQuota(snapshot)?.id ?? "weekly";
+    const weeklyQuota =
+        snapshot?.quotas.find((quota) => quota.limitWindowSeconds === TREND_LOOKBACK_SECONDS) ??
+        snapshot?.quotas.find((quota) => quota.limitWindowSeconds == null && quota.id === "weekly");
+    if (snapshot && !weeklyQuota) return [];
+    const quotaId = weeklyQuota?.id ?? "weekly";
     const minTimestamp = nowSeconds - TREND_LOOKBACK_SECONDS;
     return history
         .map((entry) => {
             const timestamp = new Date(entry.timestamp).getTime() / 1000;
-            const quota =
-                entry.quotas.find((item) => item.id === quotaId) ??
-                entry.quotas.find((item) => item.id === "weekly");
+            const quota = entry.quotas.find((item) => item.id === quotaId);
             return {
                 timestamp,
                 usedPercent: quota?.usedPercent,
@@ -321,10 +282,10 @@ export function convertPercentForDisplay(value, displayMode) {
     return displayMode === "left" ? 100 - percent : percent;
 }
 
-export function formatReset(quota, windowType) {
+export function formatReset(quota) {
     if (!quota) return "resets in --";
     if (quota.resetDescription) return quota.resetDescription;
-    const useDate = windowType === "secondary" ? true : false;
+    const useDate = quota.limitWindowSeconds >= 86_400;
     const relative = formatDuration(quota.resetAfterSeconds);
     const absolute = formatUnixTimestamp(quota.resetAt, useDate);
     if (relative === "--" && absolute === "--") return "resets in --";

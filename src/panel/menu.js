@@ -22,26 +22,24 @@ export class CodexMeterPopupMenu {
         this.headerItem = this._createHeaderItem();
         this.errorItem = this._createErrorItem();
         this.statusItem = this._createStatusItem();
-        this.primaryItem = this._createUsageItem("Session (5h)");
-        this.secondaryItem = this._createUsageItem("Week");
+        this.usageItems = [];
         this.trendItem = this._createTrendItem();
         this.footerItem = this._createFooterItem();
     }
 
     addToMenu(menu) {
+        this._menu = menu;
         menu.addMenuItem(this.headerItem);
         menu.addMenuItem(this.errorItem);
         menu.addMenuItem(this.statusItem);
-        menu.addMenuItem(this.primaryItem);
-        menu.addMenuItem(this.secondaryItem);
+        for (const item of this.usageItems) menu.addMenuItem(item);
         menu.addMenuItem(this.trendItem);
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         menu.addMenuItem(this.footerItem);
     }
 
     syncBars() {
-        this.primaryItem.usageBar.sync();
-        this.secondaryItem.usageBar.sync();
+        for (const item of this.usageItems) item.usageBar.sync();
     }
 
     setTrend(viewModel) {
@@ -59,6 +57,20 @@ export class CodexMeterPopupMenu {
             } else {
                 bar.add_style_class_name("cx-trend-bar-empty");
             }
+        }
+    }
+
+    setUsageItems(viewModels) {
+        while (this.usageItems.length > viewModels.length) {
+            this.usageItems.pop().destroy();
+        }
+        while (this.usageItems.length < viewModels.length) {
+            const item = this._createUsageItem("Usage");
+            this._menu?.addMenuItem(item, 3 + this.usageItems.length);
+            this.usageItems.push(item);
+        }
+        for (let index = 0; index < viewModels.length; index += 1) {
+            this.setUsageItem(this.usageItems[index], viewModels[index]);
         }
     }
 

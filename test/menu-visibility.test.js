@@ -3,7 +3,7 @@ import { registerHooks } from "node:module";
 import test from "node:test";
 
 const menuUrl = new URL("../src/panel/menu.js", import.meta.url).href;
-// Stub GNOME actors so banner construction and expansion can run without GNOME Shell.
+// Stub GNOME actors so menu construction and updates can run without GNOME Shell.
 const stubUrl = `data:text/javascript,${encodeURIComponent(
     `class Actor {
         constructor(options = {}) {
@@ -12,15 +12,33 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
             this.clutter_text = {};
             this.signals = {};
         }
-        add_child(child) { this.children.push(child); }
+        add_child(child) { this.children.push(child); child.parent = this; }
         connect(signal, callback) { this.signals[signal] = callback; }
+        add_style_class_name(name) { (this.classes ??= new Set()).add(name); }
+        remove_style_class_name(name) { this.classes?.delete(name); }
+        destroy() {
+            this.destroyed = true;
+            this.signals = {};
+            for (const child of [...this.children]) child.destroy();
+            if (this.parent) this.parent.children.splice(this.parent.children.indexOf(this), 1);
+        }
     }
     export default {
-        BoxLayout: Actor, Icon: Actor, Label: Actor, Button: Actor,
+        BoxLayout: Actor, Icon: Actor, Label: Actor, Button: Actor, Widget: Actor,
         ActorAlign: { CENTER: 0, FILL: 1 },
     };
     export const PopupBaseMenuItem = Actor;
-    export const createIconButton = null, createTextButton = null, UsageBar = null;`,
+    export const PopupSeparatorMenuItem = Actor;
+    export const createIconButton = null, createTextButton = null;
+    export class UsageBar {
+        constructor() {
+            this.actor = new Actor();
+            this.actor.connect('notify::width', () => this.sync());
+            this.syncCount = 0;
+        }
+        update(state) { this.state = state; }
+        sync() { this.syncCount += 1; }
+    }`,
 )}`;
 const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
@@ -36,6 +54,122 @@ try {
 } finally {
     hooks.deregister();
 }
+
+test("reconciles usage rows through 0 -> 3 -> 1 -> 0 and updates all row data", (t) => {
+    for (const method of [
+        "_createHeaderItem",
+        "_createErrorItem",
+        "_createStatusItem",
+        "_createTrendItem",
+        "_createFooterItem",
+    ]) {
+        t.mock.method(CodexMeterPopupMenu.prototype, method, () => ({}));
+    }
+    const menu = new CodexMeterPopupMenu({});
+    const items = [];
+    menu.addToMenu({
+        addMenuItem(item, position = items.length) {
+            items.splice(position, 0, item);
+            if (item.destroy) {
+                const destroy = item.destroy.bind(item);
+                item.destroy = () => {
+                    items.splice(items.indexOf(item), 1);
+                    destroy();
+                };
+            }
+        },
+    });
+    const fixedItems = [...items];
+    assert.deepEqual(menu.usageItems, []);
+    menu.syncBars();
+    const viewModels = ["a", "b", "c"].map((id, index) => ({
+        id,
+        visible: index !== 1,
+        title: `Usage ${id}`,
+        value: `${index * 10}%`,
+        percentLabel: "used",
+        prediction: `Prediction ${id}`,
+        predictionStyle: ["safe", "warning", "danger"][index],
+        reset: `Reset ${id}`,
+        percentValue: index * 10,
+        displayPercentValue: 100 - index * 10,
+        displayBaselinePercentValue: index * 20,
+    }));
+    const assertRow = (item, vm) => {
+        assert.equal(item.visible, vm.visible);
+        assert.equal(item.titleLabel.text, vm.title);
+        assert.equal(item.valueLabel.text, `${vm.value} ${vm.percentLabel}`);
+        assert.equal(item.predictionLabel.text, vm.prediction);
+        assert.equal(item.resetLabel.text, vm.reset);
+        assert.deepEqual(
+            item.predictionLabel.classes,
+            new Set([
+                vm.predictionStyle === "safe"
+                    ? "cx-color-green"
+                    : vm.predictionStyle === "muted"
+                      ? "cx-muted"
+                      : `cx-color-${vm.predictionStyle}`,
+            ]),
+        );
+        assert.deepEqual(item.usageBar.state, {
+            percentValue: vm.percentValue,
+            displayPercentValue: vm.displayPercentValue,
+            displayBaselinePercentValue: vm.displayBaselinePercentValue,
+        });
+    };
+    menu.setUsageItems(viewModels);
+    const rows = [...menu.usageItems];
+    assert.deepEqual(items, [...fixedItems.slice(0, 3), ...rows, ...fixedItems.slice(3)]);
+    rows.forEach((item, index) => assertRow(item, viewModels[index]));
+    menu.syncBars();
+    assert.deepEqual(
+        rows.map((item) => item.usageBar.syncCount),
+        [1, 1, 1],
+    );
+
+    const reordered = [...viewModels].reverse();
+    menu.setUsageItems(reordered);
+    assert.deepEqual(menu.usageItems, rows);
+    rows.forEach((item, index) => assertRow(item, reordered[index]));
+    assert.deepEqual(items, [...fixedItems.slice(0, 3), ...rows, ...fixedItems.slice(3)]);
+
+    const updated = {
+        ...viewModels[2],
+        visible: false,
+        predictionStyle: "muted",
+        title: "Changed",
+        value: "42%",
+        percentLabel: "left",
+        prediction: "",
+        reset: "Later",
+        percentValue: 42,
+        displayPercentValue: 58,
+        displayBaselinePercentValue: null,
+    };
+    menu.setUsageItems([updated]);
+    assert.equal(menu.usageItems[0], rows[0]);
+    assertRow(rows[0], updated);
+    for (const row of rows.slice(1)) {
+        assert.equal(row.destroyed, true);
+        assert.equal(row.usageBar.actor.destroyed, true);
+        assert.deepEqual(row.usageBar.actor.signals, {});
+    }
+    assert.deepEqual(items, [...fixedItems.slice(0, 3), rows[0], ...fixedItems.slice(3)]);
+    menu.syncBars();
+    assert.deepEqual(
+        rows.map((item) => item.usageBar.syncCount),
+        [2, 1, 1],
+    );
+    menu.setUsageItems([]);
+    menu.syncBars();
+    assert.equal(rows[0].destroyed, true);
+    assert.deepEqual(menu.usageItems, []);
+    assert.deepEqual(items, fixedItems);
+    assert.deepEqual(
+        rows.map((item) => item.usageBar.syncCount),
+        [2, 1, 1],
+    );
+});
 
 test("banners preserve expansion defaults and user toggles across detail updates", () => {
     const menu = Object.create(CodexMeterPopupMenu.prototype);
@@ -116,26 +250,22 @@ test("setError shows and clears the error banner without changing detail expansi
 });
 
 test("setError never writes view-model-owned usage or trend visibility", () => {
-    for (const primaryVisible of [false, true]) {
-        for (const secondaryVisible of [false, true]) {
+    for (const rowVisible of [false, true]) {
+        for (const rowCount of [0, 1, 3]) {
             for (const trendVisible of [false, true]) {
                 const menu = Object.create(CodexMeterPopupMenu.prototype);
                 menu.errorItem = { visible: false, setDetails() {} };
-                for (const [name, visible] of [
-                    ["primaryItem", primaryVisible],
-                    ["secondaryItem", secondaryVisible],
-                    ["trendItem", trendVisible],
-                ]) {
-                    menu[name] = Object.defineProperty({}, "visible", {
+                const actor = (visible) =>
+                    Object.defineProperty({}, "visible", {
                         get: () => visible,
-                        set: () => assert.fail(`setError must not write ${name}.visible`),
+                        set: () => assert.fail("setError must not write usage or trend visibility"),
                     });
-                }
+                menu.usageItems = Array.from({ length: rowCount }, () => actor(rowVisible));
+                menu.trendItem = actor(trendVisible);
 
                 for (const message of ["Unable to refresh", null, ""]) {
                     menu.setError(message);
-                    assert.equal(menu.primaryItem.visible, primaryVisible);
-                    assert.equal(menu.secondaryItem.visible, secondaryVisible);
+                    for (const item of menu.usageItems) assert.equal(item.visible, rowVisible);
                     assert.equal(menu.trendItem.visible, trendVisible);
                 }
             }

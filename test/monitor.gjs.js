@@ -44,7 +44,13 @@ const workflows = [
 function createFixture(workflow) {
     const snapshot = { bankedResetCount: 2 };
     const history = [{ timestamp: "history" }];
-    const prediction = { label: "prediction" };
+    const prediction = {
+        quotas: {
+            session: { estimatedLimitAt: 1_700_014_400, trend: "unsafe" },
+            weekly: { estimatedLimitAt: null, trend: "safe" },
+            "window-3600": { estimatedLimitAt: null, trend: "unknown" },
+        },
+    };
     const events = [];
     const changes = [];
     const notifications = [];
@@ -59,7 +65,7 @@ function createFixture(workflow) {
     const monitor = Object.assign(Object.create(CodexMonitor.prototype), {
         _stopped: false,
         _snapshot: null,
-        _prediction: { label: "old prediction" },
+        _prediction: { quotas: {} },
         _history: [],
         _errorMessage: null,
         _cachedFailureMessage: null,
