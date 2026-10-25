@@ -21,7 +21,7 @@
 ## Requirements
 
 - [ChatGPT desktop app](https://chatgpt.com/download/) or [Codex CLI](https://developers.openai.com/codex/cli), signed in with your ChatGPT account on the same machine
-- GNOME Shell 45+
+- GNOME Shell 45-50
 
 ## Install
 
@@ -55,7 +55,7 @@ gnome-extensions uninstall codex-meter@slobbe.github.io
 
 ## Troubleshooting
 
-- **Extension not showing:** check that it is enabled in the Extensions app, then log out and back in.
+- **Extension not showing:** check that it is enabled, then log out and back in.
 - **Usage not loading or authentication expired:** sign back in through the ChatGPT desktop app or Codex CLI, and check your internet connection.
 - **Still stuck:** [open an issue](https://github.com/slobbe/codex-meter/issues) with your GNOME Shell version and the error message. Never share your auth file or tokens.
 
