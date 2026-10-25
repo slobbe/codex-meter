@@ -73,6 +73,6 @@ Usage data is cached locally in `~/.cache/codex-meter` and `~/.local/state/codex
 
 [GPL-3.0-or-later](LICENSE)
 
-<p align="center" style="font-style: italic">
-    Not affiliated with or endorsed by OpenAI.
-</p>
+<div align="center">
+    <i>Not affiliated with or endorsed by OpenAI.</i>
+</div>
