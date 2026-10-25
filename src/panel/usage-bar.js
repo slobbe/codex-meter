@@ -25,8 +25,7 @@ export class UsageBar {
         });
         this._barFill = new St.Widget({
             y_expand: true,
-            style_class:
-                variant === "menu" ? "cx-usage-bar-fill" : "cx-usage-bar-fill cx-panel-bar-fill",
+            style_class: "cx-usage-bar-fill",
         });
         this._barTrack.add_child(this._barFill);
         this._barTrack.add_child(new St.Widget({ x_expand: true }));

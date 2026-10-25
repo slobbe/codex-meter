@@ -1,6 +1,7 @@
 import GLib from "gi://GLib";
 import { CACHE_DIR } from "../../io/paths.js";
 import { readJsonFile, writeJsonFile } from "../../io/files.js";
+import { toListResponse } from "./response.js";
 
 function getBankedResetSnapshotPath() {
     return GLib.build_filenamev([CACHE_DIR, "codex", "banked-reset-snapshot.json"]);
@@ -16,53 +17,14 @@ export async function writeBankedResetSnapshot(response) {
 export async function readBankedResetSnapshot() {
     try {
         const raw = await readJsonFile(getBankedResetSnapshotPath());
-        return toBankedResetSnapshot(raw);
+        if (!isObject(raw) || !Number.isFinite(raw.fetchedAt)) {
+            return null;
+        }
+        toListResponse(raw);
+        return raw;
     } catch {
         return null;
     }
-}
-
-function toBankedResetSnapshot(value) {
-    if (!isBankedResetSnapshot(value)) {
-        return null;
-    }
-    return value;
-}
-
-function isBankedResetSnapshot(value) {
-    if (!isObject(value)) {
-        return false;
-    }
-    return (
-        Number.isFinite(value.fetchedAt) &&
-        Number.isFinite(value.available_count) &&
-        Array.isArray(value.credits) &&
-        value.credits.every(isBankedResetCredit)
-    );
-}
-
-function isBankedResetCredit(value) {
-    if (!isObject(value)) {
-        return false;
-    }
-    return (
-        typeof value.id === "string" &&
-        value.id.trim().length > 0 &&
-        typeof value.status === "string" &&
-        [
-            "reset_type",
-            "granted_at",
-            "expires_at",
-            "profile_image_url",
-            "profile_user_id",
-            "title",
-            "description",
-        ].every((key) => isOptionalString(value[key]))
-    );
-}
-
-function isOptionalString(value) {
-    return value === undefined || value === null || typeof value === "string";
 }
 
 function isObject(value) {

@@ -79,9 +79,6 @@ export class CodexMeterPopupMenu {
     setError(message) {
         const showError = Boolean(message);
         this.errorItem.visible = showError;
-        this.primaryItem.visible = !showError;
-        this.secondaryItem.visible = !showError;
-        this.trendItem.visible = !showError && this.trendItem.visible;
         this.errorItem.setDetails(message, true);
     }
 
@@ -214,7 +211,6 @@ export class CodexMeterPopupMenu {
             title: "Unable to load usage",
             colorStyleClass: "cx-color-danger",
             messageStyleClass: "cx-error-message-danger",
-            expanded: true,
         });
     }
 
@@ -224,11 +220,10 @@ export class CodexMeterPopupMenu {
             title: "",
             colorStyleClass: "cx-color-warning",
             messageStyleClass: "cx-error-message-warning",
-            expanded: false,
         });
     }
 
-    _createBannerItem({ iconName, title, colorStyleClass, messageStyleClass, expanded }) {
+    _createBannerItem({ iconName, title, colorStyleClass, messageStyleClass }) {
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
@@ -282,9 +277,8 @@ export class CodexMeterPopupMenu {
         item.add_child(box);
         item.visible = false;
         item.titleLabel = titleLabel;
-        item.messageLabel = messageLabel;
 
-        let isExpanded = expanded;
+        let isExpanded = false;
         const setExpanded = (value) => {
             isExpanded = value && messageLabel.text !== "";
             messageLabel.visible = isExpanded;
@@ -302,7 +296,7 @@ export class CodexMeterPopupMenu {
             headingButton.can_focus = hasDetails;
             setExpanded(changed ? expandWhenChanged : isExpanded);
         };
-        item.setDetails("", expanded);
+        item.setDetails("", false);
         return item;
     }
 

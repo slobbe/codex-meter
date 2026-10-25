@@ -16,15 +16,13 @@ export class PeriodicTask {
         this.task = task;
     }
 
-    start({ runImmediately = false } = {}) {
+    start() {
         if (this.started) {
             return;
         }
         this.started = true;
         this.schedule();
-        if (runImmediately) {
-            void this.run();
-        }
+        void this.run();
     }
 
     stop() {

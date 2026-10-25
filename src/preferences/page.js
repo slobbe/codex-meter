@@ -163,7 +163,6 @@ function createBoundComboRow({ settings, key, title, options }) {
 function createBoundSwitchRow({ settings, key, title, subtitle }) {
     const rowOptions = {
         title,
-        active: settings.get_boolean(key),
     };
     if (subtitle !== undefined) {
         rowOptions.subtitle = subtitle;

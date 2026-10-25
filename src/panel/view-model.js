@@ -42,7 +42,7 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
     if (!viewModel.showLabel) return viewModel;
     if (!hasTopPanelUsage) return viewModel;
     if (!snapshot) {
-        viewModel.label = errorMessage ? "!" : "--";
+        viewModel.label = "--";
         return viewModel;
     }
     const parts = [];
@@ -111,43 +111,31 @@ export function createMenuViewModel(
         errorMessage: null,
         statusTitle: cachedFailureMessage ? "Showing cached data" : null,
         statusMessage: cachedFailureMessage ? `Refresh failed: ${cachedFailureMessage}` : null,
-        primary: createUsageItemViewModel({
-            visible: Boolean(primaryQuota),
-            title: primaryQuota?.label ?? "Primary",
-            value: formatPercentForDisplay(primaryQuota?.usedPercent, percentDisplayMode),
-            prediction: formatLimitPrediction(
-                primaryQuota ? prediction?.quotas?.[primaryQuota.id] : prediction?.primary,
-                primaryQuota,
-                "primary",
-            ),
-            reset: formatReset(primaryQuota, "primary"),
-            percentValue: primaryQuota?.usedPercent,
-            baselinePercentValue: calculateBaselinePercent(primaryQuota),
+        primary: createQuotaRowViewModel(primaryQuota, prediction, "primary", percentDisplayMode),
+        secondary: createQuotaRowViewModel(
+            secondaryQuota,
+            prediction,
+            "secondary",
             percentDisplayMode,
-            predictionStyle: getPredictionStyleClass(
-                primaryQuota ? prediction?.quotas?.[primaryQuota.id] : prediction?.primary,
-            ),
-        }),
-        secondary: createUsageItemViewModel({
-            visible: Boolean(secondaryQuota),
-            title: secondaryQuota?.label ?? "Secondary",
-            value: formatPercentForDisplay(secondaryQuota?.usedPercent, percentDisplayMode),
-            prediction: formatLimitPrediction(
-                secondaryQuota ? prediction?.quotas?.[secondaryQuota.id] : prediction?.secondary,
-                secondaryQuota,
-                "secondary",
-            ),
-            reset: formatReset(secondaryQuota, "secondary"),
-            percentValue: secondaryQuota?.usedPercent,
-            baselinePercentValue: calculateBaselinePercent(secondaryQuota),
-            percentDisplayMode,
-            predictionStyle: getPredictionStyleClass(
-                secondaryQuota ? prediction?.quotas?.[secondaryQuota.id] : prediction?.secondary,
-            ),
-        }),
+        ),
         plan: formatFooter(snapshot),
         trend: createUsageTrendViewModel(snapshot, history),
     };
+}
+
+function createQuotaRowViewModel(quota, prediction, windowType, percentDisplayMode) {
+    const quotaPrediction = quota ? prediction?.quotas?.[quota.id] : prediction?.[windowType];
+    return createUsageItemViewModel({
+        visible: Boolean(quota),
+        title: quota?.label ?? (windowType === "primary" ? "Primary" : "Secondary"),
+        value: formatPercentForDisplay(quota?.usedPercent, percentDisplayMode),
+        prediction: formatLimitPrediction(quotaPrediction, quota, windowType),
+        reset: formatReset(quota, windowType),
+        percentValue: quota?.usedPercent,
+        baselinePercentValue: calculateBaselinePercent(quota),
+        percentDisplayMode,
+        predictionStyle: getPredictionStyleClass(quotaPrediction),
+    });
 }
 
 export function createUsageItemViewModel({
@@ -383,17 +371,10 @@ export function formatUnixTimestamp(value, date = true) {
  */
 export function formatTimestamp(value, date = true) {
     if (!value) return "--";
-    const datetimeFormat = new Intl.DateTimeFormat(undefined, {
-        day: "numeric",
-        month: "short",
-        hour: "numeric",
-        minute: "2-digit",
-    });
-    const timeFormat = new Intl.DateTimeFormat(undefined, {
-        hour: "numeric",
-        minute: "2-digit",
-    });
-    const format = date ? datetimeFormat : timeFormat;
+    const options = date
+        ? { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }
+        : { hour: "numeric", minute: "2-digit" };
+    const format = new Intl.DateTimeFormat(undefined, options);
     try {
         return format.format(new Date(value));
     } catch (_error) {

@@ -7,10 +7,20 @@ import {
     toListResponse,
 } from "../src/codex/banked-resets/response.js";
 
-function assertUnexpectedResponse(fn) {
+function assertUnexpectedResponse(fn, detail) {
     assert.throws(fn, (error) => {
         assert.equal(error.name, "CodexError");
         assert.equal(error.kind, "unexpected-response");
+        assert.equal(
+            error.message,
+            "Codex returned banked reset data this extension does not understand.",
+        );
+        if (detail !== undefined) {
+            assert.equal(
+                error.technicalMessage,
+                `Unexpected Codex banked reset API response shape: ${detail}`,
+            );
+        }
         return true;
     });
 }
@@ -39,6 +49,85 @@ test("throws unexpected-response when available_count is missing", () => {
 
 test("throws unexpected-response when credits is not an array", () => {
     assertUnexpectedResponse(() => toListResponse({ available_count: 0, credits: null }));
+});
+
+const optionalCreditFields = [
+    "reset_type",
+    "granted_at",
+    "expires_at",
+    "profile_image_url",
+    "profile_user_id",
+    "title",
+    "description",
+];
+
+test("accepts optional credit fields as absent, undefined, null, or strings", () => {
+    for (const value of [undefined, null, "", "not necessarily a date or URL"]) {
+        const response = {
+            available_count: -0.5,
+            credits: [
+                { id: " credit-a ", status: "" },
+                {
+                    id: "credit-b",
+                    status: "unknown-future-status",
+                    ...Object.fromEntries(optionalCreditFields.map((key) => [key, value])),
+                    extra: true,
+                },
+            ],
+            extra: true,
+        };
+        assert.equal(toListResponse(response), response);
+    }
+    const empty = { available_count: 0, credits: [] };
+    assert.equal(toListResponse(empty), empty);
+});
+
+test("rejects invalid list fields with exact API errors", () => {
+    for (const available_count of [undefined, null, "1", NaN, Infinity, -Infinity]) {
+        assertUnexpectedResponse(
+            () => toListResponse({ available_count, credits: [] }),
+            "available_count is missing or not a finite number",
+        );
+    }
+    for (const credits of [undefined, null, {}, "credits", 1]) {
+        assertUnexpectedResponse(
+            () => toListResponse({ available_count: 0, credits }),
+            "credits is missing or not an array",
+        );
+    }
+});
+
+test("rejects invalid credits with exact indexed API errors", () => {
+    const validCredit = { id: "credit-a", status: "available" };
+    const invalidCredits = [
+        ...[null, [], "credit", 1, undefined].map((credit) => [credit, "is not an object"]),
+        ...[undefined, null, "", " \t ", 1].map((id) => [
+            { ...validCredit, id },
+            ".id is missing or not a non-empty string",
+        ]),
+        ...[undefined, null, 1, false, {}].map((status) => [
+            { ...validCredit, status },
+            ".status is missing or not a string",
+        ]),
+    ];
+    for (const [credit, detail] of invalidCredits) {
+        assertUnexpectedResponse(
+            () => toListResponse({ available_count: 1, credits: [validCredit, credit] }),
+            `credits[1]${detail.startsWith(".") ? "" : " "}${detail}`,
+        );
+    }
+    for (const key of optionalCreditFields) {
+        for (const value of [1, false, [], {}]) {
+            assertUnexpectedResponse(
+                () =>
+                    toListResponse({
+                        available_count: 1,
+                        credits: [{ ...validCredit, [key]: value }],
+                    }),
+                `credits[0].${key} is not a string`,
+            );
+        }
+    }
 });
 
 test("selectCreditToRedeem returns null for empty credits", () => {

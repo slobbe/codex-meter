@@ -68,11 +68,11 @@ export class CodexMonitor {
     start() {
         if (this._stopped) return;
         if (this._autoApplyBankedReset) {
-            this._bankedResetRefreshTask.start({ runImmediately: true });
+            this._bankedResetRefreshTask.start();
         }
         void this._loadCachedSnapshot().finally(() => {
             if (this._stopped) return;
-            this._usageRefreshTask.start({ runImmediately: true });
+            this._usageRefreshTask.start();
         });
     }
 
@@ -168,7 +168,7 @@ export class CodexMonitor {
                 const wasEnabled = this._autoApplyBankedReset;
                 this._autoApplyBankedReset = enabled;
                 if (enabled && !wasEnabled) {
-                    this._bankedResetRefreshTask.start({ runImmediately: true });
+                    this._bankedResetRefreshTask.start();
                 } else if (!enabled && wasEnabled) {
                     this._bankedResetRefreshTask.stop();
                     this._bankedResetRefreshCancellable?.cancel();
@@ -193,11 +193,7 @@ export class CodexMonitor {
             await this._loadHistory();
             this._errorMessage = null;
             this._cachedFailureMessage = null;
-            try {
-                this._prediction = await this._usageService.predict(this._snapshot);
-            } catch (error) {
-                this._prediction = null;
-            }
+            await this._loadPrediction(this._snapshot);
         } catch (error) {
             if (this._stopped && isCancellationError(error)) return;
             const failureMessage = formatRefreshFailure(error);
@@ -227,11 +223,7 @@ export class CodexMonitor {
             if (this._stopped || !snapshot || this._snapshot || this._errorMessage) return;
             this._snapshot = snapshot;
             await this._loadHistory();
-            try {
-                this._prediction = await this._usageService.predict(snapshot);
-            } catch (error) {
-                this._prediction = null;
-            }
+            await this._loadPrediction(snapshot);
             if (!this._stopped) this._emitChange();
         } catch (error) {}
     }
@@ -244,14 +236,18 @@ export class CodexMonitor {
             if (this._snapshot) return true;
             this._snapshot = snapshot;
             await this._loadHistory();
-            try {
-                this._prediction = await this._usageService.predict(snapshot);
-            } catch (error) {
-                this._prediction = null;
-            }
+            await this._loadPrediction(snapshot);
             return true;
         } catch (error) {
             return false;
+        }
+    }
+
+    async _loadPrediction(snapshot) {
+        try {
+            this._prediction = await this._usageService.predict(snapshot);
+        } catch (error) {
+            this._prediction = null;
         }
     }
 
