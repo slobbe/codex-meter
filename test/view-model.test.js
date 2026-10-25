@@ -4,7 +4,9 @@ import test from "node:test";
 import {
     createMenuViewModel,
     createPanelBarViewModel,
+    formatDuration,
     formatFooter,
+    formatReset,
     formatLimitPrediction,
     formatTimestamp,
 } from "../src/panel/view-model.js";
@@ -64,31 +66,52 @@ test("formats timestamps with exactly one formatter using the selected options",
     assert.equal(formatter.mock.callCount(), callsBefore);
 });
 
+test("formats durations using the largest unit and the unit below, down to minutes", () => {
+    for (const [seconds, expected] of [
+        [129_600, "1d 12h"],
+        [86_460, "1d 0h"],
+        [86_399, "23h 59m"],
+        [45_600, "12h 40m"],
+        [12_300, "3h 25m"],
+        [3_600, "1h 0m"],
+        [3_599, "59m"],
+        [60, "1m"],
+        [59, "0m"],
+        [0, "0m"],
+        [-60, "0m"],
+        [NaN, "--"],
+        [Infinity, "--"],
+        [null, "--"],
+        [undefined, "--"],
+    ]) {
+        assert.equal(formatDuration(seconds), expected);
+    }
+});
+
+test("formats reset durations independently of the quota window", () => {
+    for (const windowType of ["primary", "secondary"]) {
+        assert.equal(formatReset({ resetAfterSeconds: 45_600 }, windowType), "resets in 12h 40m");
+        assert.equal(formatReset({ resetAfterSeconds: 1_500 }, windowType), "resets in 25m");
+    }
+});
+
 test("formats reached limits explicitly", () => {
     assert.equal(
-        formatLimitPrediction(
-            { trend: "limit reached", estimatedLimitAt: null },
-            sessionQuota,
-            "primary",
-        ),
+        formatLimitPrediction({ trend: "limit reached", estimatedLimitAt: null }, sessionQuota),
         "Limit reached",
     );
 });
 
 test("formats safe limits actionably", () => {
     assert.equal(
-        formatLimitPrediction({ trend: "safe", estimatedLimitAt: null }, sessionQuota, "primary"),
+        formatLimitPrediction({ trend: "safe", estimatedLimitAt: null }, sessionQuota),
         "Safe at current pace",
     );
 });
 
 test("keeps unknown predictions blank", () => {
     assert.equal(
-        formatLimitPrediction(
-            { trend: "unknown", estimatedLimitAt: null },
-            sessionQuota,
-            "primary",
-        ),
+        formatLimitPrediction({ trend: "unknown", estimatedLimitAt: null }, sessionQuota),
         "",
     );
 });
@@ -98,9 +121,8 @@ test("formats unsafe predictions relative to reset", () => {
         formatLimitPrediction(
             { trend: "unsafe", estimatedLimitAt: sessionQuota.resetAt - 7_200 },
             sessionQuota,
-            "primary",
         ),
-        "Will hit limit ~2h before reset",
+        "Will hit limit ~2h 0m before reset",
     );
 });
 
@@ -279,8 +301,8 @@ test("preserves unsafe prediction durations and reset overrides for each row", (
         },
     );
 
-    assert.equal(menu.primary.prediction, "Will hit limit ~2h before reset");
-    assert.equal(menu.secondary.prediction, "Will hit limit ~2d before reset");
+    assert.equal(menu.primary.prediction, "Will hit limit ~2h 1m before reset");
+    assert.equal(menu.secondary.prediction, "Will hit limit ~2d 2h before reset");
     assert.equal(menu.primary.predictionStyle, "warning");
     assert.equal(menu.secondary.predictionStyle, "warning");
     assert.equal(menu.primary.reset, "Session reset override");

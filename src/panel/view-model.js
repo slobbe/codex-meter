@@ -129,7 +129,7 @@ function createQuotaRowViewModel(quota, prediction, windowType, percentDisplayMo
         visible: Boolean(quota),
         title: quota?.label ?? (windowType === "primary" ? "Primary" : "Secondary"),
         value: formatPercentForDisplay(quota?.usedPercent, percentDisplayMode),
-        prediction: formatLimitPrediction(quotaPrediction, quota, windowType),
+        prediction: formatLimitPrediction(quotaPrediction, quota),
         reset: formatReset(quota, windowType),
         percentValue: quota?.usedPercent,
         baselinePercentValue: calculateBaselinePercent(quota),
@@ -325,7 +325,7 @@ export function formatReset(quota, windowType) {
     if (!quota) return "resets in --";
     if (quota.resetDescription) return quota.resetDescription;
     const useDate = windowType === "secondary" ? true : false;
-    const relative = formatDuration(quota.resetAfterSeconds, windowType);
+    const relative = formatDuration(quota.resetAfterSeconds);
     const absolute = formatUnixTimestamp(quota.resetAt, useDate);
     if (relative === "--" && absolute === "--") return "resets in --";
     if (relative === "--") return `resets in -- (${absolute})`;
@@ -333,7 +333,7 @@ export function formatReset(quota, windowType) {
     return `resets in ${relative} (${absolute})`;
 }
 
-export function formatDuration(totalSeconds, windowType) {
+export function formatDuration(totalSeconds) {
     if (!Number.isFinite(totalSeconds)) return "--";
     let remaining = Math.max(0, Math.floor(totalSeconds));
     const days = Math.floor(remaining / 86400);
@@ -341,13 +341,9 @@ export function formatDuration(totalSeconds, windowType) {
     const hours = Math.floor(remaining / 3600);
     remaining %= 3600;
     const minutes = Math.floor(remaining / 60);
-    if (windowType === "primary") return `${hours}h ${minutes}m`;
-    if (windowType === "secondary") return `${days}d ${hours}h`;
-    const parts = [];
-    if (days) parts.push(`${days}d`);
-    if (hours) parts.push(`${hours}h`);
-    if (minutes || parts.length === 0) parts.push(`${minutes}m`);
-    return parts.join(" ");
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
 }
 
 /**
@@ -393,7 +389,7 @@ export function secondsUntil(unixTimestamp) {
     return Math.max(0, Math.round(unixTimestamp - Date.now() / 1000));
 }
 
-export function formatLimitPrediction(prediction, quota, windowType) {
+export function formatLimitPrediction(prediction, quota) {
     if (prediction?.trend === "limit reached") return "Limit reached";
     if (prediction?.trend === "safe") return "Safe at current pace";
     if (prediction?.trend !== "unsafe" || !Number.isFinite(prediction.estimatedLimitAt)) {
@@ -404,9 +400,9 @@ export function formatLimitPrediction(prediction, quota, windowType) {
             0,
             Math.round(quota?.resetAt - prediction.estimatedLimitAt),
         );
-        return `Will hit limit ~${formatCompactDuration(secondsBeforeReset, windowType)} before reset`;
+        return `Will hit limit ~${formatDuration(secondsBeforeReset)} before reset`;
     }
-    return `Will hit limit in ~${formatCompactDuration(secondsUntil(prediction.estimatedLimitAt), windowType)}`;
+    return `Will hit limit in ~${formatDuration(secondsUntil(prediction.estimatedLimitAt))}`;
 }
 
 export function getPredictionStyleClass(prediction) {
@@ -451,20 +447,6 @@ export function formatPlan(value) {
         .filter(Boolean)
         .map((part) => `${part[0].toUpperCase()}${part.slice(1)}`)
         .join(" ");
-}
-
-function formatCompactDuration(totalSeconds, windowType) {
-    if (!Number.isFinite(totalSeconds)) return "--";
-    const seconds = Math.max(0, Math.round(totalSeconds));
-    const days = Math.floor(seconds / 86400);
-    const hours = Math.floor((seconds % 86400) / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    if (windowType === "secondary" && days > 0) {
-        return hours >= 12 ? `${days + 1}d` : `${days}d`;
-    }
-    if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
-    if (hours > 0) return minutes >= 30 ? `${hours + 1}h` : `${hours}h`;
-    return `${Math.max(1, minutes)}m`;
 }
 
 export function normalizePercent(value) {
