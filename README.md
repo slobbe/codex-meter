@@ -13,19 +13,19 @@
 
 ## Features
 
-- Displays current 5-hour session and weekly Codex usage.
-- Shows a weekly usage trend and predicts whether limits will be hit before reset.
-- Shows and redeems available banked resets.
-- Can automatically apply a banked reset within one hour of expiry.
+- 5-hour and weekly Codex usage limits.
+- Usage trends and limit-hit predictions.
+- Banked reset redemption.
+- Automatic redemption of banked resets before expiration.
 
 ## Requirements
 
 - [ChatGPT desktop app](https://chatgpt.com/download/) or [Codex CLI](https://developers.openai.com/codex/cli), signed in with your ChatGPT account on the same machine
-- GNOME Shell 45-50
+- GNOME Shell 45+
 
 ## Install
 
-Install the latest stable release with the [installer script](scripts/install.sh) directly:
+Install the latest stable release with the [installer script](scripts/install.sh):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/slobbe/codex-meter/main/scripts/install.sh | sh
@@ -33,7 +33,10 @@ curl -fsSL https://raw.githubusercontent.com/slobbe/codex-meter/main/scripts/ins
 
 Run the script again to update.
 
-### Manual installation
+If GNOME does not pick it up immediately, log out and back in.
+
+<details>
+<summary>Manual installation</summary>
 
 1. Download the [latest release](https://github.com/slobbe/codex-meter/releases/latest) zip.
 2. Install and enable the extension with:
@@ -43,7 +46,7 @@ gnome-extensions install --force codex-meter@slobbe.github.io-<version>.zip
 gnome-extensions enable codex-meter@slobbe.github.io
 ```
 
-If GNOME does not pick it up immediately, log out and back in.
+</details>
 
 ## Uninstall
 
@@ -61,7 +64,7 @@ gnome-extensions uninstall codex-meter@slobbe.github.io
 
 ## Limitations
 
-Codex Meter relies on ChatGPT backend endpoints, so upstream changes may temporarily affect functionality.
+Codex Meter relies on ChatGPT backend endpoints, so upstream changes may affect functionality.
 
 ## Privacy
 
@@ -74,5 +77,5 @@ Usage data is cached locally in `~/.cache/codex-meter` and `~/.local/state/codex
 [GPL-3.0-or-later](LICENSE)
 
 <div align="center">
-    <i>Not affiliated with or endorsed by OpenAI.</i>
+<i>Not affiliated with or endorsed by OpenAI.</i>
 </div>
