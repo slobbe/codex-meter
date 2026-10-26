@@ -10,6 +10,15 @@
     icon-size: 1.05em;
 }
 
+.cx-panel-ring {
+    width: 1.2em;
+    height: 1.2em;
+}
+
+.cx-panel-ring .cx-panel-icon {
+    icon-size: 0.70em;
+}
+
 .cx-usage-label,
 .cx-usage-value {
     font-variant-numeric: tabular-nums;

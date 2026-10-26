@@ -19,7 +19,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         ActorAlign: { CENTER: 0, START: 1 }, KEY_Escape: 27,
     };
     export const Button = Actor;
-    export const readSettings = null, CodexMeterPopupMenu = null, UsageBar = null;
+    export const readSettings = null, CodexMeterPopupMenu = null, UsageBar = null, UsageRing = null;
     export const createMenuViewModel = null, createPanelBarViewModel = null;
     export const modalState = { canGrab: false, dialogs: [] };
     export class ModalDialog {

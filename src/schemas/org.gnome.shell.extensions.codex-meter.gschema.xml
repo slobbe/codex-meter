@@ -16,6 +16,7 @@
       <choices>
         <choice value='text'/>
         <choice value='codex'/>
+        <choice value='codex-ring'/>
         <choice value='openai'/>
       </choices>
     </key>

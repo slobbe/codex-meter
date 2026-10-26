@@ -8,6 +8,7 @@ import { readSettings } from "../preferences/settings.js";
 import { CodexMeterPopupMenu } from "./menu.js";
 import { showBankedResetConfirmation } from "./reset-confirmation.js";
 import { UsageBar } from "./usage-bar.js";
+import { UsageRing } from "./usage-ring.js";
 import { createMenuViewModel, createPanelBarViewModel } from "./view-model.js";
 
 const BANKED_RESET_POPUP_REFRESH_MAX_AGE_MS = 5 * 60 * 1000;
@@ -58,10 +59,12 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             y_align: Clutter.ActorAlign.CENTER,
             style_class: "cx-usage-label",
         });
+        this._usageRing = new UsageRing(this._codexIcon.gicon);
         this._panelBars = this._createPanelBars();
         this._panelBox.add_child(this._prefixLabel);
         this._panelBox.add_child(this._codexIcon);
         this._panelBox.add_child(this._openAiIcon);
+        this._panelBox.add_child(this._usageRing.actor);
         this._panelBox.add_child(this._label);
         this._panelBox.add_child(this._panelBars);
         this.add_child(this._panelBox);
@@ -215,7 +218,11 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         }
         // Keep the two-bar stack's total spacing as the collection grows.
         this._panelBars.set_style(barCount > 2 ? `spacing: ${3 / (barCount - 1)}px;` : null);
-        this._panelBars.visible = viewModel.showBars;
+        const ringStyle = settings.topPanelIndicatorIcon === "codex-ring";
+        const showRing = ringStyle && viewModel.showBars && barCount > 0 && barCount <= 2;
+        this._usageRing.update(showRing ? viewModel.bars : []);
+        this._usageRing.actor.visible = showRing;
+        this._panelBars.visible = viewModel.showBars && !showRing;
         if (barCount > 1) {
             this._panelBars.add_style_class_name("cx-panel-bars-stacked");
         } else {
@@ -229,7 +236,8 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             this._label.remove_style_class_name("cx-usage-label-wide");
         }
         this._prefixLabel.visible = settings.topPanelIndicatorIcon === "text";
-        this._codexIcon.visible = settings.topPanelIndicatorIcon === "codex";
+        this._codexIcon.visible =
+            settings.topPanelIndicatorIcon === "codex" || (ringStyle && !showRing);
         this._openAiIcon.visible = settings.topPanelIndicatorIcon === "openai";
     }
 

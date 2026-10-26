@@ -28,7 +28,7 @@ export function readSettings(settings) {
         topPanelIndicatorIcon:
             topPanelIndicatorIcon === "icon"
                 ? "codex"
-                : ["codex", "openai"].includes(topPanelIndicatorIcon)
+                : ["codex", "codex-ring", "openai"].includes(topPanelIndicatorIcon)
                   ? topPanelIndicatorIcon
                   : "text",
         percentDisplayMode:

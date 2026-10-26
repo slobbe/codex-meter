@@ -47,6 +47,7 @@ function createTopPanelGroup(settings) {
             title: "Icon",
             options: [
                 ["Codex logo", "codex"],
+                ["Codex with circular progress", "codex-ring"],
                 ["OpenAI logo", "openai"],
                 ["'CX'", "text"],
             ],
