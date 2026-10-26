@@ -20,7 +20,8 @@ export class CodexMeterPopupMenu {
         this._onRedeemBankedReset = onRedeemBankedReset;
         this._onOpenPreferences = onOpenPreferences;
         this.refreshItem = new PopupMenu.PopupMenuItem("Refresh");
-        this.refreshItem.connect("activate", () => this._onRefresh());
+        // Mouse and keyboard use activate(); emitting its signal would close the popup.
+        this.refreshItem.activate = () => this._onRefresh();
         this.bankedResetsItem = new PopupMenu.PopupSubMenuMenuItem("Banked resets");
         const resetScrollView = this.bankedResetsItem.menu.actor;
         // Shell chooses NEVER for a short loading row and does not reconsider as content grows.

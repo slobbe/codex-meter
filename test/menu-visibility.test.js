@@ -19,6 +19,15 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
         }
         add_child(child) { this.children.push(child); child.parent = this; }
         connect(signal, callback) { this.signals[signal] = callback; }
+        connect_after(signal, callback) {
+            (this.afterSignals ??= {})[signal] ??= [];
+            this.afterSignals[signal].push(callback);
+        }
+        emit(signal, ...args) {
+            // GObject void signals ignore callback returns and then run AFTER handlers.
+            this.signals[signal]?.(this, ...args);
+            for (const callback of this.afterSignals?.[signal] ?? []) callback(this, ...args);
+        }
         add_style_class_name(name) { (this.classes ??= new Set()).add(name); }
         remove_style_class_name(name) { this.classes?.delete(name); }
         destroy() {
@@ -40,16 +49,36 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
             super(options);
             this.label = new Actor({ text });
         }
+        activate(event) { this.emit('activate', event); }
+        click() { if (this.reactive !== false) this.activate({ type: 'button-release' }); }
+        keyPress(key) {
+            if (this.reactive !== false && (key === 'Return' || key === 'space'))
+                this.activate({ type: 'key-press', key });
+        }
         setSensitive(sensitive) {
             this.sensitive = sensitive;
             this.reactive = sensitive;
             this.can_focus = sensitive;
         }
     }
+    export class NativeMenu extends Actor {
+        constructor() { super(); this.isOpen = true; this.closeCount = 0; }
+        addMenuItem(item) {
+            this.add_child(item);
+            // PopupMenuBase._connectItemSignals uses an AFTER handler to close the top menu.
+            item.connect_after('activate', () => {
+                let menu = this;
+                while (menu.parentMenu) menu = menu.parentMenu;
+                menu.close();
+            });
+            if (item.menu) item.menu.parentMenu = this;
+        }
+        close() { this.isOpen = false; this.closeCount++; }
+    }
     export class PopupSubMenuMenuItem extends PopupMenuItem {
         constructor(text) {
             super(text);
-            this.menu = new Actor();
+            this.menu = new NativeMenu();
             this.menu.actor = new Actor();
             this.menu.actor.vscrollbar_policy = 'never';
             this.menu.close = () => { this.menu.isOpen = false; };
@@ -61,7 +90,6 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
                 this.menu.actor.vscrollbar_policy =
                     this.menu.children.length > 10 ? 'automatic' : 'never';
             };
-            this.menu.addMenuItem = item => this.menu.add_child(item);
             this.menu.removeAll = () => {
                 for (const child of [...this.menu.children]) child.destroy();
             };
@@ -344,7 +372,7 @@ test("noninteractive header precedes usage and activity, then banked resets and 
     assert.equal(menu.headerItem.planLabel.x_align, 2);
     assert.equal(menu.headerItem.planLabel.y_align, menu.headerItem.titleLabel.y_align);
     assert.equal(menu.footerItem, undefined);
-    menu.refreshItem.signals.activate();
+    menu.refreshItem.activate();
     menu.preferencesItem.signals.activate();
     const submenu = menu.bankedResetsItem.menu;
     assert.equal(submenu.signals["open-state-changed"], undefined);
@@ -358,6 +386,66 @@ test("noninteractive header precedes usage and activity, then banked resets and 
     menu.setRefreshing(false);
     assert.equal(menu.refreshItem.sensitive, true);
     assert.equal(menu.refreshItem.label.text, "Refresh");
+});
+
+test("native mouse and keyboard Refresh activation stays open; other actions still close", async () => {
+    const { NativeMenu } = await import(stubUrl);
+    for (const input of ["mouse", "Return", "space"]) {
+        const nativeMenu = new NativeMenu();
+        const calls = [];
+        let finishRefresh;
+        const pending = new Promise((resolve) => {
+            finishRefresh = resolve;
+        });
+        const menu = new CodexMeterPopupMenu({
+            onRefresh: () => {
+                calls.push("refresh");
+                menu.setRefreshing(true);
+                void pending.then(() => menu.setRefreshing(false));
+            },
+            onOpenPreferences: () => {
+                calls.push("preferences");
+                return true;
+            },
+            onRedeemBankedReset: (id) => calls.push(id),
+        });
+        menu.addToMenu(nativeMenu);
+        const activate = (item) => {
+            if (input === "mouse") item.click();
+            else item.keyPress(input);
+        };
+
+        activate(menu.refreshItem);
+        assert.deepEqual(calls, ["refresh"], input);
+        assert.equal(nativeMenu.isOpen, true, input);
+        assert.equal(nativeMenu.closeCount, 0, "must not close and reopen");
+        assert.equal(menu.refreshItem.label.text, "Refreshing…");
+        assert.equal(menu.refreshItem.reactive, false);
+        assert.equal(menu.refreshItem.can_focus, false);
+        activate(menu.refreshItem);
+        assert.deepEqual(calls, ["refresh"], "busy refresh cannot activate again");
+        finishRefresh();
+        await pending;
+        assert.equal(menu.refreshItem.label.text, "Refresh");
+        assert.equal(menu.refreshItem.reactive, true);
+        assert.equal(menu.refreshItem.can_focus, true);
+        assert.equal(nativeMenu.isOpen, true);
+
+        // Returning true from a void activate signal must not suppress Shell's AFTER handler.
+        activate(menu.preferencesItem);
+        assert.deepEqual(calls, ["refresh", "preferences"]);
+        assert.equal(nativeMenu.isOpen, false);
+        assert.equal(nativeMenu.closeCount, 1);
+
+        nativeMenu.isOpen = true;
+        menu.setBankedResets({
+            snapshot: { credits: [{ id: "selected", status: "available", title: "Gift" }] },
+        });
+        activate(menu.bankedResetsItem.menu.children[0]);
+        assert.deepEqual(calls, ["refresh", "preferences", "selected"]);
+        assert.equal(nativeMenu.isOpen, false);
+        assert.equal(nativeMenu.closeCount, 2);
+    }
 });
 
 test("refresh label tracks snapshots and restores the latest timestamp after busy feedback", () => {
