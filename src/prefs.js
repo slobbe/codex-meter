@@ -12,6 +12,5 @@ export default class CodexMeterPreferences extends ExtensionPreferences {
             Gtk.IconTheme.get_for_display(display).add_search_path(`${this.path}/icons`);
         }
         window.add(createPreferencesPage(settings, this.metadata));
-        window.set_default_size(640, 720);
     }
 }
