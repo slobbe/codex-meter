@@ -36,13 +36,17 @@ export function createMenuViewModel(
     cachedFailureMessage = null,
 ) {
     const percentDisplayMode = settings.percentDisplayMode;
+    const refreshLabel = Number.isFinite(snapshot?.fetchedAt)
+        ? `Refresh (last at ${formatUnixTimestamp(snapshot.fetchedAt, false)})`
+        : "Refresh";
     if (errorMessage) {
         return {
             errorMessage,
             statusTitle: null,
             statusMessage: null,
             usageItems: [],
-            plan: "--",
+            accountType: "--",
+            refreshLabel,
             trend: createUsageTrendViewModel(null, []),
         };
     }
@@ -61,7 +65,8 @@ export function createMenuViewModel(
                     }),
                 },
             ],
-            plan: "--",
+            accountType: "--",
+            refreshLabel,
             trend: createUsageTrendViewModel(null, []),
         };
     }
@@ -74,7 +79,8 @@ export function createMenuViewModel(
             id: quota.id,
             ...createQuotaRowViewModel(quota, prediction, percentDisplayMode),
         })),
-        plan: formatFooter(snapshot),
+        accountType: formatPlan(snapshot.planType),
+        refreshLabel,
         trend: createUsageTrendViewModel(snapshot, history),
     };
 }

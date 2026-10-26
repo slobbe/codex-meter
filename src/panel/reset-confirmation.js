@@ -54,7 +54,10 @@ export function showBankedResetConfirmation(credit, { onConfirm, onCancel }) {
             default: true,
         },
     ]);
-    dialog.open();
+    if (!dialog.open()) {
+        dialog.destroy();
+        return null;
+    }
     return dialog;
 }
 

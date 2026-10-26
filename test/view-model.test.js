@@ -64,11 +64,12 @@ test("uses one generic loading row and no rows for errors or empty snapshots", (
             errorMessage: null,
             statusTitle: null,
             statusMessage: null,
-            plan: "--",
+            accountType: "--",
+            refreshLabel: "Refresh",
             trend: { visible: false, title: "Weekly activity", bars: [] },
         });
         const empty = createMenuViewModel(settings, { quotas: [] }, null);
-        assert.deepEqual(empty, { ...loading, usageItems: [], plan: "Updated --" });
+        assert.deepEqual(empty, { ...loading, usageItems: [] });
         for (const snapshot of [null, { quotas: [] }, { quotas: [sessionQuota] }]) {
             const error = createMenuViewModel(
                 settings,
@@ -83,6 +84,42 @@ test("uses one generic loading row and no rows for errors or empty snapshots", (
                 usageItems: [],
                 errorMessage: "Unable to refresh",
             });
+        }
+    }
+});
+
+test("separates account type from the snapshot refresh time without header credits", () => {
+    const snapshot = {
+        fetchedAt: new Date(2026, 9, 26, 10, 44).getTime() / 1000,
+        planType: "plus",
+        credits: { balance: "25", unlimited: false },
+        quotas: [],
+    };
+    const expectedLabel = (fetchedAt) =>
+        `Refresh (last at ${formatTimestamp(new Date(fetchedAt * 1000).toISOString(), false)})`;
+    const initial = createMenuViewModel({}, snapshot, null);
+    assert.equal(initial.accountType, "Plus");
+    assert.equal(initial.refreshLabel, expectedLabel(snapshot.fetchedAt));
+
+    snapshot.fetchedAt += 60;
+    const updated = createMenuViewModel({}, snapshot, null);
+    assert.equal(updated.accountType, "Plus");
+    assert.equal(updated.refreshLabel, expectedLabel(snapshot.fetchedAt));
+    assert.notEqual(updated.refreshLabel, initial.refreshLabel);
+
+    for (const [error, cachedFailure] of [
+        ["Offline", null],
+        [null, "Offline"],
+    ]) {
+        const failed = createMenuViewModel({}, snapshot, null, [], error, cachedFailure);
+        assert.equal(failed.refreshLabel, updated.refreshLabel);
+        assert.equal(failed.accountType, error ? "--" : "Plus");
+    }
+    for (const missing of [null, { quotas: [] }]) {
+        for (const error of [null, "Offline"]) {
+            const viewModel = createMenuViewModel({}, missing, null, [], error);
+            assert.equal(viewModel.accountType, "--");
+            assert.equal(viewModel.refreshLabel, "Refresh");
         }
     }
 });
@@ -141,8 +178,9 @@ test("renders quotas shortest first in menu values and panel bars and percentage
                     percentDisplayMode === "left" ? 100 - quota.usedPercent : quota.usedPercent,
                 );
                 assert.deepEqual(Object.keys(menu).sort(), [
+                    "accountType",
                     "errorMessage",
-                    "plan",
+                    "refreshLabel",
                     "statusMessage",
                     "statusTitle",
                     "trend",

@@ -1,8 +1,8 @@
 import Clutter from "gi://Clutter";
 import St from "gi://St";
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
-import { createIconButton, createTextButton } from "./button.js";
 import { UsageBar } from "./usage-bar.js";
+import { formatDuration } from "./view-model.js";
 
 const POPUP_CONTENT_WIDTH = 285;
 
@@ -19,12 +19,26 @@ export class CodexMeterPopupMenu {
         this._onRefresh = onRefresh;
         this._onRedeemBankedReset = onRedeemBankedReset;
         this._onOpenPreferences = onOpenPreferences;
-        this.headerItem = this._createHeaderItem();
+        this.refreshItem = new PopupMenu.PopupMenuItem("Refresh");
+        this.refreshItem.connect("activate", () => this._onRefresh());
+        this.bankedResetsItem = new PopupMenu.PopupSubMenuMenuItem("Banked resets");
+        const resetScrollView = this.bankedResetsItem.menu.actor;
+        // Shell chooses NEVER for a short loading row and does not reconsider as content grows.
+        const keepResetScrolling = () => {
+            if (resetScrollView.vscrollbar_policy !== St.PolicyType.AUTOMATIC) {
+                resetScrollView.vscrollbar_policy = St.PolicyType.AUTOMATIC;
+            }
+        };
+        resetScrollView.connect("notify::vscrollbar-policy", keepResetScrolling);
+        keepResetScrolling();
+
+        this.preferencesItem = new PopupMenu.PopupMenuItem("Preferences");
+        this.preferencesItem.connect("activate", () => this._onOpenPreferences());
         this.errorItem = this._createErrorItem();
         this.statusItem = this._createStatusItem();
         this.usageItems = [];
         this.trendItem = this._createTrendItem();
-        this.footerItem = this._createFooterItem();
+        this.headerItem = this._createHeaderItem();
     }
 
     addToMenu(menu) {
@@ -35,7 +49,9 @@ export class CodexMeterPopupMenu {
         for (const item of this.usageItems) menu.addMenuItem(item);
         menu.addMenuItem(this.trendItem);
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        menu.addMenuItem(this.footerItem);
+        menu.addMenuItem(this.bankedResetsItem);
+        menu.addMenuItem(this.refreshItem);
+        menu.addMenuItem(this.preferencesItem);
     }
 
     syncBars() {
@@ -100,18 +116,66 @@ export class CodexMeterPopupMenu {
         this.statusItem.setDetails(message, false);
     }
 
-    setBankedResets({ count, preparing, redeeming }) {
+    setRefreshLabel(label) {
+        this._refreshLabel = label;
+        this.setRefreshing(this._refreshing);
+    }
+
+    setRefreshing(refreshing) {
+        this._refreshing = refreshing;
+        this.refreshItem.label.text = refreshing
+            ? "Refreshing…"
+            : (this._refreshLabel ?? "Refresh");
+        this.refreshItem.setSensitive(!refreshing);
+    }
+
+    setBankedResets({ count, snapshot, loading, error, preparing, preparingId, redeeming }) {
         const busy = preparing || redeeming;
-        const canRedeem = !busy && count !== null && count > 0;
-        this.headerItem.redeemButton.visible = count !== null;
-        this.headerItem.redeemButton.reactive = canRedeem;
-        this.headerItem.redeemButton.can_focus = canRedeem;
-        this.headerItem.redeemButton.opacity = canRedeem ? 255 : 150;
-        this.headerItem.redeemButtonLabel.text = preparing
-            ? "Loading…"
-            : redeeming
-              ? "Resetting…"
-              : `Reset limits (${count ?? 0})`;
+        this.bankedResetsItem.label.text =
+            count === null || count === undefined ? "Banked resets" : `Banked resets (${count})`;
+        const now = Date.now();
+        const credits = (snapshot?.credits ?? [])
+            .filter((credit) => credit.status === "available" && resetExpiryTime(credit) > now)
+            .toSorted((left, right) => resetExpiryTime(left) - resetExpiryTime(right));
+        const stateKey = JSON.stringify({
+            credits,
+            hasSnapshot: Boolean(snapshot),
+            loading,
+            error,
+            preparing,
+            preparingId,
+            redeeming,
+        });
+        if (this._bankedResetStateKey === stateKey) return;
+        this._bankedResetStateKey = stateKey;
+        const menu = this.bankedResetsItem.menu;
+        menu.removeAll();
+        const addInfo = (text) => {
+            menu.addMenuItem(
+                new PopupMenu.PopupMenuItem(text, { reactive: false, can_focus: false }),
+            );
+        };
+        if (!preparing) {
+            if (loading) addInfo("Loading banked resets…");
+            else if (error) addInfo(`Banked resets unavailable: ${error}`);
+            else if (!snapshot) addInfo("Banked resets unavailable");
+        }
+        if (redeeming) addInfo("Applying reset…");
+
+        if (snapshot && !loading && !error && credits.length === 0) {
+            addInfo("No banked resets available");
+        }
+        this._canRedeemBankedReset = !busy && !loading && !error && Boolean(snapshot);
+        for (const credit of credits) {
+            const item = new PopupMenu.PopupMenuItem(
+                formatResetCredit(credit, now, preparing && credit.id === preparingId),
+            );
+            item.setSensitive(this._canRedeemBankedReset);
+            item.connect("activate", () => {
+                if (this._canRedeemBankedReset) this._onRedeemBankedReset(credit.id);
+            });
+            menu.addMenuItem(item);
+        }
     }
 
     _createUsageItem(title) {
@@ -317,69 +381,19 @@ export class CodexMeterPopupMenu {
             reactive: false,
             can_focus: false,
         });
-        const box = new St.BoxLayout({
-            vertical: true,
-            x_expand: true,
-            style_class: "cx-header-item",
-        });
-        const topRow = new St.BoxLayout({
-            x_expand: true,
+        item.titleLabel = new St.Label({
+            text: "Codex Usage",
             y_align: Clutter.ActorAlign.CENTER,
-            style_class: "cx-header-row",
+            style_class: "cx-usage-heading",
         });
-        const { button: redeemButton, label: redeemButtonLabel } = createTextButton({
-            text: "Reset limits (0)",
-            styleClass: "cx-reset-button",
-            onClick: (button) => {
-                if (!button.reactive) return;
-                this._onRedeemBankedReset();
-            },
-        });
-        const { button: refreshButton, icon: refreshIcon } = createIconButton({
-            iconName: "view-refresh-symbolic",
-            accessibleName: "Refresh usage",
-            styleClass: "cx-footer-button",
-            onClick: () => this._onRefresh(),
-        });
-        refreshIcon.set_pivot_point(0.5, 0.5);
-        topRow.add_child(redeemButton);
-        topRow.add_child(new St.Widget({ x_expand: true }));
-        topRow.add_child(refreshButton);
-        box.add_child(topRow);
-        item.add_child(box);
-        item.redeemButton = redeemButton;
-        item.redeemButtonLabel = redeemButtonLabel;
-        item.refreshIcon = refreshIcon;
-        item.refreshButton = refreshButton;
-        return item;
-    }
-
-    _createFooterItem() {
-        const item = new PopupMenu.PopupBaseMenuItem({
-            reactive: false,
-            can_focus: false,
-        });
-        const box = new St.BoxLayout({
-            x_expand: true,
-            y_align: Clutter.ActorAlign.CENTER,
-            style_class: "cx-footer-row",
-        });
-        const planLabel = new St.Label({
+        item.planLabel = new St.Label({
             text: "--",
             x_expand: true,
+            x_align: Clutter.ActorAlign.END,
             y_align: Clutter.ActorAlign.CENTER,
-            style_class: "cx-footer-label",
         });
-        const { button: settingsButton } = createIconButton({
-            iconName: "preferences-system-symbolic",
-            accessibleName: "Open preferences",
-            styleClass: "cx-footer-button",
-            onClick: () => this._onOpenPreferences(),
-        });
-        box.add_child(planLabel);
-        box.add_child(settingsButton);
-        item.add_child(box);
-        item.planLabel = planLabel;
+        item.add_child(item.titleLabel);
+        item.add_child(item.planLabel);
         return item;
     }
 
@@ -416,4 +430,28 @@ function removeColorStyleClasses(actor) {
     actor.remove_style_class_name("cx-color-warning");
     actor.remove_style_class_name("cx-color-danger");
     actor.remove_style_class_name("cx-muted");
+}
+
+function resetExpiryTime(credit) {
+    const time = Date.parse(credit.expires_at ?? "");
+    return Number.isFinite(time) ? time : Infinity;
+}
+
+function formatResetCredit(credit, now, checking) {
+    const title = credit.title || "Usage limit reset";
+    const type = (credit.reset_type ?? "").replaceAll("_", " ");
+    const showType =
+        type && !title.toLowerCase().includes(type.toLowerCase()) && !/\([^)]*\)\s*$/.test(title);
+    const details = [
+        showType ? `${title} (${type.charAt(0).toUpperCase()}${type.slice(1)})` : title,
+    ];
+    const expiry = resetExpiryTime(credit);
+    details.push(
+        checking
+            ? "Checking…"
+            : Number.isFinite(expiry)
+              ? `Expires in ${formatDuration((expiry - now) / 1000)}`
+              : "Expiry unknown",
+    );
+    return details.join(" · ");
 }

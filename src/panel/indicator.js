@@ -10,6 +10,8 @@ import { showBankedResetConfirmation } from "./reset-confirmation.js";
 import { UsageBar } from "./usage-bar.js";
 import { createMenuViewModel, createPanelBarViewModel } from "./view-model.js";
 
+const BANKED_RESET_POPUP_REFRESH_MAX_AGE_MS = 5 * 60 * 1000;
+
 export class CodexMeterIndicator extends PanelMenu.Button {
     static {
         GObject.registerClass(this);
@@ -25,7 +27,6 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             this._syncLabel();
             this._syncMenu();
         };
-        this._refreshSpinId = 0;
         this._menuSyncId = 0;
         this._resetConfirmationDialog = null;
         this._destroyed = false;
@@ -77,10 +78,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
     destroy() {
         this._destroyed = true;
         this._monitor.onChange = null;
-        if (this._refreshSpinId) {
-            GLib.source_remove(this._refreshSpinId);
-            this._refreshSpinId = 0;
-        }
+        this._monitor.cancelBankedResetPreparation();
         if (this._menuSyncId) {
             GLib.source_remove(this._menuSyncId);
             this._menuSyncId = 0;
@@ -104,8 +102,9 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             onRefresh: () => {
                 void this._refreshUsage();
             },
-            onRedeemBankedReset: () => {
-                void this._confirmBankedReset();
+
+            onRedeemBankedReset: (creditId) => {
+                void this._confirmBankedReset(creditId);
             },
             onOpenPreferences: () => {
                 this.menu.close();
@@ -127,7 +126,12 @@ export class CodexMeterIndicator extends PanelMenu.Button {
 
     _connectSignals() {
         this._menuOpenChangedId = this.menu.connect("open-state-changed", (_menu, isOpen) => {
-            if (isOpen) this._queueMenuBarSync();
+            if (isOpen) {
+                this._queueMenuBarSync();
+                void this._monitor.refreshBankedResets({
+                    maxAgeMs: BANKED_RESET_POPUP_REFRESH_MAX_AGE_MS,
+                });
+            }
         });
         this._settingsChangedId = this._settings.connect("changed", () => {
             this._syncLabel();
@@ -137,18 +141,28 @@ export class CodexMeterIndicator extends PanelMenu.Button {
 
     async _refreshUsage() {
         if (this._destroyed) return;
-        this._startRefreshSpin();
+        this._popupMenu.setRefreshing(true);
         try {
             await this._monitor.refreshUsage();
         } finally {
-            if (!this._destroyed) this._stopRefreshSpin();
+            if (!this._destroyed) this._popupMenu.setRefreshing(false);
         }
     }
 
-    async _confirmBankedReset() {
-        if (this._destroyed || this._resetConfirmationDialog) return;
-        const credit = await this._monitor.prepareBankedReset();
-        if (this._destroyed || !credit) return;
+    async _confirmBankedReset(creditId) {
+        if (
+            this._destroyed ||
+            this._resetConfirmationDialog ||
+            this._monitor.state.preparingBankedReset ||
+            this._monitor.state.redeemingBankedReset
+        )
+            return;
+        const credit = await this._monitor.prepareBankedReset(creditId);
+        if (this._destroyed) {
+            if (credit) this._monitor.cancelBankedResetPreparation();
+            return;
+        }
+        if (!credit) return;
         this.menu.close();
         let dialog = null;
         const clearDialog = () => {
@@ -159,42 +173,23 @@ export class CodexMeterIndicator extends PanelMenu.Button {
                 clearDialog();
                 void this._redeemBankedReset(credit.id);
             },
-            onCancel: clearDialog,
+            onCancel: () => {
+                clearDialog();
+                this._monitor.cancelBankedResetPreparation();
+            },
         });
         this._resetConfirmationDialog = dialog;
+        if (!dialog) this._monitor.cancelBankedResetPreparation();
     }
 
     async _redeemBankedReset(creditId) {
         if (this._destroyed) return;
-        this._startRefreshSpin();
+        this._popupMenu.setRefreshing(true);
         try {
             await this._monitor.redeemBankedReset(creditId);
         } finally {
-            if (!this._destroyed) this._stopRefreshSpin();
+            if (!this._destroyed) this._popupMenu.setRefreshing(false);
         }
-    }
-
-    _startRefreshSpin() {
-        if (!this._popupMenu.headerItem?.refreshIcon || this._refreshSpinId) return;
-        this._popupMenu.headerItem.refreshButton.reactive = false;
-        this._popupMenu.headerItem.refreshButton.can_focus = false;
-        this._refreshSpinId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 30, () => {
-            if (this._destroyed) return GLib.SOURCE_REMOVE;
-            this._popupMenu.headerItem.refreshIcon.rotation_angle_z =
-                (this._popupMenu.headerItem.refreshIcon.rotation_angle_z + 18) % 360;
-            return GLib.SOURCE_CONTINUE;
-        });
-    }
-
-    _stopRefreshSpin() {
-        if (this._refreshSpinId) {
-            GLib.source_remove(this._refreshSpinId);
-            this._refreshSpinId = 0;
-        }
-        if (!this._popupMenu.headerItem?.refreshIcon) return;
-        this._popupMenu.headerItem.refreshIcon.rotation_angle_z = 0;
-        this._popupMenu.headerItem.refreshButton.reactive = true;
-        this._popupMenu.headerItem.refreshButton.can_focus = true;
     }
 
     _syncLabel() {
@@ -246,7 +241,11 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             errorMessage,
             cachedFailureMessage,
             bankedResetCount,
+            bankedResetSnapshot,
+            bankedResetLoading,
+            bankedResetError,
             preparingBankedReset,
+            preparingBankedResetId,
             redeemingBankedReset,
         } = this._monitor.state;
         const viewModel = createMenuViewModel(
@@ -267,10 +266,15 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._popupMenu.setTrend(viewModel.trend);
         this._popupMenu.setBankedResets({
             count: bankedResetCount,
+            snapshot: bankedResetSnapshot,
+            loading: bankedResetLoading,
+            error: bankedResetError,
             preparing: preparingBankedReset,
+            preparingId: preparingBankedResetId,
             redeeming: redeemingBankedReset,
         });
-        this._popupMenu.footerItem.planLabel.text = viewModel.plan;
+        this._popupMenu.headerItem.planLabel.text = viewModel.accountType;
+        this._popupMenu.setRefreshLabel(viewModel.refreshLabel);
     }
 
     _queueMenuBarSync() {

@@ -10,19 +10,19 @@ import {
     SETTINGS_TOP_PANEL_INDICATOR_ICON,
 } from "./settings.js";
 
-export function createPreferencesPage(settings, snapshot, metadata) {
+export function createPreferencesPage(settings, metadata) {
     const page = new Adw.PreferencesPage({
         title: "Codex Meter",
         icon_name: "codex-symbolic",
     });
     page.add(createBehaviorGroup(settings));
     page.add(createTopPanelGroup(settings));
-    page.add(createBankedResetsGroup(settings, snapshot));
+    page.add(createBankedResetsGroup(settings));
     page.add(createFooterGroup(metadata));
     return page;
 }
 
-function createBankedResetsGroup(settings, snapshot) {
+function createBankedResetsGroup(settings) {
     const group = new Adw.PreferencesGroup({ title: "Banked resets" });
     group.add(
         createBoundSwitchRow({
@@ -32,64 +32,8 @@ function createBankedResetsGroup(settings, snapshot) {
             subtitle: "Apply a banked reset automatically within 1 hour of expiry",
         }),
     );
-    if (!snapshot) {
-        group.add(
-            new Adw.ActionRow({
-                title: "Banked reset details are unavailable.",
-            }),
-        );
-        return group;
-    }
-    const availableCredits = snapshot.credits.filter((credit) => credit.status === "available");
-    if (availableCredits.length === 0) {
-        group.add(
-            new Adw.ActionRow({
-                title: "No banked Codex resets are available.",
-            }),
-        );
-        return group;
-    }
-    for (const credit of availableCredits) {
-        group.add(createCreditRow(credit));
-    }
+
     return group;
-}
-
-function createCreditRow(credit) {
-    return new Adw.ActionRow({
-        title: createCreditTitle(credit),
-        subtitle: formatCreditExpiry(credit.expires_at),
-    });
-}
-
-function createCreditTitle(credit) {
-    return credit.title || "Usage limit reset";
-}
-
-function formatCreditExpiry(value) {
-    if (!value) return "Expiry unknown";
-    const date = new Date(value);
-    if (!Number.isFinite(date.getTime())) return "Expiry unknown";
-    const exact = date.toLocaleString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-    });
-    const relative = formatRelativeExpiry(date.getTime() - Date.now());
-    return relative === "expired" ? `Expired (${exact})` : `Expires ${relative} (${exact})`;
-}
-
-function formatRelativeExpiry(remainingMs) {
-    if (remainingMs <= 0) return "expired";
-    const minutes = Math.ceil(remainingMs / (60 * 1000));
-    if (minutes < 60) return `in ${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
-    const hours = Math.ceil(remainingMs / (60 * 60 * 1000));
-    if (hours < 24) return `in ${hours} ${hours === 1 ? "hour" : "hours"}`;
-    const days = Math.ceil(remainingMs / (24 * 60 * 60 * 1000));
-    return `in ${days} ${days === 1 ? "day" : "days"}`;
 }
 
 function createTopPanelGroup(settings) {
