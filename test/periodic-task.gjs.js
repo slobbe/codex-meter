@@ -159,6 +159,12 @@ await test("interval changes replace timers without running work", async ({ sour
 
 await test("failed work releases overlap guard for the next tick", async ({ sources }) => {
     const failure = new Error("expected task failure");
+    const errors = [];
+    const decoder = new TextDecoder();
+    GLib.log_set_writer_func((level, fields) => {
+        errors.push({ level, message: decoder.decode(fields.MESSAGE) });
+        return GLib.LogWriterOutput.HANDLED;
+    });
     let calls = 0;
     const task = new PeriodicTask(10, async () => {
         calls++;
@@ -171,10 +177,20 @@ await test("failed work releases overlap guard for the next tick", async ({ sour
         task.start();
         await Promise.resolve();
 
+        assertEqual(errors.length, 1, "failure is logged once");
+        assertEqual(
+            errors[0].message.startsWith(`Periodic task failed ${failure}`),
+            true,
+            "failure log includes the original error",
+        );
+        assertEqual(errors[0].level, GLib.LogLevelFlags.LEVEL_CRITICAL, "failure log level");
         assertEqual(task.running, false, "failure clears overlap guard");
         assertEqual(sources.get(task.timeoutId).callback(), GLib.SOURCE_CONTINUE, "timer survives");
         assertEqual(calls, 2, "next tick retries work");
+        await Promise.resolve();
+        assertEqual(errors.length, 1, "successful retry does not log an error");
     } finally {
+        GLib.log_set_writer_default();
         task.stop();
     }
 });
