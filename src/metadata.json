@@ -1,6 +1,6 @@
 {
     "name": "Codex Meter",
-    "description": "Monitor and manage Codex usage limits",
+    "description": "Monitor and manage Codex usage limits.\n\n- 5-hour and weekly Codex usage limits.\n- Usage trends and limit-hit predictions.\n- Banked reset redemption.\n- Automatic redemption of banked resets before expiration.\n\nRequieres Codex CLI or ChatGPT Desktop App logged in on the same machine. The extension reads your local auth credentials from `~/.codex/auth.json`.\n\nDisclaimer: Not affiliated with or endorsed by OpenAI.",
     "uuid": "codex-meter@slobbe.github.io",
     "shell-version": ["45", "46", "47", "48", "49", "50"],
     "settings-schema": "org.gnome.shell.extensions.codex-meter",
