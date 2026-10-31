@@ -24,13 +24,12 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         this._settings = extension.getSettings();
         this._monitor = monitor;
         this._monitor.onChange = () => {
-            if (this._destroyed) return;
             this._syncLabel();
             this._syncMenu();
         };
         this._menuSyncId = 0;
         this._resetConfirmationDialog = null;
-        this._destroyed = false;
+        this._uiCancellable = new Gio.Cancellable();
         this._panelBox = new St.BoxLayout({
             y_align: Clutter.ActorAlign.CENTER,
             style_class: "cx-panel-box",
@@ -73,15 +72,11 @@ export class CodexMeterIndicator extends PanelMenu.Button {
     }
 
     start() {
-        if (this._destroyed) return;
         this._syncLabel();
         this._syncMenu();
     }
 
     destroy() {
-        this._destroyed = true;
-        this._monitor.onChange = null;
-        this._monitor.cancelBankedResetPreparation();
         if (this._menuSyncId) {
             GLib.source_remove(this._menuSyncId);
             this._menuSyncId = 0;
@@ -94,6 +89,9 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             this._settings.disconnect(this._settingsChangedId);
             this._settingsChangedId = 0;
         }
+        this._monitor.onChange = null;
+        this._uiCancellable.cancel();
+        this._monitor.cancelBankedResetPreparation();
         this._resetConfirmationDialog?.destroy();
         this._resetConfirmationDialog = null;
 
@@ -143,26 +141,27 @@ export class CodexMeterIndicator extends PanelMenu.Button {
     }
 
     async _refreshUsage() {
-        if (this._destroyed) return;
+        const cancellable = this._uiCancellable;
         this._popupMenu.setRefreshing(true);
         try {
             await this._monitor.refreshUsage();
         } finally {
-            if (!this._destroyed) this._popupMenu.setRefreshing(false);
+            if (!cancellable.is_cancelled()) this._popupMenu.setRefreshing(false);
         }
     }
 
     async _confirmBankedReset(creditId) {
         if (
-            this._destroyed ||
             this._resetConfirmationDialog ||
             this._monitor.state.preparingBankedReset ||
             this._monitor.state.redeemingBankedReset
         )
             return;
-        const credit = await this._monitor.prepareBankedReset(creditId);
-        if (this._destroyed) {
-            if (credit) this._monitor.cancelBankedResetPreparation();
+        const cancellable = this._uiCancellable;
+        const monitor = this._monitor;
+        const credit = await monitor.prepareBankedReset(creditId);
+        if (cancellable.is_cancelled()) {
+            if (credit) monitor.cancelBankedResetPreparation();
             return;
         }
         if (!credit) return;
@@ -186,12 +185,12 @@ export class CodexMeterIndicator extends PanelMenu.Button {
     }
 
     async _redeemBankedReset(creditId) {
-        if (this._destroyed) return;
+        const cancellable = this._uiCancellable;
         this._popupMenu.setRefreshing(true);
         try {
             await this._monitor.redeemBankedReset(creditId);
         } finally {
-            if (!this._destroyed) this._popupMenu.setRefreshing(false);
+            if (!cancellable.is_cancelled()) this._popupMenu.setRefreshing(false);
         }
     }
 

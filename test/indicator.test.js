@@ -21,8 +21,12 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
             if (this.parent) this.parent.children.splice(this.parent.children.indexOf(this), 1);
         }
     }
+    export class Cancellable {
+        cancel() { this.cancelled = true; }
+        is_cancelled() { return this.cancelled ?? false; }
+    }
     export default {
-        registerClass() {}, BoxLayout: Actor, ActorAlign: { CENTER: 0 },
+        registerClass() {}, BoxLayout: Actor, ActorAlign: { CENTER: 0 }, Cancellable,
     };
     export const Button = Actor;
     export const readSettings = settings => settings;
@@ -60,9 +64,12 @@ try {
     hooks.deregister();
 }
 
+const { Cancellable } = await import(stubUrl);
+
 function createIndicator() {
     const indicator = Object.create(CodexMeterIndicator.prototype);
     indicator._settings = { topPanelIndicatorIcon: "text" };
+    indicator._uiCancellable = new Cancellable();
     indicator._monitor = {
         state: { snapshot: {} },
         cancellationCount: 0,
@@ -408,15 +415,15 @@ test("missing selection, cancellation, busy state and destruction never redeem a
     assert.equal(indicator._resetConfirmationDialog, null);
     assert.equal(indicator._monitor.cancellationCount, 1);
     indicator._monitor.prepareBankedReset = async (id) => {
-        indicator._destroyed = true;
+        indicator.destroy();
         return { id };
     };
     await indicator._confirmBankedReset("destroyed");
     assert.equal(confirmations.length, previousCount + 1);
     assert.equal(
         indicator._monitor.cancellationCount,
-        2,
-        "late preparation releases the unused credit",
+        3,
+        "destruction and late preparation both release the unused credit",
     );
 });
 
@@ -432,6 +439,41 @@ test("destroy releases a selected reset and destroys its confirmation dialog", a
     assert.equal(indicator._resetConfirmationDialog, null);
     assert.equal(dialog.destroyed, true);
 });
+
+for (const [method, operation] of [
+    ["_refreshUsage", "refreshUsage"],
+    ["_redeemBankedReset", "redeemBankedReset"],
+]) {
+    test(`${operation} clears the refreshing state on completion`, async () => {
+        const indicator = createIndicator();
+        const refreshing = [];
+        indicator._popupMenu = { setRefreshing: (value) => refreshing.push(value) };
+        indicator._monitor[operation] = async () => {};
+        await indicator[method]("selected");
+        assert.deepEqual(refreshing, [true, false]);
+    });
+
+    for (const fails of [false, true]) {
+        test(`${operation} ${fails ? "failure" : "completion"} after destruction does not touch the UI`, async () => {
+            const indicator = createIndicator();
+            const refreshing = [];
+            indicator._popupMenu = { setRefreshing: (value) => refreshing.push(value) };
+            let finish;
+            const error = new Error("request failed");
+            indicator._monitor[operation] = () =>
+                new Promise((resolve, reject) => {
+                    finish = () => (fails ? reject(error) : resolve());
+                });
+            const pending = indicator[method]("selected");
+            indicator.destroy();
+            indicator._popupMenu = null;
+            finish();
+            if (fails) await assert.rejects(pending, error);
+            else await pending;
+            assert.deepEqual(refreshing, [true]);
+        });
+    }
+}
 
 test("destroy while preparation is pending releases any credit returned afterward", async () => {
     const indicator = createIndicator();

@@ -71,6 +71,7 @@ test("failed modal grab releases the reservation and allows a subsequent selecti
     modalState.canGrab = false;
     const indicator = Object.create(CodexMeterIndicator.prototype);
     indicator._resetConfirmationDialog = null;
+    indicator._uiCancellable = { is_cancelled: () => false };
     indicator.menu = { close() {} };
     const prepared = [];
     indicator._monitor = {
