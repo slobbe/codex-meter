@@ -8,7 +8,7 @@
   </p>
 </div>
 <p align="center">
-  <img src="docs/assets/screens/popup.png" width="325" alt="Codex Meter popup preview">
+  <img src="docs/assets/screens/popup-menu.png" width="325" alt="Codex Meter popup preview">
 </p>
 
 ## Features
@@ -25,20 +25,7 @@
 
 ## Install
 
-Install the latest stable release with the [installer script](scripts/install.sh):
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/slobbe/codex-meter/main/scripts/install.sh | sh
-```
-
-Run the script again to update.
-
-If GNOME does not pick it up immediately, log out and back in.
-
-<details>
-<summary>Manual installation</summary>
-
-1. Download the [latest release](https://github.com/slobbe/codex-meter/releases/latest) zip.
+1. Download the zip from the [latest release](https://github.com/slobbe/codex-meter/releases/latest).
 2. Install and enable the extension with:
 
 ```sh
@@ -46,7 +33,7 @@ gnome-extensions install --force codex-meter@slobbe.github.io-<version>.zip
 gnome-extensions enable codex-meter@slobbe.github.io
 ```
 
-</details>
+If GNOME does not pick it up immediately, log out and back in.
 
 ## Uninstall
 
