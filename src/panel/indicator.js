@@ -218,8 +218,15 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         }
         // Keep the two-bar stack's total spacing as the collection grows.
         this._panelBars.set_style(barCount > 2 ? `spacing: ${3 / (barCount - 1)}px;` : null);
-        const ringStyle = settings.topPanelIndicatorIcon === "codex-ring";
+        const ringStyle = settings.topPanelDisplayMode === "circular-bars";
         const showRing = ringStyle && viewModel.showBars && barCount > 0 && barCount <= 2;
+        this._usageRing.setIcon(
+            settings.topPanelIndicatorIcon === "text"
+                ? null
+                : settings.topPanelIndicatorIcon === "openai"
+                  ? this._openAiIcon.gicon
+                  : this._codexIcon.gicon,
+        );
         this._usageRing.update(showRing ? viewModel.bars : []);
         this._usageRing.actor.visible = showRing;
         this._panelBars.visible = viewModel.showBars && !showRing;
@@ -235,10 +242,9 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         } else {
             this._label.remove_style_class_name("cx-usage-label-wide");
         }
-        this._prefixLabel.visible = settings.topPanelIndicatorIcon === "text";
-        this._codexIcon.visible =
-            settings.topPanelIndicatorIcon === "codex" || (ringStyle && !showRing);
-        this._openAiIcon.visible = settings.topPanelIndicatorIcon === "openai";
+        this._prefixLabel.visible = !showRing && settings.topPanelIndicatorIcon === "text";
+        this._codexIcon.visible = !showRing && settings.topPanelIndicatorIcon === "codex";
+        this._openAiIcon.visible = !showRing && settings.topPanelIndicatorIcon === "openai";
     }
 
     _syncMenu() {

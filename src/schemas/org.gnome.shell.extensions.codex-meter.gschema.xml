@@ -8,6 +8,7 @@
       <choices>
         <choice value='percentages'/>
         <choice value='bars'/>
+        <choice value='circular-bars'/>
       </choices>
     </key>
     <key name="top-panel-indicator-icon" type="s">
@@ -16,6 +17,7 @@
       <choices>
         <choice value='text'/>
         <choice value='codex'/>
+        <!-- Retained only so existing selections can be read and migrated. -->
         <choice value='codex-ring'/>
         <choice value='openai'/>
       </choices>

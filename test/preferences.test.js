@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 import test from "node:test";
-import { readSettings, SETTINGS_TOP_PANEL_INDICATOR_ICON } from "../src/preferences/settings.js";
+import {
+    migrateSettings,
+    readSettings,
+    SETTINGS_TOP_PANEL_DISPLAY_MODE,
+    SETTINGS_TOP_PANEL_INDICATOR_ICON,
+} from "../src/preferences/settings.js";
 
 const pageUrl = new URL("../src/preferences/page.js", import.meta.url).href;
 const prefsUrl = new URL("../src/prefs.js", import.meta.url).href;
@@ -57,8 +62,10 @@ function settingsFixture(values = {}) {
     const signals = {};
     return {
         bindings: [],
+        writes: [],
         get_string: (key) => strings[key],
         set_string(key, value) {
+            this.writes.push({ key, value });
             strings[key] = value;
             signals[`changed::${key}`]?.();
         },
@@ -75,18 +82,13 @@ function settingsFixture(values = {}) {
 const metadata = { name: "Codex Meter", "version-name": "test", url: "https://example.com" };
 
 test("icon dropdown reads, writes, and tracks all supported icon styles", () => {
-    const icons = ["codex", "codex-ring", "openai", "text"];
+    const icons = ["openai", "codex", "text"];
     for (const [index, icon] of icons.entries()) {
         const settings = settingsFixture({ [SETTINGS_TOP_PANEL_INDICATOR_ICON]: icon });
         const page = createPreferencesPage(settings, metadata);
         const group = page.children.find((child) => child.title === "Top panel indicator");
         const row = group.children.find((child) => child.title === "Icon");
-        assert.deepEqual(row.model, [
-            "Codex logo",
-            "Codex with circular progress",
-            "OpenAI logo",
-            "'CX'",
-        ]);
+        assert.deepEqual(row.model, ["OpenAI logo", "Codex logo", "'CX' monogram"]);
         assert.equal(row.selected, index);
 
         for (const [selected, value] of icons.entries()) {
@@ -100,16 +102,103 @@ test("icon dropdown reads, writes, and tracks all supported icon styles", () => 
     }
 });
 
+test("display dropdown reads, writes, and tracks all display modes in order", () => {
+    const modes = ["bars", "circular-bars", "percentages"];
+    for (const [index, mode] of modes.entries()) {
+        const settings = settingsFixture({ [SETTINGS_TOP_PANEL_DISPLAY_MODE]: mode });
+        const page = createPreferencesPage(settings, metadata);
+        const group = page.children.find((child) => child.title === "Top panel indicator");
+        const row = group.children.find((child) => child.title === "Show percentages as");
+        assert.deepEqual(row.model, ["Progress bar", "Circular progress bars", "Number"]);
+        assert.equal(row.selected, index);
+
+        for (const [selected, value] of modes.entries()) {
+            row.selected = selected;
+            row.emit("notify::selected");
+            assert.equal(settings.get_string(SETTINGS_TOP_PANEL_DISPLAY_MODE), value);
+        }
+
+        settings.set_string(SETTINGS_TOP_PANEL_DISPLAY_MODE, mode);
+        assert.equal(row.selected, index);
+    }
+});
+
+test("migration converts only legacy ring selections and is idempotent", () => {
+    for (const [mode, expected] of [
+        ["bars", "circular-bars"],
+        ["percentages", "percentages"],
+        ["circular-bars", "circular-bars"],
+    ]) {
+        const settings = settingsFixture({
+            [SETTINGS_TOP_PANEL_INDICATOR_ICON]: "codex-ring",
+            [SETTINGS_TOP_PANEL_DISPLAY_MODE]: mode,
+        });
+        migrateSettings(settings);
+        assert.equal(settings.get_string(SETTINGS_TOP_PANEL_INDICATOR_ICON), "codex");
+        assert.equal(settings.get_string(SETTINGS_TOP_PANEL_DISPLAY_MODE), expected);
+        assert.equal(settings.writes.length, mode === "bars" ? 2 : 1);
+        const writes = [...settings.writes];
+        migrateSettings(settings);
+        assert.deepEqual(settings.writes, writes);
+    }
+});
+
+test("migration preserves defaults and all non-ring icon/display selections", () => {
+    for (const icon of ["codex", "openai", "text", "icon"]) {
+        for (const mode of ["bars", "circular-bars", "percentages"]) {
+            const settings = settingsFixture({
+                [SETTINGS_TOP_PANEL_INDICATOR_ICON]: icon,
+                [SETTINGS_TOP_PANEL_DISPLAY_MODE]: mode,
+            });
+            const before = readSettings(settings);
+            migrateSettings(settings);
+            assert.deepEqual(readSettings(settings), before);
+            assert.deepEqual(settings.writes, []);
+        }
+    }
+    const defaults = settingsFixture();
+    migrateSettings(defaults);
+    assert.deepEqual(defaults.writes, []);
+    assert.deepEqual(readSettings(defaults), {
+        topPanelIndicatorIcon: "codex",
+        topPanelDisplayMode: "bars",
+        percentDisplayMode: "left",
+        backgroundRefreshIntervalSeconds: 300,
+        autoApplyBankedReset: false,
+    });
+});
+
+test("preferences migrates legacy selections before binding dropdowns", () => {
+    for (const [mode, selected] of [
+        ["bars", 1],
+        ["percentages", 2],
+        ["circular-bars", 1],
+    ]) {
+        const settings = settingsFixture({
+            [SETTINGS_TOP_PANEL_INDICATOR_ICON]: "codex-ring",
+            [SETTINGS_TOP_PANEL_DISPLAY_MODE]: mode,
+        });
+        const page = createPreferencesPage(settings, metadata);
+        const group = page.children.find((child) => child.title === "Top panel indicator");
+        assert.equal(group.children.find((child) => child.title === "Icon").selected, 1);
+        assert.equal(
+            group.children.find((child) => child.title === "Show percentages as").selected,
+            selected,
+        );
+        assert.equal(settings.get_string(SETTINGS_TOP_PANEL_INDICATOR_ICON), "codex");
+    }
+});
+
 test("readSettings preserves supported icons and legacy fallback behavior", () => {
     for (const [value, expected] of [
         ["codex", "codex"],
-        ["codex-ring", "codex-ring"],
+        ["codex-ring", "codex"],
         ["openai", "openai"],
         ["text", "text"],
         ["icon", "codex"],
         ["unknown", "text"],
     ]) {
-        for (const mode of ["bars", "percentages"]) {
+        for (const mode of ["bars", "circular-bars", "percentages"]) {
             const settings = settingsFixture({
                 [SETTINGS_TOP_PANEL_INDICATOR_ICON]: value,
                 "top-panel-display-mode": mode,
@@ -117,11 +206,12 @@ test("readSettings preserves supported icons and legacy fallback behavior", () =
             const result = readSettings(settings);
             assert.equal(result.topPanelIndicatorIcon, expected);
             assert.equal(result.topPanelDisplayMode, mode);
+            assert.deepEqual(settings.writes, []);
         }
     }
 });
 
-test("icon schema allows circular progress and preserves panel defaults", () => {
+test("schema allows circular display and legacy icon migration, preserving defaults", () => {
     const schema = readFileSync(
         new URL(
             "../src/schemas/org.gnome.shell.extensions.codex-meter.gschema.xml",
@@ -136,6 +226,10 @@ test("icon schema allows circular progress and preserves panel defaults", () => 
     );
     assert.match(iconKey, /<default>'codex'<\/default>/);
     const displayKey = schema.match(/<key name="top-panel-display-mode"[^>]*>([\s\S]*?)<\/key>/)[1];
+    assert.deepEqual(
+        [...displayKey.matchAll(/<choice value='([^']+)'\/>/g)].map((match) => match[1]),
+        ["percentages", "bars", "circular-bars"],
+    );
     assert.match(displayKey, /<default>'bars'<\/default>/);
     assert.equal(readSettings(settingsFixture()).topPanelIndicatorIcon, "codex");
     assert.equal(readSettings(settingsFixture()).topPanelDisplayMode, "bars");

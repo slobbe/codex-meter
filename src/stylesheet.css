@@ -19,6 +19,10 @@
     icon-size: 0.7em;
 }
 
+.cx-panel-ring-prefix {
+    font-size: 0.55em;
+}
+
 .cx-usage-label,
 .cx-usage-value {
     font-variant-numeric: tabular-nums;

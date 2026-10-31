@@ -19,18 +19,30 @@ export function getBackgroundRefreshIntervalSeconds(settings) {
     );
 }
 
+export function migrateSettings(settings) {
+    if (settings.get_string(SETTINGS_TOP_PANEL_INDICATOR_ICON) !== "codex-ring") {
+        return;
+    }
+
+    if (settings.get_string(SETTINGS_TOP_PANEL_DISPLAY_MODE) === "bars") {
+        settings.set_string(SETTINGS_TOP_PANEL_DISPLAY_MODE, "circular-bars");
+    }
+    settings.set_string(SETTINGS_TOP_PANEL_INDICATOR_ICON, "codex");
+}
+
 export function readSettings(settings) {
     const topPanelDisplayMode = settings.get_string(SETTINGS_TOP_PANEL_DISPLAY_MODE);
     const topPanelIndicatorIcon = settings.get_string(SETTINGS_TOP_PANEL_INDICATOR_ICON);
 
     return {
-        topPanelDisplayMode: topPanelDisplayMode === "bars" ? "bars" : "percentages",
-        topPanelIndicatorIcon:
-            topPanelIndicatorIcon === "icon"
-                ? "codex"
-                : ["codex", "codex-ring", "openai"].includes(topPanelIndicatorIcon)
-                  ? topPanelIndicatorIcon
-                  : "text",
+        topPanelDisplayMode: ["bars", "circular-bars"].includes(topPanelDisplayMode)
+            ? topPanelDisplayMode
+            : "percentages",
+        topPanelIndicatorIcon: ["icon", "codex-ring"].includes(topPanelIndicatorIcon)
+            ? "codex"
+            : ["codex", "openai"].includes(topPanelIndicatorIcon)
+              ? topPanelIndicatorIcon
+              : "text",
         percentDisplayMode:
             settings.get_string(SETTINGS_PERCENT_DISPLAY_MODE) === "left" ? "left" : "used",
         backgroundRefreshIntervalSeconds: getBackgroundRefreshIntervalSeconds(settings),

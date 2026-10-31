@@ -20,7 +20,7 @@ const sessionQuota = {
 };
 
 test("shows only a loading label and hides errors and empty snapshots in the panel", () => {
-    for (const topPanelDisplayMode of ["bars", "percentages"]) {
+    for (const topPanelDisplayMode of ["bars", "circular-bars", "percentages"]) {
         for (const percentDisplayMode of ["used", "left"]) {
             const settings = { topPanelDisplayMode, percentDisplayMode };
             assert.deepEqual(createPanelBarViewModel(settings, null, null), {
@@ -38,6 +38,23 @@ test("shows only a loading label and hides errors and empty snapshots in the pan
                 );
             }
         }
+    }
+});
+
+test("circular and straight panel bars use the same quota values in used and remaining modes", () => {
+    for (const percentDisplayMode of ["used", "left"]) {
+        const snapshot = { quotas: [sessionQuota] };
+        const settings = { topPanelDisplayMode: "bars", percentDisplayMode };
+        const straight = createPanelBarViewModel(settings, snapshot, null);
+        const circular = createPanelBarViewModel(
+            { ...settings, topPanelDisplayMode: "circular-bars" },
+            snapshot,
+            null,
+        );
+        assert.deepEqual(circular, straight);
+        assert.equal(circular.showBars, true);
+        assert.equal(circular.showLabel, false);
+        assert.equal(circular.bars[0].displayPercentValue, percentDisplayMode === "used" ? 40 : 60);
     }
 });
 

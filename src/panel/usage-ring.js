@@ -16,14 +16,27 @@ export class UsageRing {
             this.actor.add_child(area);
             return half;
         });
-        this.actor.add_child(
-            new St.Icon({
-                gicon,
-                x_align: Clutter.ActorAlign.CENTER,
-                y_align: Clutter.ActorAlign.CENTER,
-                style_class: "cx-panel-icon",
-            }),
-        );
+        this._icon = new St.Icon({
+            gicon,
+            x_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: "cx-panel-icon",
+        });
+        this._prefixLabel = new St.Label({
+            text: "CX",
+            x_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: "cx-panel-prefix cx-panel-ring-prefix",
+            visible: false,
+        });
+        this.actor.add_child(this._icon);
+        this.actor.add_child(this._prefixLabel);
+    }
+
+    setIcon(gicon) {
+        this._icon.gicon = gicon;
+        this._icon.visible = gicon !== null;
+        this._prefixLabel.visible = gicon === null;
     }
 
     update(bars) {

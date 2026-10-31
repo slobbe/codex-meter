@@ -17,6 +17,7 @@ import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
 import { CodexMonitor } from "./background/monitor.js";
 import { CodexMeterIndicator } from "./panel/indicator.js";
+import { migrateSettings } from "./preferences/settings.js";
 
 export default class CodexMeterExtension extends Extension {
     _monitor = null;
@@ -24,7 +25,9 @@ export default class CodexMeterExtension extends Extension {
     _indicator = null;
 
     enable() {
-        this._monitor = new CodexMonitor(this.getSettings(), (message) =>
+        const settings = this.getSettings();
+        migrateSettings(settings);
+        this._monitor = new CodexMonitor(settings, (message) =>
             Main.notify("Codex Meter", message),
         );
         this._indicator = new CodexMeterIndicator(this, this._monitor);

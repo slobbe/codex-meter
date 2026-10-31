@@ -9,7 +9,8 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
     }
     const quotas = sortUsageQuotas(snapshot.quotas);
     const percentDisplayMode = settings.percentDisplayMode;
-    const showBars = settings.topPanelDisplayMode === "bars" && quotas.length > 0;
+    const showBars =
+        ["bars", "circular-bars"].includes(settings.topPanelDisplayMode) && quotas.length > 0;
     const showLabel = !showBars && quotas.length > 0;
     return {
         bars: quotas.map((quota) => ({

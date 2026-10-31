@@ -2,6 +2,7 @@ import Adw from "gi://Adw";
 import Gio from "gi://Gio";
 import Gtk from "gi://Gtk";
 import {
+    migrateSettings,
     MIN_REFRESH_INTERVAL_MINUTES,
     SETTINGS_AUTO_APPLY_BANKED_RESET,
     SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES,
@@ -11,6 +12,7 @@ import {
 } from "./settings.js";
 
 export function createPreferencesPage(settings, metadata) {
+    migrateSettings(settings);
     const page = new Adw.PreferencesPage({
         title: "Codex Meter",
         icon_name: "codex-symbolic",
@@ -46,10 +48,9 @@ function createTopPanelGroup(settings) {
             key: SETTINGS_TOP_PANEL_INDICATOR_ICON,
             title: "Icon",
             options: [
-                ["Codex logo", "codex"],
-                ["Codex with circular progress", "codex-ring"],
                 ["OpenAI logo", "openai"],
-                ["'CX'", "text"],
+                ["Codex logo", "codex"],
+                ["'CX' monogram", "text"],
             ],
         }),
     );
@@ -60,6 +61,7 @@ function createTopPanelGroup(settings) {
             title: "Show percentages as",
             options: [
                 ["Progress bar", "bars"],
+                ["Circular progress bars", "circular-bars"],
                 ["Number", "percentages"],
             ],
         }),

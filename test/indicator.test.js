@@ -76,10 +76,15 @@ function createIndicator() {
         update(bars) {
             this.bars = bars;
         },
+        setIcon(gicon) {
+            this.gicon = gicon;
+        },
     };
     for (const name of ["_label", "_prefixLabel", "_codexIcon", "_openAiIcon"]) {
         indicator[name] = new indicator._panelBars.constructor();
     }
+    indicator._codexIcon.gicon = "codex-icon";
+    indicator._openAiIcon.gicon = "openai-icon";
     return indicator;
 }
 
@@ -159,7 +164,8 @@ test("panel reconciles 0 -> 3 -> 1 -> 0 bars, replacing all data and destroying 
 
 test("circular style replaces one or two bars and falls back without losing quotas", () => {
     const indicator = createIndicator();
-    indicator._settings.topPanelIndicatorIcon = "codex-ring";
+    indicator._settings.topPanelIndicatorIcon = "codex";
+    indicator._settings.topPanelDisplayMode = "circular-bars";
     const panel = { bars: [], showBars: true, showLabel: false, label: "" };
     indicator._monitor.state.snapshot.panel = panel;
     for (const count of [0, 1, 2, 3, 2]) {
@@ -187,12 +193,47 @@ test("circular style replaces one or two bars and falls back without losing quot
     assert.equal(indicator._label.visible, true);
 
     panel.showBars = true;
+    indicator._settings.topPanelDisplayMode = "bars";
     indicator._settings.topPanelIndicatorIcon = "openai";
     indicator._syncLabel();
     assert.equal(indicator._usageRing.actor.visible, false);
     assert.equal(indicator._panelBars.visible, true);
     assert.equal(indicator._openAiIcon.visible, true);
     assert.equal(indicator._codexIcon.visible, false);
+});
+
+test("circular bars surround any selected logo or CX text and restore it on fallback", () => {
+    const indicator = createIndicator();
+    indicator._settings.topPanelDisplayMode = "circular-bars";
+    const panel = {
+        bars: [
+            { percentValue: 25, displayPercentValue: 75 },
+            { percentValue: 80, displayPercentValue: 20 },
+        ],
+        showBars: true,
+        showLabel: false,
+        label: "",
+    };
+    indicator._monitor.state.snapshot.panel = panel;
+    for (const [icon, gicon, actor] of [
+        ["openai", "openai-icon", indicator._openAiIcon],
+        ["codex", "codex-icon", indicator._codexIcon],
+        ["text", null, indicator._prefixLabel],
+    ]) {
+        indicator._settings.topPanelIndicatorIcon = icon;
+        indicator._syncLabel();
+        assert.equal(indicator._usageRing.gicon, gicon);
+        assert.equal(indicator._usageRing.actor.visible, true);
+        for (const plain of [indicator._openAiIcon, indicator._codexIcon, indicator._prefixLabel]) {
+            assert.equal(plain.visible, false);
+        }
+        panel.bars.push({ percentValue: 10, displayPercentValue: 90 });
+        indicator._syncLabel();
+        assert.equal(indicator._usageRing.actor.visible, false);
+        assert.equal(indicator._panelBars.visible, true);
+        assert.equal(actor.visible, true);
+        panel.bars.pop();
+    }
 });
 
 test("main menu opening requests stale-aware inventory without waiting or delaying bar sync", async () => {

@@ -27,7 +27,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         }
     }
     export default {
-        Widget: Actor, DrawingArea: Actor, Icon: Actor,
+        Widget: Actor, DrawingArea: Actor, Icon: Actor, Label: Actor,
         BinLayout: class {}, ActorAlign: { CENTER: 0 },
     };
 `)}`;
@@ -81,6 +81,21 @@ test("ring paints first quota up the left and second up the right from six o'clo
     }
     assert.ok(ring.actor.children[0].classes.has("cx-color-green"));
     assert.ok(ring.actor.children[1].classes.has("cx-color-warning"));
+});
+
+test("ring switches between logos and CX text without changing its sizing classes", () => {
+    const ring = new UsageRing("codex-icon");
+    const [, , icon, label] = ring.actor.children;
+    for (const gicon of ["openai-icon", null, "codex-icon"]) {
+        ring.setIcon(gicon);
+        assert.equal(icon.gicon, gicon);
+        assert.equal(icon.visible, gicon !== null);
+        assert.equal(label.visible, gicon === null);
+        assert.equal(label.text, "CX");
+        assert.equal(ring.actor.style_class, "cx-panel-ring");
+        assert.equal(icon.style_class, "cx-panel-icon");
+        assert.equal(label.style_class, "cx-panel-prefix cx-panel-ring-prefix");
+    }
 });
 
 test("ring handles zero, full, single and absent quotas without stale fill or colors", () => {
