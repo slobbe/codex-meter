@@ -21,20 +21,28 @@ function ensureParentDir(path) {
     GLib.chmod(dir, PRIVATE_DIR_MODE);
 }
 
-export async function readFile(path) {
+export function isCancellationError(error) {
+    return error instanceof GLib.Error && error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED);
+}
+
+export async function readFile(path, cancellable = null) {
     try {
+        cancellable?.set_error_if_cancelled();
         const file = Gio.File.new_for_path(path);
-        const [contents] = await file.load_contents_async(null);
+        const [contents] = await file.load_contents_async(cancellable);
+        cancellable?.set_error_if_cancelled();
         return new TextDecoder("utf-8").decode(contents);
     } catch (error) {
+        if (isCancellationError(error)) throw error;
         throw new Error(
             `Failed to read file "${path}": ${error instanceof Error ? error.message : String(error)}`,
         );
     }
 }
 
-export async function writeFile(path, text) {
+export async function writeFile(path, text, cancellable = null) {
     try {
+        cancellable?.set_error_if_cancelled();
         ensureParentDir(path);
         const file = Gio.File.new_for_path(path);
         const bytes = new TextEncoder().encode(text);
@@ -43,18 +51,21 @@ export async function writeFile(path, text) {
             null,
             false,
             Gio.FileCreateFlags.REPLACE_DESTINATION,
-            null,
+            cancellable,
         );
+        cancellable?.set_error_if_cancelled();
         GLib.chmod(path, PRIVATE_FILE_MODE);
     } catch (error) {
+        if (isCancellationError(error)) throw error;
         throw new Error(
             `Failed to write file "${path}": ${error instanceof Error ? error.message : String(error)}`,
         );
     }
 }
 
-export async function appendFile(path, line) {
+export async function appendFile(path, line, cancellable = null) {
     try {
+        cancellable?.set_error_if_cancelled();
         ensureParentDir(path);
         const file = Gio.File.new_for_path(path);
         const text = line.endsWith("\n") ? line : `${line}\n`;
@@ -62,24 +73,39 @@ export async function appendFile(path, line) {
         const stream = await file.append_to_async(
             Gio.FileCreateFlags.NONE,
             GLib.PRIORITY_DEFAULT,
-            null,
+            cancellable,
         );
-        await stream.write_bytes_async(bytes, GLib.PRIORITY_DEFAULT, null);
-        await stream.close_async(GLib.PRIORITY_DEFAULT, null);
+        let writeError = null;
+        try {
+            cancellable?.set_error_if_cancelled();
+            await stream.write_bytes_async(bytes, GLib.PRIORITY_DEFAULT, cancellable);
+        } catch (error) {
+            writeError = error;
+            throw error;
+        } finally {
+            // Closing is cleanup and must not mask the original write/cancellation error.
+            try {
+                await stream.close_async(GLib.PRIORITY_DEFAULT, null);
+            } catch (error) {
+                if (!writeError) throw error;
+            }
+        }
+        cancellable?.set_error_if_cancelled();
         GLib.chmod(path, PRIVATE_FILE_MODE);
     } catch (error) {
+        if (isCancellationError(error)) throw error;
         throw new Error(
             `Failed to append file "${path}": ${error instanceof Error ? error.message : String(error)}`,
         );
     }
 }
 
-export async function readJsonFile(path) {
-    return JSON.parse(await readFile(path));
+export async function readJsonFile(path, cancellable = null) {
+    return JSON.parse(await readFile(path, cancellable));
 }
 
-export async function writeJsonFile(path, data) {
+export async function writeJsonFile(path, data, cancellable = null) {
     const json = JSON.stringify(data, null, 2);
     if (json === undefined) throw new Error("JSON.stringify returned undefined");
-    await writeFile(path, `${json}\n`);
+    await writeFile(path, `${json}\n`, cancellable);
 }

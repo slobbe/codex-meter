@@ -7,7 +7,11 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export const api = { list: null, redeem: null };
     export const listCodexBankedResets = options => api.list(options);
     export const redeemCodexBankedReset = (id, options) => api.redeem(id, options);
-    export class Cancellable { cancel() { this.cancelled = true; } }
+    export class Cancellable {
+        cancel() { this.cancelled = true; }
+        is_cancelled() { return !!this.cancelled; }
+        set_error_if_cancelled() { if (this.cancelled) throw new GLibError("Cancelled"); }
+    }
     class GLibError extends Error { matches() { return true; } }
     export default { Cancellable, Error: GLibError, IOErrorEnum: { CANCELLED: 1 } };
     export class UsageService {}

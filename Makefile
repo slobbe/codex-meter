@@ -35,6 +35,7 @@ check-js:
 check-gjs:
 	gjs -m test/gjs-smoke.test.js
 	gjs -m test/history-storage.test.js
+	gjs -m test/lifecycle.gjs.js
 	gjs -m test/monitor.gjs.js
 	gjs -m test/periodic-task.gjs.js
 	gjs -m test/codex-banked-cache-validation.gjs.js

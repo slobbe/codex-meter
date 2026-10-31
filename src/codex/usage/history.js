@@ -1,17 +1,19 @@
 import GLib from "gi://GLib";
 import { STATE_DIR } from "../../io/paths.js";
-import { appendFile, readFile, writeFile } from "../../io/files.js";
+import { appendFile, isCancellationError, readFile, writeFile } from "../../io/files.js";
 
 export const MAX_HISTORY_ENTRIES = 25_000;
 
 const MAX_HISTORY_AGE_SECONDS = 21 * 24 * 60 * 60;
 const HISTORY_PATH = GLib.build_filenamev([STATE_DIR, "codex", "usage-history.jsonl"]);
 
-export async function readHistory(path = HISTORY_PATH) {
+export async function readHistory(path = HISTORY_PATH, cancellable = null) {
+    cancellable?.set_error_if_cancelled();
     if (!fileExists(path)) return [];
     try {
-        return normalizeHistoryEntries(parseJsonlHistory(await readFile(path)));
+        return normalizeHistoryEntries(parseJsonlHistory(await readFile(path, cancellable)));
     } catch (error) {
+        if (isCancellationError(error)) throw error;
         console.error("Unable to read usage history", error);
         return [];
     }
@@ -21,16 +23,17 @@ export async function readHistory(path = HISTORY_PATH) {
  * Append a history row verbatim without reading, deduping, or normalizing existing history.
  * Callers must pre-normalize rows and decide whether appending is appropriate.
  */
-export async function appendHistoryRow(row, path = HISTORY_PATH) {
-    await appendFile(path, JSON.stringify(row));
+export async function appendHistoryRow(row, path = HISTORY_PATH, cancellable = null) {
+    await appendFile(path, JSON.stringify(row), cancellable);
 }
 
-export async function rewriteHistory(rows, path = HISTORY_PATH) {
+export async function rewriteHistory(rows, path = HISTORY_PATH, cancellable = null) {
     const normalizedRows = normalizeHistoryEntries(rows);
     await writeFile(
         path,
         normalizedRows.map((row) => JSON.stringify(row)).join("\n") +
             (normalizedRows.length ? "\n" : ""),
+        cancellable,
     );
 }
 

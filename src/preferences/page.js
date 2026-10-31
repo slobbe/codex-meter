@@ -11,16 +11,23 @@ import {
     SETTINGS_TOP_PANEL_INDICATOR_ICON,
 } from "./settings.js";
 
-export function createPreferencesPage(settings, metadata) {
+export function createPreferencesPage(settings, metadata, window) {
     migrateSettings(settings);
+    const settingsSignalIds = [];
     const page = new Adw.PreferencesPage({
         title: "Codex Meter",
         icon_name: "codex-symbolic",
     });
-    page.add(createBehaviorGroup(settings));
-    page.add(createTopPanelGroup(settings));
+    page.add(createBehaviorGroup(settings, settingsSignalIds));
+    page.add(createTopPanelGroup(settings, settingsSignalIds));
     page.add(createBankedResetsGroup(settings));
     page.add(createFooterGroup(metadata));
+    window.connect("close-request", () => {
+        for (const id of settingsSignalIds.splice(0)) {
+            settings.disconnect(id);
+        }
+        return false;
+    });
     return page;
 }
 
@@ -38,13 +45,14 @@ function createBankedResetsGroup(settings) {
     return group;
 }
 
-function createTopPanelGroup(settings) {
+function createTopPanelGroup(settings, settingsSignalIds) {
     const group = new Adw.PreferencesGroup({
         title: "Top panel indicator",
     });
     group.add(
         createBoundComboRow({
             settings,
+            settingsSignalIds,
             key: SETTINGS_TOP_PANEL_INDICATOR_ICON,
             title: "Icon",
             options: [
@@ -57,6 +65,7 @@ function createTopPanelGroup(settings) {
     group.add(
         createBoundComboRow({
             settings,
+            settingsSignalIds,
             key: SETTINGS_TOP_PANEL_DISPLAY_MODE,
             title: "Show percentages as",
             options: [
@@ -70,13 +79,14 @@ function createTopPanelGroup(settings) {
     return group;
 }
 
-function createBehaviorGroup(settings) {
+function createBehaviorGroup(settings, settingsSignalIds) {
     const group = new Adw.PreferencesGroup({
         title: "Behavior",
     });
     group.add(
         createBoundComboRow({
             settings,
+            settingsSignalIds,
             key: SETTINGS_PERCENT_DISPLAY_MODE,
             title: "Display mode",
             options: [
@@ -85,11 +95,11 @@ function createBehaviorGroup(settings) {
             ],
         }),
     );
-    group.add(createRefreshIntervalRow(settings));
+    group.add(createRefreshIntervalRow(settings, settingsSignalIds));
     return group;
 }
 
-function createBoundComboRow({ settings, key, title, options }) {
+function createBoundComboRow({ settings, settingsSignalIds, key, title, options }) {
     const getSelected = () =>
         Math.max(
             0,
@@ -101,9 +111,11 @@ function createBoundComboRow({ settings, key, title, options }) {
         selected: getSelected(),
     });
     row.connect("notify::selected", () => settings.set_string(key, options[row.selected][1]));
-    settings.connect(`changed::${key}`, () => {
-        row.selected = getSelected();
-    });
+    settingsSignalIds.push(
+        settings.connect(`changed::${key}`, () => {
+            row.selected = getSelected();
+        }),
+    );
     return row;
 }
 
@@ -119,7 +131,7 @@ function createBoundSwitchRow({ settings, key, title, subtitle }) {
     return row;
 }
 
-function createRefreshIntervalRow(settings) {
+function createRefreshIntervalRow(settings, settingsSignalIds) {
     const row = new Adw.SpinRow({
         title: "Background refresh interval (minutes)",
         subtitle: "Set to 0 to refresh manually",
@@ -139,9 +151,11 @@ function createRefreshIntervalRow(settings) {
             Math.max(MIN_REFRESH_INTERVAL_MINUTES, Math.round(row.value)),
         );
     });
-    settings.connect(`changed::${SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES}`, () => {
-        row.value = settings.get_uint(SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES);
-    });
+    settingsSignalIds.push(
+        settings.connect(`changed::${SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES}`, () => {
+            row.value = settings.get_uint(SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES);
+        }),
+    );
     return row;
 }
 

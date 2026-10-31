@@ -45,64 +45,72 @@ function parseApiResponse(text, url, config) {
 
 export async function fetchJson(url, config, options = {}) {
     const session = new Soup.Session();
-    const message = Soup.Message.new(options.method ?? "GET", url);
-    session.timeout = DEFAULT_TIMEOUT_SECONDS;
-    const headers = {
-        Accept: "application/json",
-        ...options.headers,
-    };
-    for (const [key, value] of Object.entries(headers)) {
-        message.request_headers.append(key, value);
-    }
-    if (options.body !== undefined && options.body !== null) {
-        const bytes = new GLib.Bytes(new TextEncoder().encode(options.body));
-        // The GIRS package set currently lacks this Soup binding in typings.
-        // @ts-ignore
-        message.set_request_body_from_bytes("application/json", bytes);
-    }
-    let bytes;
     try {
-        bytes = await session.send_and_read_async(
-            message,
-            GLib.PRIORITY_DEFAULT,
-            options.cancellable ?? null,
-        );
-    } catch (error) {
-        if (isCancellationError(error)) {
-            throw error;
+        const message = Soup.Message.new(options.method ?? "GET", url);
+        session.timeout = DEFAULT_TIMEOUT_SECONDS;
+        const headers = {
+            Accept: "application/json",
+            ...options.headers,
+        };
+        for (const [key, value] of Object.entries(headers)) {
+            message.request_headers.append(key, value);
         }
-        const message = error instanceof Error ? error.message : String(error);
-        throw new CodexError(
-            "network",
-            config.messages.networkUnavailable,
-            `Request to ${url} failed before receiving a response: ${message}`,
-        );
-    }
-    if (bytes.get_size() > MAX_RESPONSE_BYTES) {
-        throw new CodexError(
-            "malformed-response",
-            config.messages.responseTooLarge,
-            `Response from ${url} exceeded ${MAX_RESPONSE_BYTES} bytes`,
-        );
-    }
-    const data = bytes.get_data();
-    const text = data ? new TextDecoder("utf-8").decode(data) : "";
-    if (message.statusCode < 200 || message.statusCode >= 300) {
-        const errorBody = formatErrorBody(text);
-        const technicalMessage = `Request to ${url} failed with HTTP ${message.statusCode}: ${errorBody}`;
-        if (message.statusCode === 401 || message.statusCode === 403) {
-            throw new CodexError("unauthorized", config.messages.unauthorized, technicalMessage);
+        if (options.body !== undefined && options.body !== null) {
+            const bytes = new GLib.Bytes(new TextEncoder().encode(options.body));
+            // The GIRS package set currently lacks this Soup binding in typings.
+            // @ts-ignore
+            message.set_request_body_from_bytes("application/json", bytes);
         }
-        throw new CodexError("network", config.messages.refreshFailed, technicalMessage);
+        let bytes;
+        try {
+            bytes = await session.send_and_read_async(
+                message,
+                GLib.PRIORITY_DEFAULT,
+                options.cancellable ?? null,
+            );
+        } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
+            const message = error instanceof Error ? error.message : String(error);
+            throw new CodexError(
+                "network",
+                config.messages.networkUnavailable,
+                `Request to ${url} failed before receiving a response: ${message}`,
+            );
+        }
+        if (bytes.get_size() > MAX_RESPONSE_BYTES) {
+            throw new CodexError(
+                "malformed-response",
+                config.messages.responseTooLarge,
+                `Response from ${url} exceeded ${MAX_RESPONSE_BYTES} bytes`,
+            );
+        }
+        const data = bytes.get_data();
+        const text = data ? new TextDecoder("utf-8").decode(data) : "";
+        if (message.statusCode < 200 || message.statusCode >= 300) {
+            const errorBody = formatErrorBody(text);
+            const technicalMessage = `Request to ${url} failed with HTTP ${message.statusCode}: ${errorBody}`;
+            if (message.statusCode === 401 || message.statusCode === 403) {
+                throw new CodexError(
+                    "unauthorized",
+                    config.messages.unauthorized,
+                    technicalMessage,
+                );
+            }
+            throw new CodexError("network", config.messages.refreshFailed, technicalMessage);
+        }
+        if (!data) {
+            throw new CodexError(
+                "malformed-response",
+                config.messages.emptyResponse,
+                `Received empty response body from ${url}`,
+            );
+        }
+        return parseApiResponse(text, url, config);
+    } finally {
+        session.abort();
     }
-    if (!data) {
-        throw new CodexError(
-            "malformed-response",
-            config.messages.emptyResponse,
-            `Received empty response body from ${url}`,
-        );
-    }
-    return parseApiResponse(text, url, config);
 }
 
 function isCancellationError(error) {

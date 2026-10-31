@@ -17,11 +17,15 @@ const CODEX_API_CONFIG = {
 };
 
 export async function refreshCodexUsage(options = {}) {
-    const token = await getCodexAccessToken();
+    const cancellable = options.cancellable ?? null;
+    cancellable?.set_error_if_cancelled();
+    const token = await getCodexAccessToken(cancellable);
+    cancellable?.set_error_if_cancelled();
     const apiResponse = await fetchJson(CODEX_USAGE_URL, CODEX_API_CONFIG, {
         headers: { Authorization: `Bearer ${token}` },
-        cancellable: options.cancellable ?? null,
+        cancellable,
     });
 
+    cancellable?.set_error_if_cancelled();
     return toUsageSnapshot(apiResponse);
 }

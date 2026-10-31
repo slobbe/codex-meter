@@ -51,7 +51,7 @@ export class CodexMonitor {
         this._bankedResetPreparation = null;
         this._redeemingBankedReset = false;
         this._redeemBankedResetCancellable = null;
-        this._stopped = false;
+        this._lifecycleCancellable = new Gio.Cancellable();
         this._connectSettings();
     }
 
@@ -78,18 +78,19 @@ export class CodexMonitor {
     }
 
     start() {
-        if (this._stopped) return;
+        if (this._lifecycleCancellable.is_cancelled()) return;
         if (this._autoApplyBankedReset) {
             this._bankedResetRefreshTask.start();
         }
         void this._loadCachedSnapshot().finally(() => {
-            if (this._stopped) return;
+            if (this._lifecycleCancellable.is_cancelled()) return;
             this._usageRefreshTask.start();
         });
     }
 
     stop() {
-        this._stopped = true;
+        if (this._lifecycleCancellable.is_cancelled()) return;
+        this._lifecycleCancellable.cancel();
         this._bankedResetPreparation = null;
         this._usageRefreshTask.stop();
         this._bankedResetRefreshTask.stop();
@@ -106,7 +107,7 @@ export class CodexMonitor {
     }
 
     async refreshUsage() {
-        if (this._stopped) return;
+        if (this._lifecycleCancellable.is_cancelled()) return;
         if (this._refreshPromise) {
             await this._refreshPromise;
             return;
@@ -122,7 +123,7 @@ export class CodexMonitor {
     }
 
     async refreshBankedResets({ maxAgeMs = 0 } = {}) {
-        if (this._stopped) return null;
+        if (this._lifecycleCancellable.is_cancelled()) return null;
         if (this._bankedResetRefreshPromise) return await this._bankedResetRefreshPromise;
         const now = Date.now();
         if (
@@ -140,12 +141,13 @@ export class CodexMonitor {
         // Assign before notifying listeners so reentrant refreshes share this request too.
         this._bankedResetRefreshPromise = Promise.resolve().then(async () => {
             try {
+                cancellable.set_error_if_cancelled();
                 const response = await listCodexBankedResets({ cancellable });
-                if (this._stopped) return null;
+                if (this._lifecycleCancellable.is_cancelled()) return null;
                 this._bankedResetSnapshot = response;
                 return response;
             } catch (error) {
-                if (!isCancellationError(error) && !this._stopped) {
+                if (!isCancellationError(error) && !this._lifecycleCancellable.is_cancelled()) {
                     this._bankedResetError = formatBankedResetPreparationFailure(error);
                 }
                 return null;
@@ -153,7 +155,7 @@ export class CodexMonitor {
                 this._bankedResetRefreshPromise = null;
                 this._bankedResetRefreshCancellable = null;
                 this._bankedResetLoading = false;
-                if (!this._stopped) this._emitChange();
+                if (!this._lifecycleCancellable.is_cancelled()) this._emitChange();
             }
         });
         this._emitChange();
@@ -162,7 +164,7 @@ export class CodexMonitor {
 
     async prepareBankedReset(creditId) {
         if (
-            this._stopped ||
+            this._lifecycleCancellable.is_cancelled() ||
             this._preparingBankedReset ||
             this._bankedResetPreparation ||
             this._redeemingBankedReset
@@ -177,7 +179,11 @@ export class CodexMonitor {
         this._emitChange();
         try {
             const response = await this.refreshBankedResets();
-            if (this._stopped || this._bankedResetPreparation !== preparation) return null;
+            if (
+                this._lifecycleCancellable.is_cancelled() ||
+                this._bankedResetPreparation !== preparation
+            )
+                return null;
             if (!response) {
                 this._notify(
                     this._bankedResetError ??
@@ -206,7 +212,7 @@ export class CodexMonitor {
             // Manual validation reports failures via notification, not a second inventory row.
             if (ownsInventoryRefresh) this._bankedResetError = null;
             this._preparingBankedReset = false;
-            if (!this._stopped) this._emitChange();
+            if (!this._lifecycleCancellable.is_cancelled()) this._emitChange();
         }
     }
 
@@ -216,27 +222,28 @@ export class CodexMonitor {
     }
 
     async redeemBankedReset(creditId) {
-        if (this._stopped || this._redeemingBankedReset) return;
+        if (this._lifecycleCancellable.is_cancelled() || this._redeemingBankedReset) return;
         const cancellable = new Gio.Cancellable();
         this._redeemingBankedReset = true;
         this._redeemBankedResetCancellable = cancellable;
         this._emitChange();
         try {
             await redeemCodexBankedReset(creditId, { cancellable });
-            if (this._stopped) return;
+            if (this._lifecycleCancellable.is_cancelled()) return;
             this._notify("Banked Codex reset redeemed.");
             // A request started before redemption must finish before fetching fresh inventory.
             await this._bankedResetRefreshPromise;
+            if (this._lifecycleCancellable.is_cancelled() || cancellable.is_cancelled()) return;
             await Promise.all([this.refreshUsage(), this.refreshBankedResets()]);
         } catch (error) {
-            if (this._stopped && isCancellationError(error)) return;
+            if (this._lifecycleCancellable.is_cancelled() || isCancellationError(error)) return;
             this._notify(formatBankedResetFailure(error));
         } finally {
             if (this._redeemBankedResetCancellable === cancellable) {
                 this._redeemBankedResetCancellable = null;
             }
             this._bankedResetPreparation = null;
-            if (this._stopped) return;
+            if (this._lifecycleCancellable.is_cancelled()) return;
             this._redeemingBankedReset = false;
             this._emitChange();
         }
@@ -267,24 +274,28 @@ export class CodexMonitor {
         );
     }
 
-    async _refreshUsageOnce(cancellable) {
+    async _refreshUsageOnce(cancellable = this._lifecycleCancellable) {
         try {
-            if (this._stopped) return;
-            this._snapshot = await this._usageService.refresh({ cancellable });
-            if (this._stopped) return;
-            await this._loadHistory();
+            if (this._lifecycleCancellable.is_cancelled()) return;
+            const snapshot = await this._usageService.refresh({ cancellable });
+            if (this._lifecycleCancellable.is_cancelled()) return;
+            this._snapshot = snapshot;
+            await this._loadHistory(cancellable);
+            cancellable?.set_error_if_cancelled();
             this._errorMessage = null;
             this._cachedFailureMessage = null;
-            await this._loadPrediction(this._snapshot);
+            await this._loadPrediction(this._snapshot, cancellable);
         } catch (error) {
-            if (this._stopped && isCancellationError(error)) return;
+            if (this._lifecycleCancellable.is_cancelled() || isCancellationError(error)) return;
             const failureMessage = formatRefreshFailure(error);
             if (this._snapshot) {
                 this._errorMessage = null;
                 this._cachedFailureMessage = failureMessage;
             } else {
                 const loadedCachedSnapshot =
-                    !this._stopped && (await this._loadCachedSnapshotAfterFailure());
+                    !this._lifecycleCancellable.is_cancelled() &&
+                    (await this._loadCachedSnapshotAfterFailure(cancellable));
+                if (this._lifecycleCancellable.is_cancelled()) return;
                 if (loadedCachedSnapshot) {
                     this._errorMessage = null;
                     this._cachedFailureMessage = failureMessage;
@@ -294,56 +305,74 @@ export class CodexMonitor {
                 }
             }
         } finally {
-            if (!this._stopped) this._emitChange();
+            if (!this._lifecycleCancellable.is_cancelled()) this._emitChange();
         }
     }
 
     async _loadCachedSnapshot() {
-        if (this._stopped || this._snapshot || this._errorMessage) return;
+        const cancellable = this._lifecycleCancellable;
+        if (this._lifecycleCancellable.is_cancelled() || this._snapshot || this._errorMessage)
+            return;
         try {
-            const snapshot = await this._usageService.readCachedSnapshot();
-            if (this._stopped || !snapshot || this._snapshot || this._errorMessage) return;
+            const snapshot = await this._usageService.readCachedSnapshot({ cancellable });
+            if (
+                this._lifecycleCancellable.is_cancelled() ||
+                !snapshot ||
+                this._snapshot ||
+                this._errorMessage
+            )
+                return;
             this._snapshot = snapshot;
-            await this._loadHistory();
-            await this._loadPrediction(snapshot);
-            if (!this._stopped) this._emitChange();
+            await this._loadHistory(cancellable);
+            cancellable?.set_error_if_cancelled();
+            await this._loadPrediction(snapshot, cancellable);
+            if (!this._lifecycleCancellable.is_cancelled()) this._emitChange();
         } catch (error) {}
     }
 
-    async _loadCachedSnapshotAfterFailure() {
-        if (this._stopped) return false;
+    async _loadCachedSnapshotAfterFailure(cancellable = this._lifecycleCancellable) {
+        if (this._lifecycleCancellable.is_cancelled()) return false;
         try {
-            const snapshot = await this._usageService.readCachedSnapshot();
-            if (this._stopped || !snapshot) return false;
+            const snapshot = await this._usageService.readCachedSnapshot({ cancellable });
+            if (this._lifecycleCancellable.is_cancelled() || !snapshot) return false;
             if (this._snapshot) return true;
             this._snapshot = snapshot;
-            await this._loadHistory();
-            await this._loadPrediction(snapshot);
+            await this._loadHistory(cancellable);
+            cancellable?.set_error_if_cancelled();
+            await this._loadPrediction(snapshot, cancellable);
             return true;
         } catch (error) {
             return false;
         }
     }
 
-    async _loadPrediction(snapshot) {
+    async _loadPrediction(snapshot, cancellable = this._lifecycleCancellable) {
         try {
-            this._prediction = await this._usageService.predict(snapshot);
+            cancellable?.set_error_if_cancelled();
+            const prediction = await this._usageService.predict(snapshot, { cancellable });
+            cancellable?.set_error_if_cancelled();
+            this._prediction = prediction;
         } catch (error) {
+            if (isCancellationError(error)) throw error;
             this._prediction = null;
         }
     }
 
-    async _loadHistory() {
+    async _loadHistory(cancellable = this._lifecycleCancellable) {
         try {
-            this._history = await this._usageService.readHistory();
+            cancellable?.set_error_if_cancelled();
+            const history = await this._usageService.readHistory({ cancellable });
+            cancellable?.set_error_if_cancelled();
+            this._history = history;
         } catch (error) {
+            if (isCancellationError(error)) throw error;
             this._history = [];
         }
     }
 
     async _refreshBankedResetsForAutoApply() {
         const response = await this.refreshBankedResets();
-        if (!response || this._stopped) return;
+        if (!response || this._lifecycleCancellable.is_cancelled()) return;
         const cancellable = new Gio.Cancellable();
         this._autoApplyBankedResetCancellable = cancellable;
         try {
@@ -357,7 +386,7 @@ export class CodexMonitor {
 
     async _autoApplyExpiringBankedReset(credits, cancellable) {
         if (
-            this._stopped ||
+            this._lifecycleCancellable.is_cancelled() ||
             this._preparingBankedReset ||
             this._bankedResetPreparation ||
             this._redeemingBankedReset ||
@@ -375,18 +404,19 @@ export class CodexMonitor {
         this._emitChange();
         try {
             await redeemCodexBankedReset(credit.id, { cancellable });
-            if (this._stopped) return;
+            if (this._lifecycleCancellable.is_cancelled() || cancellable.is_cancelled()) return;
             this._notify("Expiring banked Codex reset applied automatically.");
             await this._bankedResetRefreshPromise;
+            if (this._lifecycleCancellable.is_cancelled() || cancellable.is_cancelled()) return;
             await Promise.all([this.refreshUsage(), this.refreshBankedResets()]);
         } catch (error) {
-            if (this._stopped && isCancellationError(error)) return;
+            if (this._lifecycleCancellable.is_cancelled() || isCancellationError(error)) return;
             console.warn("Unable to auto-apply expiring Codex banked reset", error);
         } finally {
             if (this._redeemBankedResetCancellable === cancellable) {
                 this._redeemBankedResetCancellable = null;
             }
-            if (!this._stopped) {
+            if (!this._lifecycleCancellable.is_cancelled()) {
                 this._redeemingBankedReset = false;
                 this._emitChange();
             }

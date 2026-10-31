@@ -1,16 +1,17 @@
 import GLib from "gi://GLib";
-import { readJsonFile } from "../../io/files.js";
+import { isCancellationError, readJsonFile } from "../../io/files.js";
 import { CodexError } from "../error.js";
 import { parseCodexAccessToken, parseCodexAccountId } from "./auth-parser.js";
 
 const CODEX_AUTH_PATH = GLib.build_filenamev([GLib.get_home_dir(), ".codex", "auth.json"]);
 
-export async function getCodexAccessToken() {
-    return (await getCodexCredentials()).accessToken;
+export async function getCodexAccessToken(cancellable = null) {
+    return (await getCodexCredentials(cancellable)).accessToken;
 }
 
-export async function getCodexCredentials() {
-    const auth = await readCodexAuth();
+export async function getCodexCredentials(cancellable = null) {
+    const auth = await readCodexAuth(cancellable);
+    cancellable?.set_error_if_cancelled();
     const accessToken = parseCodexAccessToken(auth);
     if (
         typeof accessToken !== "string" ||
@@ -29,7 +30,8 @@ export async function getCodexCredentials() {
     };
 }
 
-async function readCodexAuth() {
+async function readCodexAuth(cancellable) {
+    cancellable?.set_error_if_cancelled();
     if (!GLib.file_test(CODEX_AUTH_PATH, GLib.FileTest.EXISTS)) {
         throw new CodexError(
             "missing-auth",
@@ -38,7 +40,7 @@ async function readCodexAuth() {
         );
     }
     try {
-        const auth = await readJsonFile(CODEX_AUTH_PATH);
+        const auth = await readJsonFile(CODEX_AUTH_PATH, cancellable);
         if (typeof auth !== "object" || auth === null || Array.isArray(auth)) {
             throw new CodexError(
                 "missing-auth",
@@ -48,7 +50,7 @@ async function readCodexAuth() {
         }
         return auth;
     } catch (error) {
-        if (error instanceof CodexError) throw error;
+        if (isCancellationError(error) || error instanceof CodexError) throw error;
         throw new CodexError(
             "missing-auth",
             "Codex auth file could not be read. Run `codex login` and try again.",

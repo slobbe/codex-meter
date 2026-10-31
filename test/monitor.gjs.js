@@ -1,3 +1,5 @@
+import Gio from "gi://Gio";
+
 import { CodexMonitor } from "../src/background/monitor.js";
 
 function assertEqual(actual, expected, message) {
@@ -23,7 +25,7 @@ function deferred() {
 const workflows = [
     {
         name: "live refresh",
-        run: (monitor) => monitor._refreshUsageOnce(null),
+        run: (monitor) => monitor._refreshUsageOnce(),
         sourceEvents: ["refresh"],
         usesCurrentSnapshot: true,
     },
@@ -35,7 +37,7 @@ const workflows = [
     },
     {
         name: "failure cache",
-        run: (monitor) => monitor._refreshUsageOnce(null),
+        run: (monitor) => monitor._refreshUsageOnce(),
         sourceEvents: ["refresh", "cache"],
         usesCurrentSnapshot: false,
     },
@@ -63,7 +65,7 @@ function createFixture(workflow) {
 
     // Skip construction so no real settings, timers, network, or storage are used.
     const monitor = Object.assign(Object.create(CodexMonitor.prototype), {
-        _stopped: false,
+        _lifecycleCancellable: new Gio.Cancellable(),
         _snapshot: null,
         _prediction: { quotas: {} },
         _history: [],
@@ -170,15 +172,11 @@ async function testStoppedDuringSource(workflow) {
     const fixture = createFixture(workflow);
     const pending = workflow.run(fixture.monitor);
     await fixture.sourceEntered.promise;
-    fixture.monitor._stopped = true;
+    fixture.monitor._lifecycleCancellable.cancel();
     fixture.source.resolve(fixture.snapshot);
     await pending;
     assertDeepEqual(fixture.events, workflow.sourceEvents, "stop skips history and prediction");
-    assertEqual(
-        fixture.monitor.state.snapshot,
-        workflow.usesCurrentSnapshot ? fixture.snapshot : null,
-        "stop preserves each workflow's snapshot assignment timing",
-    );
+    assertEqual(fixture.monitor.state.snapshot, null, "stop prevents snapshot assignment");
     assertEqual(fixture.changes.length, 0, "stop suppresses change");
 }
 
@@ -188,22 +186,22 @@ async function testStoppedDuringLoading(workflow, stage) {
     await fixture.sourceEntered.promise;
     fixture.source.resolve(fixture.snapshot);
     await fixture.historyEntered.promise;
-    if (stage === "history") fixture.monitor._stopped = true;
-    fixture.historyResult.resolve(fixture.history);
-    await fixture.predictionEntered.promise;
-    fixture.monitor._stopped = true;
-    fixture.predictionResult.resolve(fixture.prediction);
+    if (stage === "history") {
+        fixture.monitor._lifecycleCancellable.cancel();
+        fixture.historyResult.resolve(fixture.history);
+    } else {
+        fixture.historyResult.resolve(fixture.history);
+        await fixture.predictionEntered.promise;
+        fixture.monitor._lifecycleCancellable.cancel();
+        fixture.predictionResult.resolve(fixture.prediction);
+    }
     await pending;
-    assertEqual(
-        fixture.monitor.state.prediction,
-        fixture.prediction,
-        "in-flight loading still assigns prediction after stop",
-    );
     assertDeepEqual(
         fixture.events,
-        [...workflow.sourceEvents, "history", "predict"],
-        "stop during loading preserves await order but suppresses change",
+        [...workflow.sourceEvents, "history", ...(stage === "prediction" ? ["predict"] : [])],
+        "stop prevents follow-up loading and suppresses change",
     );
+    assertDeepEqual(fixture.monitor.state.prediction, { quotas: {} }, "stop preserves prediction");
     assertDeepEqual(fixture.notifications, [], "stop sends no notifications");
 }
 
