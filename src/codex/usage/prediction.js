@@ -28,7 +28,6 @@ export function predict(history, snapshot) {
  * @param {HistoryEntry[]} history
  * @param {UsageSnapshot} snapshot
  * @param {UsageQuota} quota
- * @returns {WindowPrediction}
  */
 function predictQuota(history, snapshot, quota) {
     if (!hasPredictionMetadata(quota)) {

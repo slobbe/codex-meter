@@ -31,10 +31,7 @@ export function getUsageWindowMetadata(limitWindowSeconds) {
     return { type: "unknown", label: `${limitWindowSeconds} seconds` };
 }
 
-/**
- * @param {UsageQuota[]} quotas
- * @returns {UsageQuota[]}
- */
+/** @param {UsageQuota[]} quotas */
 export function sortUsageQuotas(quotas) {
     /** @param {UsageQuota} quota */
     const duration = ({ limitWindowSeconds }) =>

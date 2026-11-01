@@ -1,8 +1,6 @@
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
 import { CodexError } from "../codex/error.js";
-// The GIRS package set used by this project does not ship Soup typings.
-// @ts-ignore
 import Soup from "gi://Soup?version=3.0";
 
 const DEFAULT_TIMEOUT_SECONDS = 15;
@@ -57,8 +55,6 @@ export async function fetchJson(url, config, options = {}) {
         }
         if (options.body !== undefined && options.body !== null) {
             const bytes = new GLib.Bytes(new TextEncoder().encode(options.body));
-            // The GIRS package set currently lacks this Soup binding in typings.
-            // @ts-ignore
             message.set_request_body_from_bytes("application/json", bytes);
         }
         let bytes;

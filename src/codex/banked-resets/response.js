@@ -17,12 +17,10 @@ import { CodexError } from "../error.js";
  * @typedef {object} CodexBankedResetListResponse
  * @property {number} available_count
  * @property {CodexBankedResetCredit[]} credits
- *
- * @typedef {Record<string, unknown>} JsonObject
  */
 
 /**
- * @param {JsonObject} response
+ * @param {Record<string, unknown>} response
  * @returns {CodexBankedResetListResponse}
  */
 export function toListResponse(response) {
@@ -69,10 +67,7 @@ export function toListResponse(response) {
     return /** @type {CodexBankedResetListResponse} */ (response);
 }
 
-/**
- * @param {CodexBankedResetCredit[]} credits
- * @returns {CodexBankedResetCredit | null}
- */
+/** @param {CodexBankedResetCredit[]} credits */
 export function selectCreditToRedeem(credits) {
     const available = credits.filter((credit) => credit.status === "available");
     if (available.length === 0) return null;

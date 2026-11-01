@@ -2,10 +2,7 @@
 
 /** @typedef {{tokens?: {access_token?: string | null, account_id?: string | null}}} CodexAuth */
 
-/**
- * @param {CodexAuth} auth
- * @returns {string | null}
- */
+/** @param {CodexAuth} auth */
 export function parseCodexAccessToken(auth) {
     if (!auth.tokens || typeof auth.tokens !== "object") {
         return null;
@@ -14,10 +11,7 @@ export function parseCodexAccessToken(auth) {
     return auth.tokens.access_token ?? null;
 }
 
-/**
- * @param {CodexAuth} auth
- * @returns {string | null}
- */
+/** @param {CodexAuth} auth */
 export function parseCodexAccountId(auth) {
     const accountId = auth.tokens?.account_id;
 

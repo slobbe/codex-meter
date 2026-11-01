@@ -4,8 +4,7 @@ import { CodexError } from "../error.js";
 import { getUsageWindowMetadata, sortUsageQuotas } from "./model.js";
 
 /** @typedef {import("../../../types/index.js").UsageSnapshot} UsageSnapshot */
-/** @typedef {import("../../../types/index.js").UsageCredits} UsageCredits */
-/** @typedef {Record<string, unknown>} JsonObject */
+
 /**
  * @typedef {object} CodexRateLimitWindow
  * @property {number} used_percent
@@ -19,31 +18,25 @@ import { getUsageWindowMetadata, sortUsageQuotas } from "./model.js";
  */
 
 /**
- * @param {JsonObject} api
+ * @param {Record<string, unknown>} api
  * @returns {UsageSnapshot}
  */
 export function toUsageSnapshot(api) {
-    const codexApi = toCodexApiResponse(api);
+    assertApiResponseShape(api);
 
     return {
         fetchedAt: Math.floor(Date.now() / 1000),
-        planType: codexApi.plan_type,
+        planType: api.plan_type,
         credits: toUsageCredits(api.credits),
         bankedResetCount: toBankedResetCount(api.rate_limit_reset_credits),
-        quotas: toUsageQuotas(codexApi),
+        quotas: toUsageQuotas(api),
     };
 }
 
 /**
- * @param {JsonObject} api
- * @returns {CodexApiResponse}
+ * @param {Record<string, unknown>} api
+ * @returns {asserts api is CodexApiResponse & Record<string, unknown>}
  */
-function toCodexApiResponse(api) {
-    assertApiResponseShape(api);
-    return /** @type {CodexApiResponse} */ (/** @type {unknown} */ (api));
-}
-
-/** @param {JsonObject} api */
 function assertApiResponseShape(api) {
     if (typeof api.plan_type !== "string") {
         throwUnexpected("plan_type is missing or not a string");
@@ -64,10 +57,7 @@ function assertApiResponseShape(api) {
     }
 }
 
-/**
- * @param {CodexApiResponse} api
- * @returns {UsageSnapshot["quotas"]}
- */
+/** @param {CodexApiResponse} api */
 function toUsageQuotas(api) {
     const windows = /** @type {[string, CodexRateLimitWindow][]} */ (
         Object.entries(api.rate_limit).filter(
@@ -99,7 +89,6 @@ function toUsageQuotas(api) {
 /**
  * @param {CodexRateLimitWindow} window
  * @param {boolean} limitReached
- * @returns {UsageSnapshot["quotas"][number]}
  */
 function toUsageQuota(window, limitReached) {
     const seconds = window.limit_window_seconds;
@@ -126,10 +115,7 @@ function assertOptionalWindow(value, path) {
     assertWindow(value, path);
 }
 
-/**
- * @param {unknown} value
- * @returns {UsageCredits | undefined}
- */
+/** @param {unknown} value */
 function toUsageCredits(value) {
     if (!isObject(value)) return undefined;
 
