@@ -31,8 +31,8 @@ Codex Meter is a GNOME Shell extension written in JavaScript ES modules for GJS,
 
 ## Changelog
 
-- Keep versions newest first, with pending changes under the latest `## vX.Y.Z (unreleased)` heading.
-- When releasing, replace `unreleased` with the release date in `YYYY-MM-DD` format: `## vX.Y.Z (YYYY-MM-DD)`.
+- Keep versions newest first, with pending changes under the latest `## Unreleased` heading.
+- When releasing, replace `Unreleased` with the version and release date: `## vX.Y.Z (YYYY-MM-DD)`.
 - Use conventional release-note wording: describe new features with `Added`, behavior changes with `Changed`, `Updated`, or `Removed`, and resolved problems with `Fixed` or `Corrected`.
 - Phrase fixes around the user-visible problem resolved, not the implementation used to fix it.
 - Keep entries concise and short, with one bullet per feature, fix, or change.

@@ -4,7 +4,7 @@ All notable changes from version 0.10.0 onward will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## v0.10.2 (unreleased)
+## Unreleased
 
 ### Removed
 
