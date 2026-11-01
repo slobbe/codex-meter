@@ -2,9 +2,10 @@
   <h1>Codex Meter</h1>
   <p>A GNOME Shell extension to monitor and manage Codex usage limits from your top bar.</p>
   <p>
+    <a href="https://extensions.gnome.org/extension/9993/codex-meter/"><img src="https://img.shields.io/gnome-extensions/v/codex-meter%40slobbe.github.io?label=GNOME%20Extensions&logo=gnome&color=blue" alt="GNOME Extensions version"></a>
+    <a href="https://extensions.gnome.org/extension/9993/codex-meter/"><img src="https://img.shields.io/gnome-extensions/dt/codex-meter%40slobbe.github.io?logo=gnome&color=blue" alt="GNOME Extensions downloads"></a>
+    <a href="#requirements"><img src="https://img.shields.io/badge/GNOME_Shell_Version-45--50-blue?logo=gnome" alt="GNOME Shell 45-50"></a>
     <a href="https://github.com/slobbe/codex-meter/actions/workflows/ci.yml"><img src="https://github.com/slobbe/codex-meter/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"></a>
-    <a href="https://github.com/slobbe/codex-meter/releases/latest"><img src="https://img.shields.io/github/v/release/slobbe/codex-meter?style=flat" alt="Latest release"></a>
-    <a href="#requirements"><img src="https://img.shields.io/badge/GNOME_Shell-45_%7C_46_%7C_47_%7C_48_%7C_49_%7C_50-blue?style=flat" alt="GNOME Shell 45-50"></a>
   </p>
 </div>
 <p align="center">
@@ -24,6 +25,14 @@
 - GNOME Shell 45+
 
 ## Install
+
+### GNOME Extensions
+
+Codex Meter is available from [GNOME Extensions](https://extensions.gnome.org/extension/9993/codex-meter/).
+
+### Manual installation
+
+Alternatively, install from a GitHub release:
 
 1. Download the zip from the [latest release](https://github.com/slobbe/codex-meter/releases/latest).
 2. Install and enable the extension with:
