@@ -9,7 +9,7 @@
   </p>
 </div>
 <p align="center">
-  <img src="docs/assets/screens/preview.png" width="512" alt="Codex Meter preview">
+  <img src="docs/assets/preview.png" width="512" alt="Codex Meter preview">
 </p>
 
 ## Features
