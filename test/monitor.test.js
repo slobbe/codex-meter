@@ -13,6 +13,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         set_error_if_cancelled() { if (this.cancelled) throw new GLibError("Cancelled"); }
     }
     class GLibError extends Error { matches() { return true; } }
+    export const isCancellationError = error => error instanceof GLibError;
     export default { Cancellable, Error: GLibError, IOErrorEnum: { CANCELLED: 1 } };
     export class UsageService {}
     export class PeriodicTask { start() {} stop() {} }

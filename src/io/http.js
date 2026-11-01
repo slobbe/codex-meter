@@ -2,6 +2,7 @@ import Gio from "gi://Gio";
 import GLib from "gi://GLib";
 import { CodexError } from "../codex/error.js";
 import Soup from "gi://Soup?version=3.0";
+import { isCancellationError } from "./files.js";
 
 const DEFAULT_TIMEOUT_SECONDS = 15;
 
@@ -107,8 +108,4 @@ export async function fetchJson(url, config, options = {}) {
     } finally {
         session.abort();
     }
-}
-
-function isCancellationError(error) {
-    return error instanceof GLib.Error && error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED);
 }

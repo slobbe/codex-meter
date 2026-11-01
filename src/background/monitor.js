@@ -1,5 +1,4 @@
 import Gio from "gi://Gio";
-import GLib from "gi://GLib";
 import {
     getBackgroundRefreshIntervalSeconds,
     readSettings,
@@ -8,6 +7,7 @@ import {
 } from "../preferences/settings.js";
 import { UsageService } from "../codex/usage/service.js";
 import { isCodexError } from "../codex/error.js";
+import { isCancellationError } from "../io/files.js";
 import { listCodexBankedResets, redeemCodexBankedReset } from "../codex/banked-resets/api.js";
 import { selectCreditExpiringWithin } from "../codex/banked-resets/response.js";
 import { PeriodicTask } from "./periodic-task.js";
@@ -438,8 +438,4 @@ function formatBankedResetFailure(error) {
     const message =
         error instanceof Error && error.message ? error.message : "Unknown banked reset failure";
     return `Banked Codex reset redemption failed: ${message}`;
-}
-
-function isCancellationError(error) {
-    return error instanceof GLib.Error && error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED);
 }
