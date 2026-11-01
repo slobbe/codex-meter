@@ -4,10 +4,6 @@ import { appendFile, readFile, readJsonFile, writeFile, writeJsonFile } from "..
 import { getCodexCredentials } from "../src/codex/auth/auth.js";
 import { readSnapshot, writeSnapshot } from "../src/codex/usage/snapshot.js";
 import { appendHistoryRow, readHistory, rewriteHistory } from "../src/codex/usage/history.js";
-import {
-    readBankedResetSnapshot,
-    writeBankedResetSnapshot,
-} from "../src/codex/banked-resets/store.js";
 import { listCodexBankedResets, redeemCodexBankedReset } from "../src/codex/banked-resets/api.js";
 import { refreshCodexUsage } from "../src/codex/usage/api.js";
 
@@ -28,8 +24,6 @@ const operations = [
     () => readHistory(path, cancellable),
     () => appendHistoryRow({}, path, cancellable),
     () => rewriteHistory([], path, cancellable),
-    () => readBankedResetSnapshot(cancellable),
-    () => writeBankedResetSnapshot({}, cancellable),
     () => listCodexBankedResets({ cancellable }),
     () => redeemCodexBankedReset("credit", { cancellable }),
     () => refreshCodexUsage({ cancellable }),
@@ -82,7 +76,6 @@ async function testInFlightCancellationPreservation() {
             () => getCodexCredentials(),
             () => readSnapshot(),
             () => readHistory(localPath),
-            () => readBankedResetSnapshot(),
         ]) {
             await assertOriginalCancellation(operation, original);
         }

@@ -1,7 +1,6 @@
 const modules = [
     "../src/codex/banked-resets/api.js",
     "../src/codex/banked-resets/response.js",
-    "../src/codex/banked-resets/store.js",
     "../src/codex/auth/auth.js",
     "../src/codex/auth/auth-parser.js",
     "../src/codex/usage/api.js",
