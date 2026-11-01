@@ -116,6 +116,14 @@ jobs:
                     exit 1
                   fi
 
+            - name: Extract release notes from changelog
+              env:
+                  RELEASE_TAG: ${{ steps.source.outputs.tag }}
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  node .github/release-notes.js "${RELEASE_TAG}" > "${RUNNER_TEMP}/release-notes.md"
+
             - name: Build extension bundle
               run: make pack
 
@@ -132,11 +140,12 @@ jobs:
                   RELEASE_TITLE="Codex Meter ${TAG_VERSION}"
 
                   if gh release view "${TAG}" >/dev/null 2>&1; then
-                    gh release edit "${TAG}" --title "${RELEASE_TITLE}"
+                    gh release edit "${TAG}" --title "${RELEASE_TITLE}" \
+                      --notes-file "${RUNNER_TEMP}/release-notes.md"
                     gh release upload "${TAG}" "${ZIP}" --clobber
                   else
                     gh release create "${TAG}" "${ZIP}" \
                       --title "${RELEASE_TITLE}" \
-                      --generate-notes \
+                      --notes-file "${RUNNER_TEMP}/release-notes.md" \
                       --verify-tag
                   fi

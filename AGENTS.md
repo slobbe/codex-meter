@@ -28,3 +28,13 @@ Codex Meter is a GNOME Shell extension written in JavaScript ES modules for GJS,
     - `make check-schemas`: validate GSettings schemas.
     - `make check`: run all of the above.
 - Report what was verified and any checks that could not run. For Shell UI or lifecycle changes, note any manual GNOME Shell testing still needed.
+
+## Changelog
+
+- Keep versions newest first, with pending changes under the latest `## vX.Y.Z (unreleased)` heading.
+- When releasing, replace `unreleased` with the release date in `YYYY-MM-DD` format: `## vX.Y.Z (YYYY-MM-DD)`.
+- Use conventional release-note wording: describe new features with `Added`, behavior changes with `Changed`, `Updated`, or `Removed`, and resolved problems with `Fixed` or `Corrected`.
+- Phrase fixes around the user-visible problem resolved, not the implementation used to fix it.
+- Keep entries concise and short, with one bullet per feature, fix, or change.
+- Follow the group order: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`; omit empty groups.
+- Use `Added` for new features, `Changed` for changes to existing functionality, `Deprecated` for features planned for removal, `Removed` for removed functionality, `Fixed` for bug fixes, and `Security` for vulnerability fixes.
