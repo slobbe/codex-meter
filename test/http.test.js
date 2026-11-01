@@ -1,13 +1,60 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { registerHooks } from "node:module";
 import test from "node:test";
-import { runInNewContext } from "node:vm";
 
 import { CodexError } from "../src/codex/error.js";
 
-const source = readFileSync(new URL("../src/io/http.js", import.meta.url), "utf8")
-    .replace(/^import .*;$/gm, "")
-    .replace("export async function fetchJson", "async function fetchJson");
+const httpUrl = new URL("../src/io/http.js", import.meta.url).href;
+const filesUrl = new URL("../src/io/files.js", import.meta.url).href;
+const stubUrl = `data:text/javascript,${encodeURIComponent(`
+    export const Gio = {
+        _promisify() {},
+        IOErrorEnum: { CANCELLED: 19 },
+        File: class {},
+        OutputStream: class {},
+    };
+    export const GLib = {
+        PRIORITY_DEFAULT: 0,
+        Error: class extends Error {
+            constructor(message, domain = Gio.IOErrorEnum, code = Gio.IOErrorEnum.CANCELLED) {
+                super(message);
+                this.domain = domain;
+                this.code = code;
+            }
+            matches(domain, code) { return this.domain === domain && this.code === code; }
+        },
+        Bytes: class {},
+    };
+    export const Soup = { Session: class {}, Message: {} };
+`)}`;
+const giStubs = new Map(
+    [
+        ["gi://Gio", "Gio"],
+        ["gi://GLib", "GLib"],
+        ["gi://Soup?version=3.0", "Soup"],
+    ].map(([specifier, name]) => [
+        specifier,
+        `data:text/javascript,${encodeURIComponent(`export { ${name} as default } from ${JSON.stringify(stubUrl)};`)}`,
+    ]),
+);
+const hooks = registerHooks({
+    resolve(specifier, context, nextResolve) {
+        if (context.parentURL === httpUrl || context.parentURL === filesUrl) {
+            const url = giStubs.get(specifier);
+            if (url) return { url, shortCircuit: true };
+        }
+        return nextResolve(specifier, context);
+    },
+});
+let fetchJson;
+let GLib;
+let Soup;
+try {
+    ({ fetchJson } = await import(httpUrl));
+    ({ GLib, Soup } = await import(stubUrl));
+} finally {
+    hooks.deregister();
+}
 const url = "https://example.com/usage";
 const config = {
     messages: {
@@ -48,25 +95,10 @@ function createHttp({ status = 200, text = '{"ok":true}', size, send, setup } = 
             this.abortCount++;
         }
     }
-    class GLibError extends Error {
-        matches(domain, code) {
-            return domain === Gio.IOErrorEnum && code === Gio.IOErrorEnum.CANCELLED;
-        }
-    }
-    const Gio = { _promisify() {}, IOErrorEnum: { CANCELLED: 19 } };
-    const GLib = { PRIORITY_DEFAULT: 0, Error: GLibError, Bytes: class {} };
-    const Soup = { Session, Message: { new: () => message } };
+    Soup.Session = Session;
+    Soup.Message = { new: () => message };
     setup?.({ Soup, GLib, message });
-    const fetchJson = runInNewContext(`${source}\nfetchJson;`, {
-        Gio,
-        GLib,
-        Soup,
-        CodexError,
-        Error,
-        TextEncoder,
-        TextDecoder,
-    });
-    return { fetchJson, sessions, message, GLibError };
+    return { fetchJson, sessions, message, GLibError: GLib.Error };
 }
 
 test("fetchJson aborts its session after returning parsed JSON", async () => {
