@@ -386,27 +386,6 @@ export function getPredictionStyleClass(prediction) {
     }
 }
 
-export function formatFooter(snapshot) {
-    if (!snapshot) return "--";
-    const parts = [formatPlan(snapshot.planType)];
-    const credits = formatCredits(snapshot.credits);
-    if (credits) parts.push(credits);
-    parts.push(`Updated ${formatUnixTimestamp(snapshot.fetchedAt, false)}`);
-    return parts.filter((part) => part && part !== "--").join(" · ") || "--";
-}
-
-function formatCredits(credits) {
-    if (!credits || credits.unlimited) return "";
-    const balance = typeof credits.balance === "string" ? credits.balance.trim() : "";
-    if (!balance || isZeroCreditBalance(balance)) return "";
-    return `Credits ${balance}`;
-}
-
-function isZeroCreditBalance(value) {
-    const numeric = Number(value.replace(/[^0-9.-]/g, ""));
-    return Number.isFinite(numeric) && numeric === 0;
-}
-
 export function formatPlan(value) {
     if (!value) return "--";
     return value

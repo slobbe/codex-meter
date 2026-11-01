@@ -5,7 +5,6 @@ import {
     createMenuViewModel,
     createPanelBarViewModel,
     formatDuration,
-    formatFooter,
     formatReset,
     formatLimitPrediction,
     formatTimestamp,
@@ -464,42 +463,6 @@ test("formats unsafe predictions relative to reset", () => {
             sessionQuota,
         ),
         "Will hit limit ~2h 0m before reset",
-    );
-});
-
-test("formats footer with credits", () => {
-    assert.match(
-        formatFooter({
-            fetchedAt: 1_700_000_000,
-            planType: "pro",
-            credits: { balance: "$4.21", unlimited: false },
-            quotas: [],
-        }),
-        /^Pro · Credits \$4\.21 · Updated /,
-    );
-});
-
-test("formats footer without unlimited credits", () => {
-    assert.match(
-        formatFooter({
-            fetchedAt: 1_700_000_000,
-            planType: "pro",
-            credits: { balance: "$4.21", unlimited: true },
-            quotas: [],
-        }),
-        /^Pro · Updated /,
-    );
-});
-
-test("formats footer without zero credits", () => {
-    assert.match(
-        formatFooter({
-            fetchedAt: 1_700_000_000,
-            planType: "pro",
-            credits: { balance: "$0.00", unlimited: false },
-            quotas: [],
-        }),
-        /^Pro · Updated /,
     );
 });
 
