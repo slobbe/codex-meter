@@ -31,7 +31,7 @@ const giStubs = new Map(
     [
         ["gi://Gio", "Gio"],
         ["gi://GLib", "GLib"],
-        ["gi://Soup?version=3.0", "Soup"],
+        ["gi://Soup", "Soup"],
     ].map(([specifier, name]) => [
         specifier,
         `data:text/javascript,${encodeURIComponent(`export { ${name} as default } from ${JSON.stringify(stubUrl)};`)}`,
