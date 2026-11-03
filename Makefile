@@ -1,8 +1,7 @@
 UUID=codex-meter@slobbe.github.io
 VERSION=$(shell node -p "require('./package.json').version")
 DEV=0
-BUILD_VERSION=$(VERSION)$(if $(filter 1,$(DEV)),-dev)
-ZIP=$(UUID)-v$(BUILD_VERSION).zip
+ZIP=$(UUID)-$(if $(filter 1,$(DEV)),dev,v$(VERSION)).zip
 
 .DEFAULT_GOAL := help
 .PHONY: help check check-js check-gjs check-schemas version pack install reload clean
@@ -14,9 +13,9 @@ help:
 		'  make pack                    Build a release-format zip (does not publish)' \
 		'' \
 		'Local development commands:' \
-		'  make install                 Build and install a dev-marked extension' \
+		'  make install                 Build and install a local development build' \
 		'  make reload                  Disable, rebuild, reinstall, enable, and clean' \
-		'  make clean                   Remove release and dev zips for the current version' \
+		'  make clean                   Remove the current release zip and local development zip' \
 		'  make prepare VERSION=x.y.z   Update versions and date Unreleased notes (no commit or tag)' \
 		'' \
 		'Run npm ci first to install development dependencies.' \
@@ -52,7 +51,14 @@ pack:
 	stage=$$(mktemp -d); \
 	trap 'rm -rf "$$stage"' EXIT HUP INT TERM; \
 	cp -R src/. "$$stage/"; \
-	node -e 'const fs = require("node:fs"); const path = process.argv[1]; const metadata = JSON.parse(fs.readFileSync(path, "utf8")); metadata["version-name"] = process.argv[2]; fs.writeFileSync(path, JSON.stringify(metadata, null, 4) + "\n");' "$$stage/metadata.json" "$(BUILD_VERSION)"; \
+	build_version="$(VERSION)"; \
+	if [ "$(DEV)" = "1" ]; then \
+		build_version=$$(git --no-pager rev-parse --short HEAD); \
+		git_status=$$(git --no-pager --no-optional-locks status --porcelain); \
+		if [ -n "$$git_status" ]; then build_version="$$build_version-modified"; fi; \
+		build_version="Dev ($$build_version)"; \
+	fi; \
+	sed -i "s/\"version-name\": \"[^\"]*\"/\"version-name\": \"$$build_version\"/" "$$stage/metadata.json"; \
 	rm -f "$(ZIP)"; \
 	(cd "$$stage" && zip "$(CURDIR)/$(ZIP)" -9r . -x '*.compiled')
 
@@ -67,4 +73,4 @@ reload:
 	$(MAKE) clean
 
 clean:
-	@rm -f $(UUID)-v$(VERSION).zip $(UUID)-v$(VERSION)-dev.zip
+	@rm -f $(UUID)-v$(VERSION).zip $(UUID)-dev.zip
