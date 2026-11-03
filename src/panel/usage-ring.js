@@ -1,6 +1,5 @@
 import Clutter from "gi://Clutter";
 import St from "gi://St";
-import { getUsageBarColorStyleClass } from "./view-model.js";
 
 export class UsageRing {
     constructor(gicon) {
@@ -43,7 +42,7 @@ export class UsageRing {
         for (const [index, half] of this._halves.entries()) {
             half.state = bars[index] ?? null;
             if (half.colorClass) half.area.remove_style_class_name(half.colorClass);
-            half.colorClass = getUsageBarColorStyleClass(half.state?.percentValue);
+            half.colorClass = half.state?.colorStyleClass ?? "cx-color-green";
             half.area.add_style_class_name(half.colorClass);
             half.area.visible = half.state !== null;
             half.area.queue_repaint();

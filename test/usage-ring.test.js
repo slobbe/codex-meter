@@ -52,8 +52,8 @@ test("ring paints first quota up the left and second up the right from six o'clo
     const ring = new UsageRing("codex-icon");
     assert.equal(ring.actor.children[2].gicon, "codex-icon");
     ring.update([
-        { percentValue: 25, displayPercentValue: 75 },
-        { percentValue: 80, displayPercentValue: 20 },
+        { percentValue: 25, displayPercentValue: 75, colorStyleClass: "cx-color-warning" },
+        { percentValue: 80, displayPercentValue: 20, colorStyleClass: "cx-color-green" },
     ]);
     for (const [index, method, fraction] of [
         [0, "arc", 0.75],
@@ -79,8 +79,8 @@ test("ring paints first quota up the left and second up the right from six o'clo
             ["setSourceRGBA", 73 / 255, 193 / 255, 109 / 255, 0.18],
         );
     }
-    assert.ok(ring.actor.children[0].classes.has("cx-color-green"));
-    assert.ok(ring.actor.children[1].classes.has("cx-color-warning"));
+    assert.ok(ring.actor.children[0].classes.has("cx-color-warning"));
+    assert.ok(ring.actor.children[1].classes.has("cx-color-green"));
 });
 
 test("ring switches between logos and CX text without changing its sizing classes", () => {
@@ -101,7 +101,7 @@ test("ring switches between logos and CX text without changing its sizing classe
 test("ring handles zero, full, single and absent quotas without stale fill or colors", () => {
     const ring = new UsageRing("icon");
     ring.update([
-        { percentValue: 100, displayPercentValue: 0 },
+        { percentValue: 100, displayPercentValue: 0, colorStyleClass: "cx-color-danger" },
         { percentValue: 0, displayPercentValue: 100 },
     ]);
     const [left, right] = ring.actor.children;

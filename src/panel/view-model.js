@@ -1,6 +1,6 @@
 import { getUsageWindowMetadata, sortUsageQuotas } from "../codex/usage/model.js";
 
-export function createPanelBarViewModel(settings, snapshot, errorMessage) {
+export function createPanelBarViewModel(settings, snapshot, errorMessage, prediction = null) {
     if (errorMessage) {
         return { bars: [], showBars: false, showLabel: false, label: "" };
     }
@@ -17,6 +17,7 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage) {
             id: quota.id,
             percentValue: normalizePercent(quota.usedPercent),
             displayPercentValue: convertPercentForDisplay(quota.usedPercent, percentDisplayMode),
+            colorStyleClass: getPanelBarColorStyleClass(prediction?.quotas?.[quota.id]),
         })),
         showBars,
         showLabel,
@@ -266,6 +267,17 @@ export function calculateBaselinePercent(quota) {
         return null;
     }
     return normalizePercent(((limitWindowSeconds - resetAfterSeconds) / limitWindowSeconds) * 100);
+}
+
+function getPanelBarColorStyleClass(prediction) {
+    switch (prediction?.trend) {
+        case "limit reached":
+            return "cx-color-danger";
+        case "unsafe":
+            return "cx-color-warning";
+        default:
+            return "cx-color-green";
+    }
 }
 
 export function getUsageBarColorStyleClass(percentValue) {

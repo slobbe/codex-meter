@@ -196,8 +196,8 @@ export class CodexMeterIndicator extends PanelMenu.Button {
 
     _syncLabel() {
         const settings = readSettings(this._settings);
-        const { snapshot, errorMessage } = this._monitor.state;
-        const viewModel = createPanelBarViewModel(settings, snapshot, errorMessage);
+        const { snapshot, errorMessage, prediction } = this._monitor.state;
+        const viewModel = createPanelBarViewModel(settings, snapshot, errorMessage, prediction);
         while (this._panelUsageBars.length > viewModel.bars.length) {
             this._panelUsageBars.pop().actor.destroy();
         }
@@ -213,6 +213,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             bar.update({
                 percentValue: viewModel.bars[index].percentValue,
                 displayPercentValue: viewModel.bars[index].displayPercentValue,
+                colorStyleClass: viewModel.bars[index].colorStyleClass,
             });
         }
         // Keep the two-bar stack's total spacing as the collection grows.

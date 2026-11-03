@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { predict } from "../src/codex/usage/prediction.js";
+
 import {
     createMenuViewModel,
     createPanelBarViewModel,
@@ -54,6 +56,49 @@ test("circular and straight panel bars use the same quota values in used and rem
         assert.equal(circular.showBars, true);
         assert.equal(circular.showLabel, false);
         assert.equal(circular.bars[0].displayPercentValue, percentDisplayMode === "used" ? 40 : 60);
+    }
+});
+
+test("panel bar colors follow each quota's pace rather than its usage percentage", () => {
+    const fetchedAt = 1_700_000_000;
+    const quotas = [
+        { id: "fast", usedPercent: 20, resetAfterSeconds: 16_200 },
+        { id: "slow", usedPercent: 90, resetAfterSeconds: 900 },
+        { id: "at-reset", usedPercent: 20, resetAfterSeconds: 14_400 },
+        { id: "reached", usedPercent: 100, resetAfterSeconds: 900 },
+    ].map((quota) => ({
+        ...quota,
+        limitWindowSeconds: 18_000,
+        resetAt: fetchedAt + quota.resetAfterSeconds,
+    }));
+    quotas.push({ id: "unknown", usedPercent: 90 });
+    const snapshot = { fetchedAt, quotas };
+    const prediction = predict([], snapshot);
+    const expectedColors = {
+        fast: "cx-color-warning",
+        slow: "cx-color-green",
+        "at-reset": "cx-color-green",
+        reached: "cx-color-danger",
+        unknown: "cx-color-green",
+    };
+    for (const topPanelDisplayMode of ["bars", "circular-bars"]) {
+        for (const percentDisplayMode of ["used", "left"]) {
+            const settings = { topPanelDisplayMode, percentDisplayMode };
+            const panel = createPanelBarViewModel(settings, snapshot, null, prediction);
+            for (const bar of panel.bars) {
+                assert.equal(bar.colorStyleClass, expectedColors[bar.id], bar.id);
+                const quota = quotas.find(({ id }) => id === bar.id);
+                assert.equal(bar.percentValue, quota.usedPercent);
+                assert.equal(
+                    bar.displayPercentValue,
+                    percentDisplayMode === "left" ? 100 - quota.usedPercent : quota.usedPercent,
+                );
+            }
+            const withoutPrediction = createPanelBarViewModel(settings, snapshot, null);
+            assert.ok(
+                withoutPrediction.bars.every((bar) => bar.colorStyleClass === "cx-color-green"),
+            );
+        }
     }
 });
 
@@ -215,6 +260,7 @@ test("renders quotas shortest first in menu values and panel bars and percentage
                         id: quota.id,
                         percentValue: quota.usedPercent,
                         displayPercentValue: percents[index],
+                        colorStyleClass: "cx-color-green",
                     })),
                     showBars: topPanelDisplayMode === "bars" && quotas.length > 0,
                     showLabel: topPanelDisplayMode !== "bars" && quotas.length > 0,
@@ -348,9 +394,24 @@ test("normalizes every panel bar while preserving unknown percentage labels", ()
             );
             const left = percentDisplayMode === "left";
             assert.deepEqual(panel.bars, [
-                { id: "negative", percentValue: 0, displayPercentValue: left ? 100 : 0 },
-                { id: "over", percentValue: 100, displayPercentValue: left ? 0 : 100 },
-                { id: "unknown", percentValue: 0, displayPercentValue: left ? 100 : 0 },
+                {
+                    id: "negative",
+                    percentValue: 0,
+                    displayPercentValue: left ? 100 : 0,
+                    colorStyleClass: "cx-color-green",
+                },
+                {
+                    id: "over",
+                    percentValue: 100,
+                    displayPercentValue: left ? 0 : 100,
+                    colorStyleClass: "cx-color-green",
+                },
+                {
+                    id: "unknown",
+                    percentValue: 0,
+                    displayPercentValue: left ? 100 : 0,
+                    colorStyleClass: "cx-color-green",
+                },
             ]);
             assert.equal(
                 panel.label,
@@ -497,7 +558,14 @@ test("shows a single weekly quota without placeholder rows or bars", () => {
     assert.equal(menu.usageItems[0].visible, true);
     assert.equal(menu.usageItems[0].title, "Weekly");
     assert.equal(menu.usageItems[0].prediction, "Safe at current pace");
-    assert.deepEqual(panel.bars, [{ id: "weekly", percentValue: 12, displayPercentValue: 12 }]);
+    assert.deepEqual(panel.bars, [
+        {
+            id: "weekly",
+            percentValue: 12,
+            displayPercentValue: 12,
+            colorStyleClass: "cx-color-green",
+        },
+    ]);
     assert.equal(panel.label, "12%");
 });
 

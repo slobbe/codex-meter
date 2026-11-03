@@ -6,6 +6,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Changed
+
+- Changed panel bar colors to reflect usage pace rather than remaining capacity; popup bars are unchanged.
+
 ### Removed
 
 - Removed the standalone installer in favor of GNOME Extensions and manual installation.

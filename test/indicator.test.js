@@ -30,7 +30,11 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     };
     export const Button = Actor;
     export const readSettings = settings => settings;
-    export const createPanelBarViewModel = (_settings, snapshot) => snapshot.panel;
+    export const panelViewModelCalls = [];
+    export const createPanelBarViewModel = (...args) => {
+        panelViewModelCalls.push(args);
+        return args[1].panel;
+    };
     export const createMenuViewModel = (_settings, snapshot) => snapshot.menu;
     export const confirmations = [];
     export const CodexMeterPopupMenu = null;
@@ -118,9 +122,10 @@ test("panel reconciles 0 -> 3 -> 1 -> 0 bars, replacing all data and destroying 
     );
     assert.deepEqual(
         bars.map((bar) => bar.state),
-        panel.bars.map(({ percentValue, displayPercentValue }) => ({
+        panel.bars.map(({ percentValue, displayPercentValue, colorStyleClass }) => ({
             percentValue,
             displayPercentValue,
+            colorStyleClass,
         })),
     );
     assert.equal(indicator._panelBars.visible, true);
@@ -136,9 +141,9 @@ test("panel reconciles 0 -> 3 -> 1 -> 0 bars, replacing all data and destroying 
     assert.deepEqual(
         bars.map((bar) => bar.state),
         [
-            { percentValue: 30, displayPercentValue: 70 },
-            { percentValue: 20, displayPercentValue: 80 },
-            { percentValue: 10, displayPercentValue: 90 },
+            { percentValue: 30, displayPercentValue: 70, colorStyleClass: undefined },
+            { percentValue: 20, displayPercentValue: 80, colorStyleClass: undefined },
+            { percentValue: 10, displayPercentValue: 90, colorStyleClass: undefined },
         ],
     );
 
@@ -147,7 +152,11 @@ test("panel reconciles 0 -> 3 -> 1 -> 0 bars, replacing all data and destroying 
     panel.showLabel = false;
     indicator._syncLabel();
     assert.equal(indicator._panelUsageBars[0], bars[0]);
-    assert.deepEqual(bars[0].state, { percentValue: 45, displayPercentValue: 55 });
+    assert.deepEqual(bars[0].state, {
+        percentValue: 45,
+        displayPercentValue: 55,
+        colorStyleClass: undefined,
+    });
     assert.equal(bars[0].actor.style, null);
     assert.equal(indicator._panelBars.style, null);
     assert.equal(indicator._panelBars.classes.has("cx-panel-bars-stacked"), false);
@@ -167,6 +176,22 @@ test("panel reconciles 0 -> 3 -> 1 -> 0 bars, replacing all data and destroying 
     assert.deepEqual(indicator._panelBars.children, []);
     assert.equal(bars[0].actor.destroyed, true);
     assert.equal(indicator._panelBars.visible, false);
+});
+
+test("panel sync passes predictions to the view model and pace colors to bars and rings", async () => {
+    const { panelViewModelCalls } = await import(stubUrl);
+    const indicator = createIndicator();
+    const bar = { percentValue: 20, displayPercentValue: 80, colorStyleClass: "cx-color-warning" };
+    const panel = { bars: [bar], showBars: true, showLabel: false, label: "" };
+    indicator._monitor.state.snapshot.panel = panel;
+    indicator._monitor.state.prediction = { quotas: { session: { trend: "unsafe" } } };
+    for (const style of ["bars", "circular-bars"]) {
+        indicator._settings.topPanelDisplayMode = style;
+        indicator._syncLabel();
+        assert.equal(panelViewModelCalls.at(-1)[3], indicator._monitor.state.prediction);
+        assert.deepEqual(indicator._panelUsageBars[0].state, bar);
+        if (style === "circular-bars") assert.deepEqual(indicator._usageRing.bars, [bar]);
+    }
 });
 
 test("circular style replaces one or two bars and falls back without losing quotas", () => {

@@ -85,6 +85,10 @@ export class UsageBar {
         for (const styleClass of COLOR_STYLE_CLASSES) {
             this._barFill.remove_style_class_name(styleClass);
         }
-        this._barFill.add_style_class_name(getUsageBarColorStyleClass(this._state.percentValue));
+        this._barFill.add_style_class_name(
+            this._variant === "panel"
+                ? (this._state.colorStyleClass ?? "cx-color-green")
+                : getUsageBarColorStyleClass(this._state.percentValue),
+        );
     }
 }
