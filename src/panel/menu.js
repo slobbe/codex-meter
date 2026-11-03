@@ -19,7 +19,7 @@ export class CodexMeterPopupMenu {
         this._onRefresh = onRefresh;
         this._onRedeemBankedReset = onRedeemBankedReset;
         this._onOpenPreferences = onOpenPreferences;
-        this.refreshItem = new PopupMenu.PopupMenuItem("Refresh");
+        this.refreshItem = new PopupMenu.PopupMenuItem("Refresh now");
         // Mouse and keyboard use activate(); emitting its signal would close the popup.
         this.refreshItem.activate = () => this._onRefresh();
         this.bankedResetsItem = new PopupMenu.PopupSubMenuMenuItem("Banked resets");
@@ -126,7 +126,7 @@ export class CodexMeterPopupMenu {
         this._refreshing = refreshing;
         this.refreshItem.label.text = refreshing
             ? "Refreshing…"
-            : (this._refreshLabel ?? "Refresh");
+            : (this._refreshLabel ?? "Refresh now");
         this.refreshItem.setSensitive(!refreshing);
     }
 

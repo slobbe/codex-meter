@@ -339,7 +339,7 @@ test("menu sync passes the full usage collection and other view-model fields", (
         statusMessage: "Try again later",
         trend: { visible: true, bars: [10, 20] },
         accountType: "Plus",
-        refreshLabel: "Refresh (last at 01:40)",
+        refreshLabel: "Refresh now (last at 01:40)",
     };
     Object.assign(indicator._monitor.state, {
         snapshot: { menu },
@@ -374,9 +374,9 @@ test("menu sync passes the full usage collection and other view-model fields", (
     });
     assert.equal(indicator._popupMenu.headerItem.planLabel.text, "Plus");
     assert.equal(calls.setRefreshLabel, menu.refreshLabel);
-    menu.refreshLabel = "Refresh (last at 10:44)";
+    menu.refreshLabel = "Refresh now (last at 10:44)";
     indicator._syncMenu();
-    assert.equal(calls.setRefreshLabel, "Refresh (last at 10:44)");
+    assert.equal(calls.setRefreshLabel, "Refresh now (last at 10:44)");
 });
 
 test("selected reset ID is prepared and only that credit is confirmed and redeemed", async () => {

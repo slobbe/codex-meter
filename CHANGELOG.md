@@ -9,6 +9,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 - Changed panel bar colors to reflect usage pace rather than remaining capacity; popup bars are unchanged.
+- Changed the refresh action label to “Refresh now” while retaining the last refresh time.
 
 ### Removed
 

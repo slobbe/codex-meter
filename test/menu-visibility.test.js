@@ -385,7 +385,7 @@ test("noninteractive header precedes usage and activity, then banked resets and 
     assert.equal(menu.refreshItem.label.text, "Refreshing…");
     menu.setRefreshing(false);
     assert.equal(menu.refreshItem.sensitive, true);
-    assert.equal(menu.refreshItem.label.text, "Refresh");
+    assert.equal(menu.refreshItem.label.text, "Refresh now");
 });
 
 test("native mouse and keyboard Refresh activation stays open; other actions still close", async () => {
@@ -426,7 +426,7 @@ test("native mouse and keyboard Refresh activation stays open; other actions sti
         assert.deepEqual(calls, ["refresh"], "busy refresh cannot activate again");
         finishRefresh();
         await pending;
-        assert.equal(menu.refreshItem.label.text, "Refresh");
+        assert.equal(menu.refreshItem.label.text, "Refresh now");
         assert.equal(menu.refreshItem.reactive, true);
         assert.equal(menu.refreshItem.can_focus, true);
         assert.equal(nativeMenu.isOpen, true);
@@ -450,35 +450,35 @@ test("native mouse and keyboard Refresh activation stays open; other actions sti
 
 test("refresh label tracks snapshots and restores the latest timestamp after busy feedback", () => {
     const menu = new CodexMeterPopupMenu({});
-    assert.equal(menu.refreshItem.label.text, "Refresh");
-    menu.setRefreshLabel("Refresh (last at 10:44)");
-    assert.equal(menu.refreshItem.label.text, "Refresh (last at 10:44)");
+    assert.equal(menu.refreshItem.label.text, "Refresh now");
+    menu.setRefreshLabel("Refresh now (last at 10:44)");
+    assert.equal(menu.refreshItem.label.text, "Refresh now (last at 10:44)");
     assert.equal(menu.refreshItem.sensitive, true);
 
     menu.setRefreshing(true);
     assert.equal(menu.refreshItem.label.text, "Refreshing…");
     assert.equal(menu.refreshItem.sensitive, false);
-    menu.setRefreshLabel("Refresh (last at 10:45)");
+    menu.setRefreshLabel("Refresh now (last at 10:45)");
     assert.equal(menu.refreshItem.label.text, "Refreshing…");
     assert.equal(menu.refreshItem.sensitive, false);
     menu.setRefreshing(false);
-    assert.equal(menu.refreshItem.label.text, "Refresh (last at 10:45)");
+    assert.equal(menu.refreshItem.label.text, "Refresh now (last at 10:45)");
     assert.equal(menu.refreshItem.sensitive, true);
 
     // A failed refresh leaves the last fetched snapshot's timestamp unchanged.
     menu.setRefreshing(true);
-    menu.setRefreshLabel("Refresh (last at 10:45)");
+    menu.setRefreshLabel("Refresh now (last at 10:45)");
     menu.setRefreshing(false);
-    assert.equal(menu.refreshItem.label.text, "Refresh (last at 10:45)");
+    assert.equal(menu.refreshItem.label.text, "Refresh now (last at 10:45)");
     assert.equal(menu.refreshItem.sensitive, true);
 
-    menu.setRefreshLabel("Refresh");
+    menu.setRefreshLabel("Refresh now");
     menu.setRefreshing(true);
-    menu.setRefreshLabel("Refresh");
+    menu.setRefreshLabel("Refresh now");
     assert.equal(menu.refreshItem.label.text, "Refreshing…");
     assert.equal(menu.refreshItem.sensitive, false);
     menu.setRefreshing(false);
-    assert.equal(menu.refreshItem.label.text, "Refresh");
+    assert.equal(menu.refreshItem.label.text, "Refresh now");
     assert.equal(menu.refreshItem.sensitive, true);
 });
 
