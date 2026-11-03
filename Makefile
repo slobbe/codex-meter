@@ -11,17 +11,13 @@ help:
 	@printf '%s\n' \
 		'Pipeline commands:' \
 		'  make check                   Run all checks and tests' \
-		'  make check-js                Run formatting, JSDoc checks, and Node tests' \
-		'  make check-gjs               Run GJS module and storage tests' \
-		'  make check-schemas           Validate GSettings schemas' \
 		'  make pack                    Build a release-format zip (does not publish)' \
 		'' \
 		'Local development commands:' \
-		'  make help                    Show this help (also the default target)' \
 		'  make install                 Build and install a dev-marked extension' \
 		'  make reload                  Disable, rebuild, reinstall, enable, and clean' \
-		'  make version VERSION=x.y.z   Update version declarations (no commit or tag)' \
 		'  make clean                   Remove release and dev zips for the current version' \
+		'  make prepare VERSION=x.y.z   Update versions and date Unreleased notes (no commit or tag)' \
 		'' \
 		'Run npm ci first to install development dependencies.' \
 		'After installing or reloading, log out and back in if changes do not appear.'
@@ -42,12 +38,13 @@ check-gjs:
 check-schemas:
 	glib-compile-schemas --strict --dry-run src/schemas
 
-version:
-	@if [ "$(origin VERSION)" != "command line" ]; then echo "Usage: make version VERSION=x.y.z"; exit 1; fi
+prepare:
+	@if [ "$(origin VERSION)" != "command line" ]; then echo "Usage: make prepare VERSION=x.y.z"; exit 1; fi
 	@if git rev-parse --verify --quiet "refs/tags/v$(VERSION)" >/dev/null; then echo "Error: Git tag v$(VERSION) already exists; Git tags cannot be overwritten."; exit 1; fi
+	@grep -q '^## Unreleased[[:space:]]*$$' CHANGELOG.md || { echo 'CHANGELOG.md must contain a ## Unreleased heading.' >&2; exit 1; }
 	@npm version $(VERSION) --no-git-tag-version --allow-same-version >/dev/null
-	@node -e "const fs = require('node:fs'); const path = 'src/metadata.json'; const metadata = JSON.parse(fs.readFileSync(path, 'utf8')); metadata['version-name'] = '$(VERSION)'; fs.writeFileSync(path, JSON.stringify(metadata, null, 4) + '\n');"
-	@npx prettier --write src/metadata.json >/dev/null
+	@sed -i 's/"version-name": "[^"]*"/"version-name": "$(VERSION)"/' src/metadata.json
+	@sed -i "s/^## Unreleased[[:space:]]*$$/## v$(VERSION) ($$(date +%F))/" CHANGELOG.md
 	@echo "Version set to $(VERSION)."
 
 pack:
