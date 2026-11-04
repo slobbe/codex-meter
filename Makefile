@@ -56,7 +56,7 @@ pack:
 		build_version=$$(git --no-pager rev-parse --short HEAD); \
 		git_status=$$(git --no-pager --no-optional-locks status --porcelain); \
 		if [ -n "$$git_status" ]; then build_version="$$build_version-modified"; fi; \
-		build_version="Dev ($$build_version)"; \
+		build_version="($$build_version)"; \
 	fi; \
 	sed -i "s/\"version-name\": \"[^\"]*\"/\"version-name\": \"$$build_version\"/" "$$stage/metadata.json"; \
 	rm -f "$(ZIP)"; \
