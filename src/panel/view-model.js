@@ -370,8 +370,8 @@ export function secondsUntil(unixTimestamp) {
 }
 
 export function formatLimitPrediction(prediction, quota) {
-    if (prediction?.trend === "limit reached") return "Limit reached";
-    if (prediction?.trend === "safe") return "Safe at current pace";
+    if (prediction?.trend === "limit reached") return "Quota exhausted";
+    if (prediction?.trend === "safe") return "Pace: safe";
     if (prediction?.trend !== "unsafe" || !Number.isFinite(prediction.estimatedLimitAt)) {
         return "";
     }
@@ -380,9 +380,9 @@ export function formatLimitPrediction(prediction, quota) {
             0,
             Math.round(quota?.resetAt - prediction.estimatedLimitAt),
         );
-        return `Will hit limit ~${formatDuration(secondsBeforeReset)} before reset`;
+        return `Pace: runs out ~${formatDuration(secondsBeforeReset)} early`;
     }
-    return `Will hit limit in ~${formatDuration(secondsUntil(prediction.estimatedLimitAt))}`;
+    return `Pace: runs out in ~${formatDuration(secondsUntil(prediction.estimatedLimitAt))}`;
 }
 
 export function getPredictionStyleClass(prediction) {

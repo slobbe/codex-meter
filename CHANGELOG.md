@@ -4,6 +4,12 @@ All notable changes from version 0.10.0 onward will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed
+
+- Changed popup pace text to use shorter, clearer quota predictions.
+
 ## v0.11.1 (2026-11-03)
 
 ### Changed

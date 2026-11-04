@@ -327,8 +327,8 @@ test("sorts cached snapshots without mutation and keeps missing or invalid durat
             menu.usageItems.map((row) => row.id),
             expected.map((quota) => quota.id),
         );
-        assert.equal(menu.usageItems[0].prediction, "Safe at current pace");
-        assert.equal(menu.usageItems[1].prediction, "Limit reached");
+        assert.equal(menu.usageItems[0].prediction, "Pace: safe");
+        assert.equal(menu.usageItems[1].prediction, "Quota exhausted");
         assert.equal(menu.usageItems[0].predictionStyle, "safe");
         assert.equal(menu.usageItems[1].predictionStyle, "danger");
         assert.equal(menu.usageItems[0].value, `${expected[0].usedPercent}%`);
@@ -372,8 +372,8 @@ test("keeps predictions keyed by quota id across reordered collections without m
                 ["weekly", "danger"],
             ],
         );
-        assert.equal(menu.usageItems[0].prediction, "Safe at current pace");
-        assert.equal(menu.usageItems[2].prediction, "Limit reached");
+        assert.equal(menu.usageItems[0].prediction, "Pace: safe");
+        assert.equal(menu.usageItems[2].prediction, "Quota exhausted");
         assert.deepEqual(snapshot, originalSnapshot);
         assert.deepEqual(prediction, originalPrediction);
     }
@@ -499,14 +499,14 @@ test("formats absolute resets by duration rather than row position", () => {
 test("formats reached limits explicitly", () => {
     assert.equal(
         formatLimitPrediction({ trend: "limit reached", estimatedLimitAt: null }, sessionQuota),
-        "Limit reached",
+        "Quota exhausted",
     );
 });
 
 test("formats safe limits actionably", () => {
     assert.equal(
         formatLimitPrediction({ trend: "safe", estimatedLimitAt: null }, sessionQuota),
-        "Safe at current pace",
+        "Pace: safe",
     );
 });
 
@@ -523,7 +523,15 @@ test("formats unsafe predictions relative to reset", () => {
             { trend: "unsafe", estimatedLimitAt: sessionQuota.resetAt - 7_200 },
             sessionQuota,
         ),
-        "Will hit limit ~2h 0m before reset",
+        "Pace: runs out ~2h 0m early",
+    );
+});
+
+test("formats unsafe predictions without a reset relative to now", (t) => {
+    t.mock.method(Date, "now", () => 1_700_000_000_000);
+    assert.equal(
+        formatLimitPrediction({ trend: "unsafe", estimatedLimitAt: 1_700_009_000 }, {}),
+        "Pace: runs out in ~2h 30m",
     );
 });
 
@@ -557,7 +565,7 @@ test("shows a single weekly quota without placeholder rows or bars", () => {
     assert.equal(menu.usageItems[0].id, "weekly");
     assert.equal(menu.usageItems[0].visible, true);
     assert.equal(menu.usageItems[0].title, "Weekly");
-    assert.equal(menu.usageItems[0].prediction, "Safe at current pace");
+    assert.equal(menu.usageItems[0].prediction, "Pace: safe");
     assert.deepEqual(panel.bars, [
         {
             id: "weekly",
@@ -610,7 +618,7 @@ test("preserves complete menu rows for session only, week only, both, and neithe
                     visible: true,
                     title: isSession ? "5 hours" : "Weekly",
                     value: `${left ? 100 - percent : percent}%`,
-                    prediction: isSession ? "Safe at current pace" : "Limit reached",
+                    prediction: isSession ? "Pace: safe" : "Quota exhausted",
                     reset: isSession ? "resets in 4h 0m" : "resets in 1d 18h",
                     percentValue: percent,
                     displayPercentValue: left ? 100 - percent : percent,
@@ -665,8 +673,8 @@ test("preserves unsafe prediction durations and reset overrides for each row", (
         },
     );
 
-    assert.equal(menu.usageItems[0].prediction, "Will hit limit ~2h 1m before reset");
-    assert.equal(menu.usageItems[1].prediction, "Will hit limit ~2d 2h before reset");
+    assert.equal(menu.usageItems[0].prediction, "Pace: runs out ~2h 1m early");
+    assert.equal(menu.usageItems[1].prediction, "Pace: runs out ~2d 2h early");
     assert.equal(menu.usageItems[0].predictionStyle, "warning");
     assert.equal(menu.usageItems[1].predictionStyle, "warning");
     assert.equal(menu.usageItems[0].reset, "Session reset override");
