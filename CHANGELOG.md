@@ -9,6 +9,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 - Changed popup pace text to use shorter, clearer quota predictions.
+- Changed duration text to omit zero-valued secondary units.
 
 ## v0.11.1 (2026-11-03)
 

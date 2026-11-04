@@ -449,14 +449,18 @@ test("formats timestamps with exactly one formatter using the selected options",
     assert.equal(formatter.mock.callCount(), callsBefore);
 });
 
-test("formats durations using the largest unit and the unit below, down to minutes", () => {
+test("formats durations using the largest unit and its nonzero adjacent unit, down to minutes", () => {
     for (const [seconds, expected] of [
         [129_600, "1d 12h"],
-        [86_460, "1d 0h"],
+        [90_060, "1d 1h"],
+        [86_460, "1d"],
+        [86_400, "1d"],
         [86_399, "23h 59m"],
         [45_600, "12h 40m"],
         [12_300, "3h 25m"],
-        [3_600, "1h 0m"],
+        [7_200, "2h"],
+        [3_601, "1h"],
+        [3_600, "1h"],
         [3_599, "59m"],
         [60, "1m"],
         [59, "0m"],
@@ -474,6 +478,8 @@ test("formats durations using the largest unit and the unit below, down to minut
 test("formats reset durations independently of the quota window", () => {
     assert.equal(formatReset({ resetAfterSeconds: 45_600 }), "resets in 12h 40m");
     assert.equal(formatReset({ resetAfterSeconds: 1_500 }), "resets in 25m");
+    assert.equal(formatReset({ resetAfterSeconds: 7_200 }), "resets in 2h");
+    assert.equal(formatReset({ resetAfterSeconds: 86_460 }), "resets in 1d");
 });
 
 test("formats absolute resets by duration rather than row position", () => {
@@ -523,16 +529,19 @@ test("formats unsafe predictions relative to reset", () => {
             { trend: "unsafe", estimatedLimitAt: sessionQuota.resetAt - 7_200 },
             sessionQuota,
         ),
-        "Pace: runs out ~2h 0m early",
+        "Pace: runs out ~2h early",
     );
 });
 
 test("formats unsafe predictions without a reset relative to now", (t) => {
     t.mock.method(Date, "now", () => 1_700_000_000_000);
-    assert.equal(
-        formatLimitPrediction({ trend: "unsafe", estimatedLimitAt: 1_700_009_000 }, {}),
-        "Pace: runs out in ~2h 30m",
-    );
+    for (const [estimatedLimitAt, expected] of [
+        [1_700_009_000, "Pace: runs out in ~2h 30m"],
+        [1_700_007_200, "Pace: runs out in ~2h"],
+        [1_700_086_460, "Pace: runs out in ~1d"],
+    ]) {
+        assert.equal(formatLimitPrediction({ trend: "unsafe", estimatedLimitAt }, {}), expected);
+    }
 });
 
 test("shows a single weekly quota without placeholder rows or bars", () => {
@@ -619,7 +628,7 @@ test("preserves complete menu rows for session only, week only, both, and neithe
                     title: isSession ? "5 hours" : "Weekly",
                     value: `${left ? 100 - percent : percent}%`,
                     prediction: isSession ? "Pace: safe" : "Quota exhausted",
-                    reset: isSession ? "resets in 4h 0m" : "resets in 1d 18h",
+                    reset: isSession ? "resets in 4h" : "resets in 1d 18h",
                     percentValue: percent,
                     displayPercentValue: left ? 100 - percent : percent,
                     displayBaselinePercentValue: left ? 100 - baseline : baseline,

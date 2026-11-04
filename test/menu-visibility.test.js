@@ -551,7 +551,7 @@ test("manual validation checks only the selected row and restores labels on comp
     menu.setBankedResets(state);
     const originalLabels = labels();
     assert.deepEqual(originalLabels, [
-        "Reward (Usage limit) · Expires in 1d 0h",
+        "Reward (Usage limit) · Expires in 1d",
         "Weekly reset · Expiry unknown",
     ]);
     for (const error of [null, "Validation failed"]) {
@@ -615,8 +615,8 @@ test("banked reset rows sort soonest expiry first, format metadata, and select t
     menu.setBankedResets({ count: 4, snapshot: { credits }, loading: false, error: null });
     const rows = menu.bankedResetsItem.menu.children;
     assert.equal(rows.length, 4);
-    assert.equal(rows[0].label.text, "Reward (Usage limit) · Expires in 1d 0h");
-    assert.match(rows[1].label.text, /^Weekly reset · Expires in \d+d \d+h$/);
+    assert.equal(rows[0].label.text, "Reward (Usage limit) · Expires in 1d");
+    assert.equal(rows[1].label.text, "Weekly reset · Expires in 304d");
     assert.equal(rows[2].label.text, "Gift (Usage limit) · Expiry unknown");
     for (const row of rows) {
         assert.equal(row.constructor.name, "PopupMenuItem");
