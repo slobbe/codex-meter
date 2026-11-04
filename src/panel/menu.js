@@ -184,10 +184,10 @@ export class CodexMeterPopupMenu {
             can_focus: false,
         });
         const box = new St.BoxLayout({
-            vertical: true,
             x_expand: true,
             style_class: "cx-usage-menu-item",
         });
+        box.layout_manager.orientation = Clutter.Orientation.VERTICAL;
         const headingBox = new St.BoxLayout({
             x_expand: true,
             style_class: "cx-usage-heading-row",
@@ -246,10 +246,10 @@ export class CodexMeterPopupMenu {
             can_focus: false,
         });
         const box = new St.BoxLayout({
-            vertical: true,
             x_expand: true,
             style_class: "cx-trend-row",
         });
+        box.layout_manager.orientation = Clutter.Orientation.VERTICAL;
         const titleLabel = new St.Label({
             text: "Weekly activity",
             x_expand: true,
@@ -309,10 +309,10 @@ export class CodexMeterPopupMenu {
             can_focus: false,
         });
         const box = new St.BoxLayout({
-            vertical: true,
             x_expand: true,
             style_class: "cx-error-menu-item",
         });
+        box.layout_manager.orientation = Clutter.Orientation.VERTICAL;
 
         const headingBox = new St.BoxLayout({
             x_expand: true,

@@ -6,6 +6,8 @@ const indicatorUrl = new URL("../src/panel/indicator.js", import.meta.url).href;
 const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export class Actor {
         constructor(options = {}) {
+            if ('vertical' in options) throw new Error('St vertical was removed in GNOME 51');
+            this.layout_manager = { orientation: 'horizontal' };
             Object.assign(this, options);
             this.children = [];
             this.classes = new Set();
@@ -27,6 +29,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     }
     export default {
         registerClass() {}, BoxLayout: Actor, ActorAlign: { CENTER: 0 }, Cancellable,
+        Orientation: { VERTICAL: 'vertical' },
     };
     export const Button = Actor;
     export const readSettings = settings => settings;
@@ -98,6 +101,11 @@ function createIndicator() {
     indicator._openAiIcon.gicon = "openai-icon";
     return indicator;
 }
+
+test("panel bars stack vertically without the removed St vertical property", () => {
+    const indicator = createIndicator();
+    assert.equal(indicator._panelBars.layout_manager.orientation, "vertical");
+});
 
 test("panel reconciles 0 -> 3 -> 1 -> 0 bars, replacing all data and destroying removed actors", () => {
     const indicator = createIndicator();

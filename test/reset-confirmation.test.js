@@ -7,6 +7,8 @@ const confirmationUrl = new URL("../src/panel/reset-confirmation.js", import.met
 const stubUrl = `data:text/javascript,${encodeURIComponent(`
     class Actor {
         constructor(options = {}) {
+            if ('vertical' in options) throw new Error('St vertical was removed in GNOME 51');
+            this.layout_manager = { orientation: 'horizontal' };
             Object.assign(this, options);
             this.children = [];
             this.clutter_text = {};
@@ -17,6 +19,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export default {
         registerClass() {}, BoxLayout: Actor, Label: Actor,
         ActorAlign: { CENTER: 0, START: 1 }, KEY_Escape: 27,
+        Orientation: { VERTICAL: 'vertical' },
     };
     export const Button = Actor;
     export const readSettings = null, CodexMeterPopupMenu = null, UsageBar = null, UsageRing = null;
@@ -87,11 +90,12 @@ test("confirmation shows the reset title, details, and warning before redeeming"
         },
     );
     const content = dialog.contentLayout.children[0];
+    assert.equal(content.layout_manager.orientation, "vertical");
     assert.equal(content.children.length, 3);
     assert.equal(content.children[0].text, "Weekly reset");
     assert.equal(content.children[0].style_class, "cx-reset-dialog-title");
     const details = content.children[1].children;
-    assert.equal(content.children[1].vertical, true);
+    assert.equal(content.children[1].layout_manager.orientation, "vertical");
     assert.equal(details.length, 3);
     assert.equal(details[0].text, "A banked reset for your usage limits.");
     assert.equal(details[0].style_class, "cx-reset-dialog-description");

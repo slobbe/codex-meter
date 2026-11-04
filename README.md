@@ -4,7 +4,7 @@
   <p>
     <a href="https://extensions.gnome.org/extension/9993/codex-meter/"><img src="https://img.shields.io/gnome-extensions/v/codex-meter%40slobbe.github.io?label=GNOME%20Extensions&logo=gnome&color=blue" alt="GNOME Extensions version"></a>
     <a href="https://extensions.gnome.org/extension/9993/codex-meter/"><img src="https://img.shields.io/gnome-extensions/dt/codex-meter%40slobbe.github.io?logo=gnome&color=blue" alt="GNOME Extensions downloads"></a>
-    <a href="#requirements"><img src="https://img.shields.io/badge/GNOME_Shell_Version-45--50-blue?logo=gnome" alt="GNOME Shell 45-50"></a>
+    <a href="#requirements"><img src="https://img.shields.io/badge/GNOME_Shell_Version-45--51-blue?logo=gnome" alt="GNOME Shell 45-51"></a>
     <a href="https://github.com/slobbe/codex-meter/actions/workflows/ci.yml"><img src="https://github.com/slobbe/codex-meter/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"></a>
   </p>
 </div>
@@ -22,7 +22,7 @@
 ## Requirements
 
 - [ChatGPT desktop app](https://chatgpt.com/download/) or [Codex CLI](https://developers.openai.com/codex/cli), signed in with your ChatGPT account on the same machine
-- GNOME Shell 45+
+- GNOME Shell 45–51
 
 ## Install
 

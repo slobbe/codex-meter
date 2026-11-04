@@ -5,16 +5,16 @@ import * as ModalDialog from "resource:///org/gnome/shell/ui/modalDialog.js";
 export function showBankedResetConfirmation(credit, { onConfirm, onCancel }) {
     const dialog = new ModalDialog.ModalDialog({ destroyOnClose: true });
     const content = new St.BoxLayout({
-        vertical: true,
         style_class: "cx-reset-dialog-content",
     });
+    content.layout_manager.orientation = Clutter.Orientation.VERTICAL;
     const title = createWrappingLabel(credit.title || "Usage limit reset", "cx-reset-dialog-title");
     content.add_child(title);
 
     const details = new St.BoxLayout({
-        vertical: true,
         style_class: "cx-reset-dialog-details",
     });
+    details.layout_manager.orientation = Clutter.Orientation.VERTICAL;
     if (credit.description) {
         details.add_child(createWrappingLabel(credit.description, "cx-reset-dialog-description"));
     }

@@ -6,6 +6,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Added
+
+- Added GNOME Shell 51 compatibility while retaining GNOME Shell 45–50 support.
+
 ### Changed
 
 - Changed popup pace text to use shorter, clearer quota predictions.

@@ -8,6 +8,8 @@ const menuUrl = new URL("../src/panel/menu.js", import.meta.url).href;
 const stubUrl = `data:text/javascript,${encodeURIComponent(
     `class Actor {
         constructor(options = {}) {
+            if ('vertical' in options) throw new Error('St vertical was removed in GNOME 51');
+            this.layout_manager = { orientation: 'horizontal' };
             Object.assign(this, options);
             this.children = [];
             this.clutter_text = {};
@@ -41,6 +43,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
     export default {
         BoxLayout: Actor, Icon: Actor, Label: Actor, Button: Actor, Widget: Actor,
         ActorAlign: { CENTER: 0, FILL: 1, END: 2 },
+        Orientation: { VERTICAL: 'vertical' },
         PolicyType: { NEVER: 'never', AUTOMATIC: 'automatic' },
     };
     export const PopupBaseMenuItem = Actor;
@@ -125,6 +128,14 @@ try {
 } finally {
     hooks.deregister();
 }
+
+test("usage, activity, and banner rows stay vertical without the removed St property", () => {
+    const menu = new CodexMeterPopupMenu({});
+    const items = [menu._createUsageItem("Usage"), menu.trendItem, menu.errorItem, menu.statusItem];
+    for (const item of items) {
+        assert.equal(item.children[0].layout_manager.orientation, "vertical");
+    }
+});
 
 test("reconciles usage rows through 0 -> 3 -> 1 -> 0 and updates all row data", (t) => {
     for (const method of [

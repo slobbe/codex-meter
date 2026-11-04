@@ -117,10 +117,10 @@ export class CodexMeterIndicator extends PanelMenu.Button {
 
     _createPanelBars() {
         const box = new St.BoxLayout({
-            vertical: true,
             y_align: Clutter.ActorAlign.CENTER,
             style_class: "cx-panel-bars",
         });
+        box.layout_manager.orientation = Clutter.Orientation.VERTICAL;
         this._panelUsageBars = [];
         return box;
     }
