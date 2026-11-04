@@ -274,12 +274,16 @@ test("schema allows circular display and legacy icon migration, preserving defau
     assert.equal(readSettings(settingsFixture()).topPanelDisplayMode, "bars");
 });
 
-test("preferences banked resets group contains only the bound auto-apply toggle", () => {
+test("preferences banked resets group contains only the bound auto-redeem toggle", () => {
     const settings = settingsFixture();
     const page = createPreferencesPage(settings, metadata, windowFixture());
     const group = page.children.find((child) => child.title === "Banked resets");
     assert.equal(group.children.length, 1);
-    assert.equal(group.children[0].title, "Auto-apply expiring resets");
+    assert.equal(group.children[0].title, "Auto-redeem expiring resets");
+    assert.equal(
+        group.children[0].subtitle,
+        "Redeem a banked reset automatically within 1 hour of expiry",
+    );
     assert.equal(settings.bindings.length, 1);
     assert.equal(settings.bindings[0].row, group.children[0]);
     assert.equal(settings.bindings[0].property, "active");

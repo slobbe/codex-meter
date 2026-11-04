@@ -405,13 +405,13 @@ export class CodexMonitor {
         try {
             await redeemCodexBankedReset(credit.id, { cancellable });
             if (this._lifecycleCancellable.is_cancelled() || cancellable.is_cancelled()) return;
-            this._notify("Expiring banked Codex reset applied automatically.");
+            this._notify("Expiring banked Codex reset redeemed automatically.");
             await this._bankedResetRefreshPromise;
             if (this._lifecycleCancellable.is_cancelled() || cancellable.is_cancelled()) return;
             await Promise.all([this.refreshUsage(), this.refreshBankedResets()]);
         } catch (error) {
             if (this._lifecycleCancellable.is_cancelled() || isCancellationError(error)) return;
-            console.warn("Unable to auto-apply expiring Codex banked reset", error);
+            console.warn("Unable to auto-redeem expiring Codex banked reset", error);
         } finally {
             if (this._redeemBankedResetCancellable === cancellable) {
                 this._redeemBankedResetCancellable = null;

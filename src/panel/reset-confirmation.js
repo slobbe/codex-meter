@@ -8,32 +8,27 @@ export function showBankedResetConfirmation(credit, { onConfirm, onCancel }) {
         vertical: true,
         style_class: "cx-reset-dialog-content",
     });
-    const title = createWrappingLabel("Apply banked reset?", "cx-reset-dialog-title");
-    const message = createWrappingLabel(
-        "This will consume the following reset and reset your current Codex usage limits. This action cannot be undone.",
-        "cx-reset-dialog-message",
-    );
-    const creditTitle = createWrappingLabel(
-        credit.title || "Usage limit reset",
-        "cx-reset-dialog-credit-title",
-    );
-
+    const title = createWrappingLabel(credit.title || "Usage limit reset", "cx-reset-dialog-title");
     content.add_child(title);
-    content.add_child(message);
-    content.add_child(creditTitle);
-
-    if (credit.description) {
-        content.add_child(createWrappingLabel(credit.description, "cx-reset-dialog-description"));
-    }
 
     const details = new St.BoxLayout({
         vertical: true,
         style_class: "cx-reset-dialog-details",
     });
-    addDetail(details, "Type", formatResetType(credit.reset_type));
+    if (credit.description) {
+        details.add_child(createWrappingLabel(credit.description, "cx-reset-dialog-description"));
+    }
     addDetail(details, "Granted", formatDate(credit.granted_at));
     addDetail(details, "Expires", formatDate(credit.expires_at));
     if (details.get_n_children() > 0) content.add_child(details);
+
+    const resetType = credit.reset_type?.replaceAll("_", " ") || "banked";
+    content.add_child(
+        createWrappingLabel(
+            `This will consume this ${resetType} reset. This action cannot be undone`,
+            "cx-reset-dialog-message",
+        ),
+    );
 
     dialog.contentLayout.add_child(content);
     dialog.setButtons([
@@ -46,7 +41,7 @@ export function showBankedResetConfirmation(credit, { onConfirm, onCancel }) {
             key: Clutter.KEY_Escape,
         },
         {
-            label: "Apply reset",
+            label: "Redeem",
             action: () => {
                 dialog.close();
                 onConfirm();
@@ -63,18 +58,7 @@ export function showBankedResetConfirmation(credit, { onConfirm, onCancel }) {
 
 function addDetail(container, label, value) {
     if (!value) return;
-    const row = new St.BoxLayout({
-        style_class: "cx-reset-dialog-detail-row",
-    });
-    row.add_child(
-        new St.Label({
-            text: label,
-            y_align: Clutter.ActorAlign.START,
-            style_class: "cx-reset-dialog-detail-label",
-        }),
-    );
-    row.add_child(createWrappingLabel(value, "cx-reset-dialog-detail-value"));
-    container.add_child(row);
+    container.add_child(createWrappingLabel(`${label}: ${value}`, "cx-reset-dialog-detail"));
 }
 
 function createWrappingLabel(text, styleClass) {
@@ -86,12 +70,6 @@ function createWrappingLabel(text, styleClass) {
     label.clutter_text.line_wrap = true;
     label.clutter_text.ellipsize = 0;
     return label;
-}
-
-function formatResetType(value) {
-    if (!value) return null;
-    const words = value.replaceAll("_", " ");
-    return `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
 }
 
 function formatDate(value) {

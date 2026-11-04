@@ -161,7 +161,7 @@ export class CodexMeterPopupMenu {
             else if (error) addInfo(`Banked resets unavailable: ${error}`);
             else if (!snapshot) addInfo("Banked resets unavailable");
         }
-        if (redeeming) addInfo("Applying reset…");
+        if (redeeming) addInfo("Redeeming reset…");
 
         if (snapshot && !loading && !error && credits.length === 0) {
             addInfo("No banked resets available");

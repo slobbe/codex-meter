@@ -39,8 +39,8 @@
     </key>
     <key name="auto-apply-banked-reset" type="b">
       <default>false</default>
-      <summary>Auto-apply banked resets</summary>
-      <description>Automatically apply a banked reset within 1 hour of expiry</description>
+      <summary>Auto-redeem expiring resets</summary>
+      <description>Redeem a banked reset automatically within 1 hour of expiry</description>
     </key>
   </schema>
 </schemalist>

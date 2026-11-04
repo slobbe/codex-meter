@@ -67,6 +67,93 @@ test("failed modal grab destroys the unopened confirmation and returns null", ()
     assert.equal(modalState.dialogs.at(-1).destroyed, true);
 });
 
+test("confirmation shows the reset title, details, and warning before redeeming", () => {
+    modalState.canGrab = true;
+    let confirmed = false;
+    const dialog = showBankedResetConfirmation(
+        {
+            id: "selected",
+            title: "Weekly reset",
+            reset_type: "usage_limit",
+            granted_at: "2030-01-15T12:00:00Z",
+            expires_at: "2030-02-15T12:00:00Z",
+            description: "A banked reset for your usage limits.",
+        },
+        {
+            onConfirm: () => {
+                confirmed = true;
+            },
+            onCancel: () => assert.fail("confirm must not cancel"),
+        },
+    );
+    const content = dialog.contentLayout.children[0];
+    assert.equal(content.children.length, 3);
+    assert.equal(content.children[0].text, "Weekly reset");
+    assert.equal(content.children[0].style_class, "cx-reset-dialog-title");
+    const details = content.children[1].children;
+    assert.equal(content.children[1].vertical, true);
+    assert.equal(details.length, 3);
+    assert.equal(details[0].text, "A banked reset for your usage limits.");
+    assert.equal(details[0].style_class, "cx-reset-dialog-description");
+    assert.equal(details[0].clutter_text.line_wrap, true);
+    assert.match(details[1].text, /^Granted: \d{2} Jan 2030, \d{2}:\d{2}$/);
+    assert.match(details[2].text, /^Expires: \d{2} Feb 2030, \d{2}:\d{2}$/);
+    assert.equal(
+        content.children[2].text,
+        "This will consume this usage limit reset. This action cannot be undone",
+    );
+    assert.deepEqual(
+        dialog.buttons.map((button) => button.label),
+        ["Cancel", "Redeem"],
+    );
+    dialog.buttons[1].action();
+    assert.equal(confirmed, true);
+    assert.equal(dialog.closed, true);
+});
+
+test("confirmation omits missing details and invalid dates and supports cancellation", () => {
+    modalState.canGrab = true;
+    let cancelled = false;
+    const dialog = showBankedResetConfirmation(
+        { id: "selected", granted_at: "invalid", expires_at: "invalid" },
+        {
+            onConfirm: () => assert.fail("cancel must not confirm"),
+            onCancel: () => {
+                cancelled = true;
+            },
+        },
+    );
+    const content = dialog.contentLayout.children[0];
+    assert.equal(content.children.length, 2);
+    assert.equal(content.children[0].text, "Usage limit reset");
+    assert.equal(content.children[1].style_class, "cx-reset-dialog-message");
+    assert.equal(
+        content.children[1].text,
+        "This will consume this banked reset. This action cannot be undone",
+    );
+    dialog.buttons[0].action();
+    assert.equal(cancelled, true);
+    assert.equal(dialog.closed, true);
+});
+
+test("confirmation keeps a single available date and uses the selected reset type", () => {
+    modalState.canGrab = true;
+    for (const field of ["granted_at", "expires_at"]) {
+        const dialog = showBankedResetConfirmation(
+            { reset_type: "weekly", [field]: "2030-01-15T12:00:00Z" },
+            { onConfirm() {}, onCancel() {} },
+        );
+        const content = dialog.contentLayout.children[0];
+        const details = content.children[1].children;
+        assert.equal(details.length, 1);
+        assert.match(details[0].text, field === "granted_at" ? /^Granted: / : /^Expires: /);
+        assert.equal(
+            content.children[2].text,
+            "This will consume this weekly reset. This action cannot be undone",
+        );
+    }
+});
+
 test("failed modal grab releases the reservation and allows a subsequent selection", async () => {
     modalState.canGrab = false;
     const indicator = Object.create(CodexMeterIndicator.prototype);

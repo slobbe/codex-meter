@@ -207,26 +207,18 @@
 
 .cx-reset-dialog-message,
 .cx-reset-dialog-description,
-.cx-reset-dialog-detail-label {
+.cx-reset-dialog-detail {
     opacity: 0.75;
-}
-
-.cx-reset-dialog-credit-title {
-    font-weight: 700;
 }
 
 .cx-reset-dialog-details {
     spacing: 6px;
 }
 
-.cx-reset-dialog-detail-row {
-    spacing: 12px;
+.cx-reset-dialog-description {
+    font-style: italic;
 }
 
-.cx-reset-dialog-detail-label {
-    min-width: 5.5em;
-}
-
-.cx-reset-dialog-detail-value {
-    text-align: right;
+.cx-reset-dialog-message {
+    margin-top: 12px;
 }

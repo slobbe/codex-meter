@@ -10,6 +10,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Changed popup pace text to use shorter, clearer quota predictions.
 - Changed duration text to omit zero-valued secondary units.
+- Changed banked reset wording to consistently use “redeem” throughout the app and README.
+- Changed the banked reset confirmation to show a bold title, italic description, stacked dates, and a type-specific warning.
 
 ## v0.11.1 (2026-11-03)
 

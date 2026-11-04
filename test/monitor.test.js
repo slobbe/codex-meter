@@ -403,7 +403,7 @@ test("redemption waits out older inventory requests and fetches post-redemption 
     assert.equal(monitor.state.redeemingBankedReset, false);
 });
 
-test("background auto-apply still selects the earliest expiring reset and refreshes inventory", async () => {
+test("background auto-redemption still selects the earliest expiring reset and refreshes inventory", async () => {
     const { monitor, notifications } = fixture();
     monitor._autoApplyBankedReset = true;
     const now = Date.now();
@@ -420,7 +420,7 @@ test("background auto-apply still selects the earliest expiring reset and refres
     assert.equal(redeemedId, soon.id);
     assert.equal(calls, 2);
     assert.equal(monitor.state.bankedResetSnapshot, after);
-    assert.match(notifications[0], /automatically/);
+    assert.equal(notifications[0], "Expiring banked Codex reset redeemed automatically.");
     await monitor.refreshBankedResets({ maxAgeMs: 5 * 60 * 1000 });
     assert.equal(calls, 2, "automatic post-redemption refresh establishes popup cooldown");
 });

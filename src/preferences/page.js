@@ -37,8 +37,8 @@ function createBankedResetsGroup(settings) {
         createBoundSwitchRow({
             settings,
             key: SETTINGS_AUTO_APPLY_BANKED_RESET,
-            title: "Auto-apply expiring resets",
-            subtitle: "Apply a banked reset automatically within 1 hour of expiry",
+            title: "Auto-redeem expiring resets",
+            subtitle: "Redeem a banked reset automatically within 1 hour of expiry",
         }),
     );
 
