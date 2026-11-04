@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 import test from "node:test";
 
@@ -62,7 +63,12 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
         }
     }
     export class NativeMenu extends Actor {
-        constructor() { super(); this.isOpen = true; this.closeCount = 0; }
+        constructor() {
+            super();
+            this.box = new Actor();
+            this.isOpen = true;
+            this.closeCount = 0;
+        }
         addMenuItem(item) {
             this.add_child(item);
             // PopupMenuBase._connectItemSignals uses an AFTER handler to close the top menu.
@@ -132,6 +138,7 @@ test("reconciles usage rows through 0 -> 3 -> 1 -> 0 and updates all row data", 
     const menu = new CodexMeterPopupMenu({});
     const items = [];
     menu.addToMenu({
+        box: { add_style_class_name() {} },
         addMenuItem(item, position = items.length) {
             items.splice(position, 0, item);
             if (item.destroy) {
@@ -233,6 +240,47 @@ test("reconciles usage rows through 0 -> 3 -> 1 -> 0 and updates all row data", 
         rows.map((item) => item.usageBar.syncCount),
         [2, 1, 1],
     );
+});
+
+test("popup constrains its width independently of pace text and visible content", async () => {
+    const { NativeMenu } = await import(stubUrl);
+    const nativeMenu = new NativeMenu();
+    const menu = new CodexMeterPopupMenu({});
+    menu.addToMenu(nativeMenu);
+    const stylesheet = readFileSync(new URL("../src/stylesheet.css", import.meta.url), "utf8");
+    assert.match(stylesheet, /\.cx-popup-menu\s*\{\s*width:\s*28em;/);
+    const assertFixedWidth = () => {
+        assert.equal(nativeMenu.box.classes.has("cx-popup-menu"), true);
+    };
+    assertFixedWidth();
+    for (const prediction of [
+        "Pace: safe",
+        "Pace: runs out ~2h 30m early",
+        "Pace: runs out in ~2d 12h",
+        "Quota exhausted",
+        "",
+        "Pace: safe",
+    ]) {
+        menu.setUsageItems(
+            ["session", "weekly"].map((id) => ({
+                id,
+                visible: true,
+                prediction,
+                reset: "resets in 6d 12h (10 Nov, 14:00)",
+            })),
+        );
+        for (const item of menu.usageItems) {
+            for (const label of [item.predictionLabel, item.resetLabel]) {
+                assert.equal(label.clutter_text.line_wrap, true);
+                assert.equal(label.clutter_text.ellipsize, 0);
+            }
+        }
+        assertFixedWidth();
+    }
+    menu.setUsageItems([]);
+    menu.setError("Long error details ".repeat(20));
+    assertFixedWidth();
+    assert.equal(menu.errorItem.children[0].width, undefined);
 });
 
 test("banners preserve expansion defaults and user toggles across detail updates", () => {
@@ -345,7 +393,10 @@ test("noninteractive header precedes usage and activity, then banked resets and 
         onOpenPreferences: () => calls.push("preferences"),
     });
     const items = [];
-    menu.addToMenu({ addMenuItem: (item) => items.push(item) });
+    menu.addToMenu({
+        box: { add_style_class_name() {} },
+        addMenuItem: (item) => items.push(item),
+    });
     assert.deepEqual(items, [
         menu.headerItem,
         menu.errorItem,

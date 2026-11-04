@@ -4,8 +4,6 @@ import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 import { UsageBar } from "./usage-bar.js";
 import { formatDuration } from "./view-model.js";
 
-const POPUP_CONTENT_WIDTH = 285;
-
 const TREND_BAR_COUNT = 56;
 
 const TREND_BAR_MAX_HEIGHT = 28;
@@ -44,6 +42,7 @@ export class CodexMeterPopupMenu {
 
     addToMenu(menu) {
         this._menu = menu;
+        menu.box.add_style_class_name("cx-popup-menu");
         menu.addMenuItem(this.headerItem);
         menu.addMenuItem(this.errorItem);
         menu.addMenuItem(this.statusItem);
@@ -221,6 +220,10 @@ export class CodexMeterPopupMenu {
             y_align: Clutter.ActorAlign.CENTER,
             style_class: "cx-usage-detail-muted",
         });
+        for (const label of [predictionLabel, resetLabel]) {
+            label.clutter_text.line_wrap = true;
+            label.clutter_text.ellipsize = 0;
+        }
         detailBox.add_child(predictionLabel);
         detailBox.add_child(resetLabel);
         headingBox.add_child(titleLabel);
@@ -310,7 +313,7 @@ export class CodexMeterPopupMenu {
             x_expand: true,
             style_class: "cx-error-menu-item",
         });
-        box.width = POPUP_CONTENT_WIDTH;
+
         const headingBox = new St.BoxLayout({
             x_expand: true,
             y_align: Clutter.ActorAlign.CENTER,

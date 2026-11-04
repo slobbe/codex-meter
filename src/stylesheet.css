@@ -87,6 +87,10 @@
     background-color: #d9534f;
 }
 
+.cx-popup-menu {
+    width: 28em;
+}
+
 .cx-usage-menu-item {
     spacing: 2px;
 }
