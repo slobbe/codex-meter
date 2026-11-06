@@ -1,7 +1,7 @@
 import GLib from "gi://GLib";
 import { fetchJson } from "../../io/http.js";
 import { getCodexCredentials } from "../auth/auth.js";
-import { toListResponse } from "./response.js";
+import { toListResponse, toRedeemResponse } from "./response.js";
 
 const CODEX_BANKED_RESETS_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
 
@@ -56,7 +56,7 @@ export async function redeemCodexBankedReset(creditId, options = {}) {
         },
     );
     cancellable?.set_error_if_cancelled();
-    return response;
+    return toRedeemResponse(response);
 }
 
 function createCodexBankedResetHeaders(accessToken, accountId) {

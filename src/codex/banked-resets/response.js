@@ -67,6 +67,46 @@ export function toListResponse(response) {
     return /** @type {CodexBankedResetListResponse} */ (response);
 }
 
+/**
+ * @param {Record<string, unknown>} response
+ * @returns {{code: "reset", windows_reset?: number}}
+ */
+export function toRedeemResponse(response) {
+    let failureMessage;
+    switch (response.code) {
+        case "reset":
+            // The outcome confirms success when the optional count is omitted.
+            if (
+                response.windows_reset !== undefined &&
+                (typeof response.windows_reset !== "number" ||
+                    !Number.isInteger(response.windows_reset) ||
+                    response.windows_reset <= 0)
+            ) {
+                throwUnexpected("windows_reset is not a positive integer for a reset outcome");
+            }
+            return /** @type {{code: "reset", windows_reset?: number}} */ (response);
+        case "nothing_to_reset":
+            failureMessage =
+                "Reset not redeemed. Codex reported nothing to reset. Keep this reset for later.";
+            break;
+        case "no_credit":
+            failureMessage =
+                "Reset not redeemed. The selected reset is unavailable. Choose another reset.";
+            break;
+        case "already_redeemed":
+            failureMessage =
+                "Reset not redeemed. The selected reset was already redeemed. Choose another reset.";
+            break;
+        default:
+            throwUnexpected("code is missing or not a recognized redemption outcome");
+    }
+    throw new CodexError(
+        "redemption-failed",
+        failureMessage,
+        `Codex banked reset redemption returned ${response.code}`,
+    );
+}
+
 /** @param {CodexBankedResetCredit[]} credits */
 export function selectCreditToRedeem(credits) {
     const available = credits.filter((credit) => credit.status === "available");
