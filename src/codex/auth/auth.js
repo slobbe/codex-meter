@@ -1,3 +1,4 @@
+import Gio from "gi://Gio";
 import GLib from "gi://GLib";
 import { isCancellationError, readJsonFile } from "../../io/files.js";
 import { CodexError } from "../error.js";
@@ -32,13 +33,6 @@ export async function getCodexCredentials(cancellable = null) {
 
 async function readCodexAuth(cancellable) {
     cancellable?.set_error_if_cancelled();
-    if (!GLib.file_test(CODEX_AUTH_PATH, GLib.FileTest.EXISTS)) {
-        throw new CodexError(
-            "missing-auth",
-            "Codex auth file is missing. Run `codex login` and try again.",
-            `Codex auth file does not exist at "${CODEX_AUTH_PATH}"`,
-        );
-    }
     try {
         const auth = await readJsonFile(CODEX_AUTH_PATH, cancellable);
         if (typeof auth !== "object" || auth === null || Array.isArray(auth)) {
@@ -51,6 +45,17 @@ async function readCodexAuth(cancellable) {
         return auth;
     } catch (error) {
         if (isCancellationError(error) || error instanceof CodexError) throw error;
+        if (
+            error instanceof Error &&
+            error.cause instanceof GLib.Error &&
+            error.cause.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)
+        ) {
+            throw new CodexError(
+                "missing-auth",
+                "Codex auth file is missing. Run `codex login` and try again.",
+                `Codex auth file does not exist at "${CODEX_AUTH_PATH}"`,
+            );
+        }
         throw new CodexError(
             "missing-auth",
             "Codex auth file could not be read. Run `codex login` and try again.",

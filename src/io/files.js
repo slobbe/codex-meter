@@ -7,6 +7,12 @@ Gio._promisify(Gio.File.prototype, "replace_contents_async");
 
 Gio._promisify(Gio.File.prototype, "append_to_async");
 
+Gio._promisify(Gio.File.prototype, "make_directory_async");
+
+Gio._promisify(Gio.File.prototype, "query_info_async");
+
+Gio._promisify(Gio.File.prototype, "set_attributes_async");
+
 Gio._promisify(Gio.OutputStream.prototype, "write_bytes_async");
 
 Gio._promisify(Gio.OutputStream.prototype, "close_async");
@@ -15,10 +21,51 @@ const PRIVATE_DIR_MODE = 0o700;
 
 const PRIVATE_FILE_MODE = 0o600;
 
-function ensureParentDir(path) {
-    const dir = GLib.path_get_dirname(path);
-    GLib.mkdir_with_parents(dir, PRIVATE_DIR_MODE);
-    GLib.chmod(dir, PRIVATE_DIR_MODE);
+async function setMode(file, mode, cancellable) {
+    cancellable?.set_error_if_cancelled();
+    const info = new Gio.FileInfo();
+    info.set_attribute_uint32("unix::mode", mode);
+    await file.set_attributes_async(
+        info,
+        Gio.FileQueryInfoFlags.NONE,
+        GLib.PRIORITY_DEFAULT,
+        cancellable,
+    );
+    cancellable?.set_error_if_cancelled();
+}
+
+async function ensureDirectory(dir, cancellable) {
+    cancellable?.set_error_if_cancelled();
+    try {
+        await dir.make_directory_async(GLib.PRIORITY_DEFAULT, cancellable);
+    } catch (error) {
+        if (
+            error instanceof GLib.Error &&
+            error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)
+        ) {
+            await ensureDirectory(dir.get_parent(), cancellable);
+            await ensureDirectory(dir, cancellable);
+            return;
+        }
+        if (
+            !(error instanceof GLib.Error) ||
+            !error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS)
+        ) {
+            throw error;
+        }
+        const info = await dir.query_info_async(
+            "standard::type",
+            Gio.FileQueryInfoFlags.NONE,
+            GLib.PRIORITY_DEFAULT,
+            cancellable,
+        );
+        if (info.get_file_type() !== Gio.FileType.DIRECTORY) throw error;
+    }
+    await setMode(dir, PRIVATE_DIR_MODE, cancellable);
+}
+
+async function ensureParentDir(path, cancellable) {
+    await ensureDirectory(Gio.File.new_for_path(GLib.path_get_dirname(path)), cancellable);
 }
 
 export function isCancellationError(error) {
@@ -36,6 +83,7 @@ export async function readFile(path, cancellable = null) {
         if (isCancellationError(error)) throw error;
         throw new Error(
             `Failed to read file "${path}": ${error instanceof Error ? error.message : String(error)}`,
+            { cause: error },
         );
     }
 }
@@ -43,18 +91,18 @@ export async function readFile(path, cancellable = null) {
 export async function writeFile(path, text, cancellable = null) {
     try {
         cancellable?.set_error_if_cancelled();
-        ensureParentDir(path);
+        await ensureParentDir(path, cancellable);
         const file = Gio.File.new_for_path(path);
         const bytes = new TextEncoder().encode(text);
         await file.replace_contents_async(
             bytes,
             null,
             false,
-            Gio.FileCreateFlags.REPLACE_DESTINATION,
+            Gio.FileCreateFlags.REPLACE_DESTINATION | Gio.FileCreateFlags.PRIVATE,
             cancellable,
         );
         cancellable?.set_error_if_cancelled();
-        GLib.chmod(path, PRIVATE_FILE_MODE);
+        await setMode(file, PRIVATE_FILE_MODE, cancellable);
     } catch (error) {
         if (isCancellationError(error)) throw error;
         throw new Error(
@@ -66,12 +114,12 @@ export async function writeFile(path, text, cancellable = null) {
 export async function appendFile(path, line, cancellable = null) {
     try {
         cancellable?.set_error_if_cancelled();
-        ensureParentDir(path);
+        await ensureParentDir(path, cancellable);
         const file = Gio.File.new_for_path(path);
         const text = line.endsWith("\n") ? line : `${line}\n`;
         const bytes = new GLib.Bytes(new TextEncoder().encode(text));
         const stream = await file.append_to_async(
-            Gio.FileCreateFlags.NONE,
+            Gio.FileCreateFlags.PRIVATE,
             GLib.PRIORITY_DEFAULT,
             cancellable,
         );
@@ -91,7 +139,7 @@ export async function appendFile(path, line, cancellable = null) {
             }
         }
         cancellable?.set_error_if_cancelled();
-        GLib.chmod(path, PRIVATE_FILE_MODE);
+        await setMode(file, PRIVATE_FILE_MODE, cancellable);
     } catch (error) {
         if (isCancellationError(error)) throw error;
         throw new Error(

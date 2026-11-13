@@ -29,6 +29,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Fixed banked reset redemption reporting success when Codex did not reset usage limits.
 - Fixed reset confirmation dialogs remaining briefly after the extension is disabled.
 - Fixed release and development archives omitting the license text.
+- Fixed filesystem operations potentially blocking GNOME Shell on slow storage.
 
 ## v0.11.1 (2026-11-03)
 
