@@ -3,8 +3,8 @@
   <p>A GNOME Shell extension to monitor and manage Codex usage limits from your top bar.</p>
   <p>
     <a href="https://extensions.gnome.org/extension/9993/codex-meter/"><img src="https://img.shields.io/gnome-extensions/v/codex-meter%40slobbe.github.io?label=GNOME%20Extensions&logo=gnome&color=blue" alt="GNOME Extensions version"></a>
-    <a href="https://extensions.gnome.org/extension/9993/codex-meter/"><img src="https://img.shields.io/gnome-extensions/dt/codex-meter%40slobbe.github.io?logo=gnome&color=blue" alt="GNOME Extensions downloads"></a>
-    <a href="#requirements"><img src="https://img.shields.io/badge/GNOME_Shell_Version-45--51-blue?logo=gnome" alt="GNOME Shell 45-51"></a>
+    <a href="https://extensions.gnome.org/extension/9993/codex-meter/"><img src="https://img.shields.io/gnome-extensions/dt/codex-meter%40slobbe.github.io?logo=gnome&color=blue&label=Downloads" alt="GNOME Extensions downloads"></a>
+    <a href="#requirements"><img src="https://img.shields.io/badge/Shell_versions-45--51-blue?logo=gnome" alt="GNOME Shell 45-51"></a>
     <a href="https://github.com/slobbe/codex-meter/actions/workflows/ci.yml"><img src="https://github.com/slobbe/codex-meter/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"></a>
   </p>
 </div>
