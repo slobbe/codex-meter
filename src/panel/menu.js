@@ -1,5 +1,6 @@
 import Clutter from "gi://Clutter";
 import St from "gi://St";
+import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 import { UsageBar } from "./usage-bar.js";
 import { formatDuration } from "./view-model.js";
@@ -17,10 +18,7 @@ export class CodexMeterPopupMenu {
         this._onRefresh = onRefresh;
         this._onRedeemBankedReset = onRedeemBankedReset;
         this._onOpenPreferences = onOpenPreferences;
-        this.refreshItem = new PopupMenu.PopupMenuItem("Refresh now");
-        // Mouse and keyboard use activate(); emitting its signal would close the popup.
-        this.refreshItem.activate = () => this._onRefresh();
-        this.bankedResetsItem = new PopupMenu.PopupSubMenuMenuItem("Banked resets");
+        this.bankedResetsItem = new PopupMenu.PopupSubMenuMenuItem("Banked Resets");
         const resetScrollView = this.bankedResetsItem.menu.actor;
         // Shell chooses NEVER for a short loading row and does not reconsider as content grows.
         const keepResetScrolling = () => {
@@ -31,8 +29,7 @@ export class CodexMeterPopupMenu {
         resetScrollView.connect("notify::vscrollbar-policy", keepResetScrolling);
         keepResetScrolling();
 
-        this.preferencesItem = new PopupMenu.PopupMenuItem("Preferences");
-        this.preferencesItem.connect("activate", () => this._onOpenPreferences());
+        this.footerItem = this._createFooterItem();
         this.errorItem = this._createErrorItem();
         this.statusItem = this._createStatusItem();
         this.usageItems = [];
@@ -50,8 +47,8 @@ export class CodexMeterPopupMenu {
         menu.addMenuItem(this.trendItem);
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         menu.addMenuItem(this.bankedResetsItem);
-        menu.addMenuItem(this.refreshItem);
-        menu.addMenuItem(this.preferencesItem);
+        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        menu.addMenuItem(this.footerItem);
     }
 
     syncBars() {
@@ -124,16 +121,17 @@ export class CodexMeterPopupMenu {
 
     setRefreshing(refreshing) {
         this._refreshing = refreshing;
-        this.refreshItem.label.text = refreshing
+        this.footerItem.statusLabel.text = refreshing
             ? "Refreshing…"
-            : (this._refreshLabel ?? "Refresh now");
-        this.refreshItem.setSensitive(!refreshing);
+            : (this._refreshLabel ?? "Not refreshed yet");
+        this.refreshButton.reactive = !refreshing;
+        this.refreshButton.can_focus = !refreshing;
     }
 
     setBankedResets({ count, snapshot, loading, error, preparing, preparingId, redeeming }) {
         const busy = preparing || redeeming;
         this.bankedResetsItem.label.text =
-            count === null || count === undefined ? "Banked resets" : `Banked resets (${count})`;
+            count === null || count === undefined ? "Banked Resets" : `Banked Resets (${count})`;
         const now = Date.now();
         const credits = (snapshot?.credits ?? [])
             .filter((credit) => credit.status === "available" && resetExpiryTime(credit) > now)
@@ -177,6 +175,63 @@ export class CodexMeterPopupMenu {
             });
             menu.addMenuItem(item);
         }
+    }
+
+    _createFooterItem() {
+        const item = new PopupMenu.PopupBaseMenuItem({ reactive: false, can_focus: false });
+        item.add_style_class_name("cx-footer");
+        item.statusLabel = new St.Label({
+            text: "Not refreshed yet",
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: "cx-muted cx-footer-status",
+        });
+        this.refreshButton = this._createFooterButton("view-refresh-symbolic", "Refresh");
+        this.refreshButton.connect("clicked", () => this._onRefresh());
+        this.preferencesButton = this._createFooterButton(
+            "preferences-system-symbolic",
+            "Preferences",
+        );
+        this.preferencesButton.connect("clicked", () => {
+            this._menu?.close();
+            this._onOpenPreferences();
+        });
+        item.add_child(item.statusLabel);
+        item.add_child(this.refreshButton);
+        item.add_child(this.preferencesButton);
+        return item;
+    }
+
+    _createFooterButton(iconName, label) {
+        const button = new St.Button({
+            child: new St.Icon({ icon_name: iconName }),
+            style_class: "icon-button",
+            accessible_name: label,
+            can_focus: true,
+            track_hover: true,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        const tooltip = new St.Label({ text: label, style_class: "dash-label", visible: false });
+        Main.uiGroup.add_child(tooltip);
+        const syncTooltip = () => {
+            tooltip.visible = button.mapped && (button.hover || button.has_key_focus());
+            if (!tooltip.visible) return;
+            Main.uiGroup.set_child_above_sibling(tooltip, null);
+            const [x, y] = button.get_transformed_position();
+            const [width] = button.get_transformed_size();
+            const [, tooltipWidth] = tooltip.get_preferred_width(-1);
+            const [, tooltipHeight] = tooltip.get_preferred_height(tooltipWidth);
+            tooltip.set_position(
+                Math.round(x + (width - tooltipWidth) / 2),
+                Math.round(y - tooltipHeight - 6),
+            );
+        };
+        button.connect("notify::hover", syncTooltip);
+        button.connect("notify::mapped", syncTooltip);
+        button.connect("key-focus-in", syncTooltip);
+        button.connect("key-focus-out", syncTooltip);
+        button.connect("destroy", () => tooltip.destroy());
+        return button;
     }
 
     _createUsageItem(title) {

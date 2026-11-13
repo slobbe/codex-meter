@@ -39,8 +39,8 @@ export function createMenuViewModel(
 ) {
     const percentDisplayMode = settings.percentDisplayMode;
     const refreshLabel = Number.isFinite(snapshot?.fetchedAt)
-        ? `Refresh now (last at ${formatUnixTimestamp(snapshot.fetchedAt, false)})`
-        : "Refresh now";
+        ? `Last refreshed at ${formatUnixTimestamp(snapshot.fetchedAt, false)}`
+        : "Not refreshed yet";
     if (errorMessage) {
         return {
             errorMessage,

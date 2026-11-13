@@ -96,6 +96,14 @@
     width: 28em;
 }
 
+.cx-footer {
+    spacing: 8px;
+}
+
+.cx-footer-status {
+    font-size: 0.9em;
+}
+
 .cx-usage-menu-item {
     spacing: 2px;
 }

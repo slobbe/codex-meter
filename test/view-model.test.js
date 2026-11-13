@@ -137,7 +137,7 @@ test("uses one generic loading row and no rows for errors or empty snapshots", (
             statusTitle: null,
             statusMessage: null,
             accountType: "--",
-            refreshLabel: "Refresh now",
+            refreshLabel: "Not refreshed yet",
             trend: { visible: false, title: "Weekly activity", bars: [] },
         });
         const empty = createMenuViewModel(settings, { quotas: [] }, null);
@@ -168,7 +168,7 @@ test("separates account type from the snapshot refresh time without header credi
         quotas: [],
     };
     const expectedLabel = (fetchedAt) =>
-        `Refresh now (last at ${formatTimestamp(new Date(fetchedAt * 1000).toISOString(), false)})`;
+        `Last refreshed at ${formatTimestamp(new Date(fetchedAt * 1000).toISOString(), false)}`;
     const initial = createMenuViewModel({}, snapshot, null);
     assert.equal(initial.accountType, "Plus");
     assert.equal(initial.refreshLabel, expectedLabel(snapshot.fetchedAt));
@@ -191,7 +191,7 @@ test("separates account type from the snapshot refresh time without header credi
         for (const error of [null, "Offline"]) {
             const viewModel = createMenuViewModel({}, missing, null, [], error);
             assert.equal(viewModel.accountType, "--");
-            assert.equal(viewModel.refreshLabel, "Refresh now");
+            assert.equal(viewModel.refreshLabel, "Not refreshed yet");
         }
     }
 });

@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Changed popup actions to a compact footer with the last refresh time and Refresh and Preferences icon buttons.
 - Changed popup bar colors to reflect usage pace, matching the panel indicator.
 - Changed popup pace text to use shorter, clearer quota predictions.
 - Changed popup reset labels to show the reset date and time on a separate line.

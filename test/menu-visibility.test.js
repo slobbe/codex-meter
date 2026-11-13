@@ -21,6 +21,11 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
             this.signals['notify::vscrollbar-policy']?.();
         }
         add_child(child) { this.children.push(child); child.parent = this; }
+        set_child_above_sibling(child, sibling) {
+            this.children.splice(this.children.indexOf(child), 1);
+            const index = sibling === null ? this.children.length : this.children.indexOf(sibling) + 1;
+            this.children.splice(index, 0, child);
+        }
         connect(signal, callback) { this.signals[signal] = callback; }
         connect_after(signal, callback) {
             (this.afterSignals ??= {})[signal] ??= [];
@@ -33,7 +38,18 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
         }
         add_style_class_name(name) { (this.classes ??= new Set()).add(name); }
         remove_style_class_name(name) { this.classes?.delete(name); }
+        click() { if (this.reactive !== false) this.emit('clicked'); }
+        keyPress(key) {
+            if (key === 'Return' || key === 'space') this.click();
+        }
+        has_key_focus() { return Boolean(this.focused); }
+        get_transformed_position() { return [100, 100]; }
+        get_transformed_size() { return [32, 32]; }
+        get_preferred_width() { return [60, 60]; }
+        get_preferred_height() { return [24, 24]; }
+        set_position(x, y) { this.x = x; this.y = y; }
         destroy() {
+            this.emit('destroy');
             this.destroyed = true;
             this.signals = {};
             for (const child of [...this.children]) child.destroy();
@@ -46,6 +62,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
         Orientation: { VERTICAL: 'vertical' },
         PolicyType: { NEVER: 'never', AUTOMATIC: 'automatic' },
     };
+    export const uiGroup = new Actor();
     export const PopupBaseMenuItem = Actor;
     export class PopupSeparatorMenuItem extends Actor {}
     export class PopupMenuItem extends Actor {
@@ -409,6 +426,7 @@ test("noninteractive header precedes usage and activity, then banked resets and 
     menu.addToMenu({
         box: { add_style_class_name() {} },
         addMenuItem: (item) => items.push(item),
+        close() {},
     });
     assert.deepEqual(items, [
         menu.headerItem,
@@ -417,12 +435,26 @@ test("noninteractive header precedes usage and activity, then banked resets and 
         menu.trendItem,
         items[4],
         menu.bankedResetsItem,
-        menu.refreshItem,
-        menu.preferencesItem,
+        items[6],
+        menu.footerItem,
     ]);
     assert.equal(items[4].constructor.name, "PopupSeparatorMenuItem");
-    for (const item of [menu.refreshItem, menu.preferencesItem]) {
-        assert.equal(item.constructor.name, "PopupMenuItem");
+    assert.equal(items[6].constructor.name, "PopupSeparatorMenuItem");
+    assert.equal(menu.footerItem.reactive, false);
+    assert.equal(menu.footerItem.can_focus, false);
+    assert.deepEqual(menu.footerItem.children, [
+        menu.footerItem.statusLabel,
+        menu.refreshButton,
+        menu.preferencesButton,
+    ]);
+    for (const [button, icon, label] of [
+        [menu.refreshButton, "view-refresh-symbolic", "Refresh"],
+        [menu.preferencesButton, "preferences-system-symbolic", "Preferences"],
+    ]) {
+        assert.equal(button.child.icon_name, icon);
+        assert.equal(button.style_class, "icon-button");
+        assert.equal(button.accessible_name, label);
+        assert.equal(button.can_focus, true);
     }
     assert.equal(menu.bankedResetsItem.constructor.name, "PopupSubMenuMenuItem");
     assert.equal(menu.headerItem.reactive, false);
@@ -435,9 +467,8 @@ test("noninteractive header precedes usage and activity, then banked resets and 
     assert.equal(menu.headerItem.planLabel.x_expand, true);
     assert.equal(menu.headerItem.planLabel.x_align, 2);
     assert.equal(menu.headerItem.planLabel.y_align, menu.headerItem.titleLabel.y_align);
-    assert.equal(menu.footerItem, undefined);
-    menu.refreshItem.activate();
-    menu.preferencesItem.signals.activate();
+    menu.refreshButton.click();
+    menu.preferencesButton.click();
     const submenu = menu.bankedResetsItem.menu;
     assert.equal(submenu.signals["open-state-changed"], undefined);
     submenu.open();
@@ -445,11 +476,11 @@ test("noninteractive header precedes usage and activity, then banked resets and 
     submenu.open();
     assert.deepEqual(calls, ["refresh", "preferences"], "submenu expansion has no fetch trigger");
     menu.setRefreshing(true);
-    assert.equal(menu.refreshItem.sensitive, false);
-    assert.equal(menu.refreshItem.label.text, "Refreshing…");
+    assert.equal(menu.refreshButton.reactive, false);
+    assert.equal(menu.footerItem.statusLabel.text, "Refreshing…");
     menu.setRefreshing(false);
-    assert.equal(menu.refreshItem.sensitive, true);
-    assert.equal(menu.refreshItem.label.text, "Refresh now");
+    assert.equal(menu.refreshButton.reactive, true);
+    assert.equal(menu.footerItem.statusLabel.text, "Not refreshed yet");
 });
 
 test("native mouse and keyboard Refresh activation stays open; other actions still close", async () => {
@@ -479,24 +510,24 @@ test("native mouse and keyboard Refresh activation stays open; other actions sti
             else item.keyPress(input);
         };
 
-        activate(menu.refreshItem);
+        activate(menu.refreshButton);
         assert.deepEqual(calls, ["refresh"], input);
         assert.equal(nativeMenu.isOpen, true, input);
         assert.equal(nativeMenu.closeCount, 0, "must not close and reopen");
-        assert.equal(menu.refreshItem.label.text, "Refreshing…");
-        assert.equal(menu.refreshItem.reactive, false);
-        assert.equal(menu.refreshItem.can_focus, false);
-        activate(menu.refreshItem);
+        assert.equal(menu.footerItem.statusLabel.text, "Refreshing…");
+        assert.equal(menu.refreshButton.reactive, false);
+        assert.equal(menu.refreshButton.can_focus, false);
+        activate(menu.refreshButton);
         assert.deepEqual(calls, ["refresh"], "busy refresh cannot activate again");
         finishRefresh();
         await pending;
-        assert.equal(menu.refreshItem.label.text, "Refresh now");
-        assert.equal(menu.refreshItem.reactive, true);
-        assert.equal(menu.refreshItem.can_focus, true);
+        assert.equal(menu.footerItem.statusLabel.text, "Not refreshed yet");
+        assert.equal(menu.refreshButton.reactive, true);
+        assert.equal(menu.refreshButton.can_focus, true);
         assert.equal(nativeMenu.isOpen, true);
 
-        // Returning true from a void activate signal must not suppress Shell's AFTER handler.
-        activate(menu.preferencesItem);
+        // Preferences explicitly closes the popup before opening its window.
+        activate(menu.preferencesButton);
         assert.deepEqual(calls, ["refresh", "preferences"]);
         assert.equal(nativeMenu.isOpen, false);
         assert.equal(nativeMenu.closeCount, 1);
@@ -512,38 +543,69 @@ test("native mouse and keyboard Refresh activation stays open; other actions sti
     }
 });
 
+test("footer tooltips follow hover and keyboard focus and are cleaned up with their buttons", async () => {
+    const { uiGroup } = await import(stubUrl);
+    const menu = new CodexMeterPopupMenu({});
+    const tooltip = uiGroup.children.at(-2);
+    const button = menu.refreshButton;
+    const popup = new uiGroup.constructor();
+    uiGroup.add_child(popup);
+    assert.equal(tooltip.text, "Refresh");
+    assert.equal(tooltip.visible, false);
+    button.mapped = true;
+    button.hover = true;
+    button.emit("notify::hover");
+    assert.equal(tooltip.visible, true);
+    assert.equal(uiGroup.children.at(-1), tooltip, "tooltip must be above the popup");
+    assert.equal(tooltip.x, 86);
+    assert.equal(tooltip.y, 70);
+    button.hover = false;
+    button.emit("notify::hover");
+    assert.equal(tooltip.visible, false);
+    button.focused = true;
+    button.emit("key-focus-in");
+    assert.equal(tooltip.visible, true);
+    button.mapped = false;
+    button.emit("notify::mapped");
+    assert.equal(tooltip.visible, false);
+    menu.footerItem.destroy();
+    assert.equal(tooltip.destroyed, true);
+    assert.equal(uiGroup.children.includes(tooltip), false);
+    popup.destroy();
+});
+
 test("refresh label tracks snapshots and restores the latest timestamp after busy feedback", () => {
     const menu = new CodexMeterPopupMenu({});
-    assert.equal(menu.refreshItem.label.text, "Refresh now");
-    menu.setRefreshLabel("Refresh now (last at 10:44)");
-    assert.equal(menu.refreshItem.label.text, "Refresh now (last at 10:44)");
-    assert.equal(menu.refreshItem.sensitive, true);
+    assert.equal(menu.footerItem.statusLabel.text, "Not refreshed yet");
+    menu.setRefreshLabel("Last refreshed at 10:44");
+    assert.equal(menu.footerItem.statusLabel.text, "Last refreshed at 10:44");
+    assert.equal(menu.refreshButton.reactive, true);
 
     menu.setRefreshing(true);
-    assert.equal(menu.refreshItem.label.text, "Refreshing…");
-    assert.equal(menu.refreshItem.sensitive, false);
-    menu.setRefreshLabel("Refresh now (last at 10:45)");
-    assert.equal(menu.refreshItem.label.text, "Refreshing…");
-    assert.equal(menu.refreshItem.sensitive, false);
+    assert.equal(menu.footerItem.statusLabel.text, "Refreshing…");
+    assert.equal(menu.refreshButton.reactive, false);
+    menu.setRefreshLabel("Last refreshed at 10:45");
+    assert.equal(menu.footerItem.statusLabel.text, "Refreshing…");
+    assert.equal(menu.refreshButton.reactive, false);
     menu.setRefreshing(false);
-    assert.equal(menu.refreshItem.label.text, "Refresh now (last at 10:45)");
-    assert.equal(menu.refreshItem.sensitive, true);
+    assert.equal(menu.footerItem.statusLabel.text, "Last refreshed at 10:45");
+    assert.equal(menu.refreshButton.reactive, true);
 
     // A failed refresh leaves the last fetched snapshot's timestamp unchanged.
     menu.setRefreshing(true);
-    menu.setRefreshLabel("Refresh now (last at 10:45)");
+    menu.setRefreshLabel("Last refreshed at 10:45");
     menu.setRefreshing(false);
-    assert.equal(menu.refreshItem.label.text, "Refresh now (last at 10:45)");
-    assert.equal(menu.refreshItem.sensitive, true);
+    assert.equal(menu.footerItem.statusLabel.text, "Last refreshed at 10:45");
+    assert.equal(menu.refreshButton.reactive, true);
 
-    menu.setRefreshLabel("Refresh now");
+    menu.setRefreshLabel("Not refreshed yet");
     menu.setRefreshing(true);
-    menu.setRefreshLabel("Refresh now");
-    assert.equal(menu.refreshItem.label.text, "Refreshing…");
-    assert.equal(menu.refreshItem.sensitive, false);
+    menu.setRefreshLabel("Not refreshed yet");
+    assert.equal(menu.footerItem.statusLabel.text, "Refreshing…");
+    assert.equal(menu.refreshButton.reactive, false);
     menu.setRefreshing(false);
-    assert.equal(menu.refreshItem.label.text, "Refresh now");
-    assert.equal(menu.refreshItem.sensitive, true);
+    assert.equal(menu.footerItem.statusLabel.text, "Not refreshed yet");
+    assert.equal(menu.refreshButton.reactive, true);
 });
 
 test("banked resets show inventory states and disable stale or busy redemption", () => {
@@ -568,7 +630,7 @@ test("banked resets show inventory states and disable stale or busy redemption",
     state.count = 0;
     menu.setBankedResets(state);
     assert.equal(rows()[0].label.text, "No banked resets available");
-    assert.equal(menu.bankedResetsItem.label.text, "Banked resets (0)");
+    assert.equal(menu.bankedResetsItem.label.text, "Banked Resets (0)");
     state.snapshot.credits = [{ id: "a", status: "available", title: "Gift" }];
     menu.setBankedResets(state);
     const availableRow = rows()[0];
