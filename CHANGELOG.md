@@ -8,7 +8,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
-- Added GNOME Shell 51 compatibility while retaining GNOME Shell 45–50 support.
+- Added GNOME Shell 51 compatibility.
 
 ### Changed
 
