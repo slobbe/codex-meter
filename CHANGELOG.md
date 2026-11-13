@@ -4,6 +4,7 @@ All notable changes from version 0.10.0 onward will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
 ## v0.12.0 (2026-11-13)
 
 ### Added
@@ -26,6 +27,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Fixed the popup menu changing width when pace text or other content changes.
 - Fixed banked reset redemption reporting success when Codex did not reset usage limits.
+- Fixed reset confirmation dialogs remaining briefly after the extension is disabled.
 
 ## v0.11.1 (2026-11-03)
 

@@ -15,6 +15,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         }
         add_child(child) { this.children.push(child); }
         get_n_children() { return this.children.length; }
+        destroy() { this.destroyed = true; }
     }
     export default {
         registerClass() {}, BoxLayout: Actor, Label: Actor,
@@ -28,12 +29,23 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export class ModalDialog {
         constructor() {
             this.contentLayout = new Actor();
+            this.destroyCallbacks = [];
             modalState.dialogs.push(this);
         }
         setButtons(buttons) { this.buttons = buttons; }
         open() { return modalState.canGrab; }
         close() { this.closed = true; }
-        destroy() { this.destroyed = true; }
+        connect(signal, callback) {
+            assertDestroySignal(signal);
+            this.destroyCallbacks.push(callback);
+        }
+        destroy() {
+            this.destroyed = true;
+            for (const callback of this.destroyCallbacks) callback();
+        }
+    }
+    function assertDestroySignal(signal) {
+        if (signal !== 'destroy') throw new Error('Unexpected signal: ' + signal);
     }
 `)}`;
 const hooks = registerHooks({
@@ -158,6 +170,80 @@ test("confirmation keeps a single available date and uses the selected reset typ
     }
 });
 
+for (const [index, action] of ["Cancel", "Redeem"].entries()) {
+    test(`${action} then disable before fade completion destroys the closing dialog`, async () => {
+        modalState.canGrab = true;
+        const indicator = Object.create(CodexMeterIndicator.prototype);
+        let cancelled = false;
+        indicator._uiCancellable = {
+            is_cancelled: () => cancelled,
+            cancel: () => {
+                cancelled = true;
+            },
+        };
+        indicator.menu = { close() {} };
+        const prepared = [];
+        const redeemed = [];
+        let cancellations = 0;
+        indicator._monitor = {
+            state: {},
+            async prepareBankedReset(id) {
+                prepared.push(id);
+                return { id };
+            },
+            cancelBankedResetPreparation() {
+                cancellations++;
+            },
+        };
+        indicator._redeemBankedReset = (id) => redeemed.push(id);
+        await indicator._confirmBankedReset("selected");
+        const dialog = indicator._resetConfirmationDialog;
+        dialog.buttons[index].action();
+        assert.equal(dialog.closed, true);
+        assert.notEqual(dialog.destroyed, true, "close leaves the fade pending");
+        assert.deepEqual(redeemed, action === "Redeem" ? ["selected"] : []);
+        assert.equal(cancellations, action === "Cancel" ? 1 : 0);
+        assert.equal(indicator._resetConfirmationDialog, dialog);
+        await indicator._confirmBankedReset("during-fade");
+        assert.deepEqual(prepared, ["selected"]);
+
+        indicator.destroy();
+        assert.equal(dialog.destroyed, true);
+        assert.equal(indicator._resetConfirmationDialog, null);
+        const cancellationsAfterDisable = cancellations;
+        for (const button of dialog.buttons) button.action();
+        assert.deepEqual(redeemed, action === "Redeem" ? ["selected"] : []);
+        assert.equal(cancellations, cancellationsAfterDisable);
+    });
+}
+
+test("stale dialog callbacks cannot act on or clear a newer confirmation", async () => {
+    modalState.canGrab = true;
+    const indicator = Object.create(CodexMeterIndicator.prototype);
+    indicator._uiCancellable = { is_cancelled: () => false };
+    indicator.menu = { close() {} };
+    indicator._monitor = {
+        state: {},
+        async prepareBankedReset(id) {
+            return { id };
+        },
+        cancelBankedResetPreparation: () => assert.fail("stale dialog must not cancel"),
+    };
+    indicator._redeemBankedReset = () => assert.fail("stale dialog must not redeem");
+    await indicator._confirmBankedReset("first");
+    const first = indicator._resetConfirmationDialog;
+    first.destroy();
+    assert.equal(indicator._resetConfirmationDialog, null);
+    await indicator._confirmBankedReset("second");
+    const second = indicator._resetConfirmationDialog;
+    assert.notEqual(second, first);
+    for (const button of first.buttons) button.action();
+    for (const callback of first.destroyCallbacks) callback();
+    assert.equal(indicator._resetConfirmationDialog, second);
+    second.destroy();
+    assert.equal(indicator._resetConfirmationDialog, null);
+});
+
 test("failed modal grab releases the reservation and allows a subsequent selection", async () => {
     modalState.canGrab = false;
     const indicator = Object.create(CodexMeterIndicator.prototype);
@@ -193,7 +279,10 @@ test("failed modal grab releases the reservation and allows a subsequent selecti
     assert.deepEqual(prepared, ["first", "retry"]);
     assert.equal(indicator._monitor.reservation, "retry");
     assert.equal(indicator._resetConfirmationDialog, modalState.dialogs.at(-1));
-    indicator._resetConfirmationDialog.buttons[0].action();
-    assert.equal(indicator._resetConfirmationDialog, null);
+    const dialog = indicator._resetConfirmationDialog;
+    dialog.buttons[0].action();
+    assert.equal(indicator._resetConfirmationDialog, dialog);
     assert.equal(indicator._monitor.reservation, null);
+    dialog.destroy();
+    assert.equal(indicator._resetConfirmationDialog, null);
 });

@@ -172,16 +172,17 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         };
         dialog = showBankedResetConfirmation(credit, {
             onConfirm: () => {
-                clearDialog();
+                if (cancellable.is_cancelled() || this._resetConfirmationDialog !== dialog) return;
                 void this._redeemBankedReset(credit.id);
             },
             onCancel: () => {
-                clearDialog();
+                if (cancellable.is_cancelled() || this._resetConfirmationDialog !== dialog) return;
                 this._monitor.cancelBankedResetPreparation();
             },
         });
         this._resetConfirmationDialog = dialog;
-        if (!dialog) this._monitor.cancelBankedResetPreparation();
+        if (dialog) dialog.connect("destroy", clearDialog);
+        else this._monitor.cancelBankedResetPreparation();
     }
 
     async _redeemBankedReset(creditId) {

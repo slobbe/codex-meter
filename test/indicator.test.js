@@ -42,7 +42,14 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export const confirmations = [];
     export const CodexMeterPopupMenu = null;
     export function showBankedResetConfirmation(credit, callbacks) {
-        const dialog = { credit, callbacks, destroy() { this.destroyed = true; } };
+        const dialog = {
+            credit, callbacks,
+            connect(signal, callback) {
+                if (signal !== 'destroy') throw new Error('Unexpected signal: ' + signal);
+                this.onDestroy = callback;
+            },
+            destroy() { this.destroyed = true; this.onDestroy?.(); },
+        };
         confirmations.push(dialog);
         return dialog;
     }
@@ -418,6 +425,8 @@ test("selected reset ID is prepared and only that credit is confirmed and redeem
         0,
         "confirmation keeps reservation until redemption",
     );
+    assert.equal(indicator._resetConfirmationDialog, dialog);
+    dialog.destroy();
     assert.equal(indicator._resetConfirmationDialog, null);
 });
 
@@ -444,7 +453,10 @@ test("missing selection, cancellation, busy state and destruction never redeem a
     assert.equal(prepared, 1);
     indicator._monitor.prepareBankedReset = async (id) => ({ id });
     await indicator._confirmBankedReset("cancelled");
-    confirmations.at(-1).callbacks.onCancel();
+    const dialog = confirmations.at(-1);
+    dialog.callbacks.onCancel();
+    assert.equal(indicator._resetConfirmationDialog, dialog);
+    dialog.destroy();
     assert.equal(indicator._resetConfirmationDialog, null);
     assert.equal(indicator._monitor.cancellationCount, 1);
     indicator._monitor.prepareBankedReset = async (id) => {
