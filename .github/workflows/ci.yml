@@ -38,8 +38,9 @@ jobs:
                   sudo apt-get install -y gir1.2-soup-3.0 gjs jq libglib2.0-bin zip
 
                   python -m pip install --upgrade pip
-                  # shexli 0.2.1 currently segfaults with tree-sitter 0.26.0.
-                  pip install -U shexli "tree-sitter==0.25.2"
+                  # PyPI shexli 0.2.1 rejects Shell 51; pin upstream's date-based validation.
+                  # Keep tree-sitter 0.25.2 to avoid the 0.26.0 segfault.
+                  pip install -U "shexli @ git+https://github.com/GNOME/extensions-web.git@09e0f66881d6dabb26bcfdd3db64365647cbd727#subdirectory=shexli" "tree-sitter==0.25.2"
 
             - name: Install Node.js dependencies
               run: npm ci
