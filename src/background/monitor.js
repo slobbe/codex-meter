@@ -3,13 +3,19 @@ import {
     getBackgroundRefreshIntervalSeconds,
     readSettings,
     SETTINGS_AUTO_APPLY_BANKED_RESET,
+    SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
+    SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD,
+    SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW,
     SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES,
 } from "../preferences/settings.js";
 import { UsageService } from "../codex/usage/service.js";
 import { isCodexError } from "../codex/error.js";
 import { isCancellationError } from "../io/files.js";
 import { listCodexBankedResets, redeemCodexBankedReset } from "../codex/banked-resets/api.js";
-import { selectCreditExpiringWithin } from "../codex/banked-resets/response.js";
+import {
+    selectCreditExpiringWithin,
+    selectCreditToRedeem,
+} from "../codex/banked-resets/response.js";
 import { PeriodicTask } from "./periodic-task.js";
 import { formatRefreshFailure } from "./refresh-error-message.js";
 
@@ -25,6 +31,9 @@ export class CodexMonitor {
         this._notify = notify;
         const values = readSettings(settings);
         this._autoApplyBankedReset = values.autoApplyBankedReset;
+        this._autoApplyBankedResetOnUsage = values.autoApplyBankedResetOnUsage;
+        this._autoApplyBankedResetUsageThreshold = values.autoApplyBankedResetUsageThreshold;
+        this._autoApplyBankedResetUsageWindow = values.autoApplyBankedResetUsageWindow;
         this._usageService = new UsageService();
         this._usageRefreshTask = new PeriodicTask(values.backgroundRefreshIntervalSeconds, () =>
             this.refreshUsage(),
@@ -94,6 +103,7 @@ export class CodexMonitor {
         this._bankedResetPreparation = null;
         this._usageRefreshTask.stop();
         this._bankedResetRefreshTask.stop();
+        this._autoApplyBankedResetCancellable?.cancel();
         this._refreshCancellable?.cancel();
         this._refreshCancellable = null;
         this._bankedResetRefreshCancellable?.cancel();
@@ -102,6 +112,9 @@ export class CodexMonitor {
         this._redeemBankedResetCancellable?.cancel();
         this._redeemBankedResetCancellable = null;
         this._settings.disconnect(this._autoApplyChangedId);
+        this._settings.disconnect(this._autoApplyUsageChangedId);
+        this._settings.disconnect(this._autoApplyThresholdChangedId);
+        this._settings.disconnect(this._autoApplyWindowChangedId);
         this._settings.disconnect(this._refreshIntervalChangedId);
         this.onChange = null;
     }
@@ -114,11 +127,16 @@ export class CodexMonitor {
         }
         this._refreshCancellable = new Gio.Cancellable();
         this._refreshPromise = this._refreshUsageOnce(this._refreshCancellable);
+        let snapshot;
         try {
-            await this._refreshPromise;
+            snapshot = await this._refreshPromise;
         } finally {
             this._refreshPromise = null;
             this._refreshCancellable = null;
+        }
+        // Release the refresh promise before redemption requests its own fresh usage.
+        if (snapshot && this._usageNeedsBankedReset(snapshot)) {
+            await this._refreshBankedResetsForAutoApply(snapshot);
         }
     }
 
@@ -222,22 +240,26 @@ export class CodexMonitor {
     }
 
     async redeemBankedReset(creditId) {
+        await this._redeemBankedReset(creditId, new Gio.Cancellable());
+    }
+
+    async _redeemBankedReset(creditId, cancellable, automaticMessage = null) {
         if (this._lifecycleCancellable.is_cancelled() || this._redeemingBankedReset) return;
-        const cancellable = new Gio.Cancellable();
         this._redeemingBankedReset = true;
         this._redeemBankedResetCancellable = cancellable;
         this._emitChange();
         try {
             await redeemCodexBankedReset(creditId, { cancellable });
-            if (this._lifecycleCancellable.is_cancelled()) return;
-            this._notify("Banked Codex reset redeemed.");
+            if (this._lifecycleCancellable.is_cancelled() || cancellable.is_cancelled()) return;
+            this._notify(automaticMessage ?? "Banked Codex reset redeemed.");
             // A request started before redemption must finish before fetching fresh inventory.
             await this._bankedResetRefreshPromise;
             if (this._lifecycleCancellable.is_cancelled() || cancellable.is_cancelled()) return;
             await Promise.all([this.refreshUsage(), this.refreshBankedResets()]);
         } catch (error) {
             if (this._lifecycleCancellable.is_cancelled() || isCancellationError(error)) return;
-            this._notify(formatBankedResetFailure(error));
+            if (automaticMessage) console.warn("Unable to auto-redeem Codex banked reset", error);
+            else this._notify(formatBankedResetFailure(error));
         } finally {
             if (this._redeemBankedResetCancellable === cancellable) {
                 this._redeemBankedResetCancellable = null;
@@ -264,6 +286,30 @@ export class CodexMonitor {
                 }
             },
         );
+        const updateUsageAutoApply = () => {
+            this._autoApplyBankedResetOnUsage = this._settings.get_boolean(
+                SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
+            );
+            this._autoApplyBankedResetUsageThreshold = this._settings.get_uint(
+                SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD,
+            );
+            this._autoApplyBankedResetUsageWindow = this._settings.get_string(
+                SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW,
+            );
+            this._autoApplyBankedResetCancellable?.cancel();
+        };
+        this._autoApplyUsageChangedId = this._settings.connect(
+            `changed::${SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE}`,
+            updateUsageAutoApply,
+        );
+        this._autoApplyThresholdChangedId = this._settings.connect(
+            `changed::${SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD}`,
+            updateUsageAutoApply,
+        );
+        this._autoApplyWindowChangedId = this._settings.connect(
+            `changed::${SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW}`,
+            updateUsageAutoApply,
+        );
         this._refreshIntervalChangedId = this._settings.connect(
             `changed::${SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES}`,
             () => {
@@ -285,6 +331,8 @@ export class CodexMonitor {
             this._errorMessage = null;
             this._cachedFailureMessage = null;
             await this._loadPrediction(this._snapshot, cancellable);
+            cancellable?.set_error_if_cancelled();
+            return snapshot;
         } catch (error) {
             if (this._lifecycleCancellable.is_cancelled() || isCancellationError(error)) return;
             const failureMessage = formatRefreshFailure(error);
@@ -370,13 +418,26 @@ export class CodexMonitor {
         }
     }
 
-    async _refreshBankedResetsForAutoApply() {
-        const response = await this.refreshBankedResets();
-        if (!response || this._lifecycleCancellable.is_cancelled()) return;
+    _usageNeedsBankedReset(snapshot) {
+        if (!this._autoApplyBankedResetOnUsage || this._snapshot !== snapshot) return false;
+        const now = Date.now() / 1000;
+        return snapshot.quotas.some(
+            (quota) =>
+                (this._autoApplyBankedResetUsageWindow === "any" ||
+                    quota.id === this._autoApplyBankedResetUsageWindow) &&
+                100 - quota.usedPercent < this._autoApplyBankedResetUsageThreshold &&
+                (quota.resetAt ?? Infinity) > now,
+        );
+    }
+
+    async _refreshBankedResetsForAutoApply(usageSnapshot = null) {
+        if (this._autoApplyBankedResetCancellable || this._redeemingBankedReset) return;
         const cancellable = new Gio.Cancellable();
         this._autoApplyBankedResetCancellable = cancellable;
         try {
-            await this._autoApplyExpiringBankedReset(response.credits, cancellable);
+            const response = await this.refreshBankedResets();
+            if (!response || cancellable.is_cancelled()) return;
+            await this._autoRedeemBankedReset(response.credits, cancellable, usageSnapshot);
         } finally {
             if (this._autoApplyBankedResetCancellable === cancellable) {
                 this._autoApplyBankedResetCancellable = null;
@@ -384,43 +445,35 @@ export class CodexMonitor {
         }
     }
 
-    async _autoApplyExpiringBankedReset(credits, cancellable) {
+    async _autoRedeemBankedReset(credits, cancellable, usageSnapshot) {
         if (
             this._lifecycleCancellable.is_cancelled() ||
+            cancellable.is_cancelled() ||
             this._preparingBankedReset ||
             this._bankedResetPreparation ||
-            this._redeemingBankedReset ||
-            !this._autoApplyBankedReset
+            this._redeemingBankedReset
         )
             return;
-        const credit = selectCreditExpiringWithin(
-            credits,
-            Date.now(),
-            AUTO_APPLY_BANKED_RESET_WINDOW_MS,
-        );
+        const forUsage = usageSnapshot && this._usageNeedsBankedReset(usageSnapshot);
+        const now = Date.now();
+        const expiring = this._autoApplyBankedReset
+            ? selectCreditExpiringWithin(credits, now, AUTO_APPLY_BANKED_RESET_WINDOW_MS)
+            : null;
+        const credit =
+            expiring ??
+            (forUsage
+                ? selectCreditToRedeem(
+                      credits.filter((candidate) => {
+                          const expiresAt = Date.parse(candidate.expires_at ?? "");
+                          return !Number.isFinite(expiresAt) || expiresAt > now;
+                      }),
+                  )
+                : null);
         if (!credit) return;
-        this._redeemingBankedReset = true;
-        this._redeemBankedResetCancellable = cancellable;
-        this._emitChange();
-        try {
-            await redeemCodexBankedReset(credit.id, { cancellable });
-            if (this._lifecycleCancellable.is_cancelled() || cancellable.is_cancelled()) return;
-            this._notify("Expiring banked Codex reset redeemed automatically.");
-            await this._bankedResetRefreshPromise;
-            if (this._lifecycleCancellable.is_cancelled() || cancellable.is_cancelled()) return;
-            await Promise.all([this.refreshUsage(), this.refreshBankedResets()]);
-        } catch (error) {
-            if (this._lifecycleCancellable.is_cancelled() || isCancellationError(error)) return;
-            console.warn("Unable to auto-redeem expiring Codex banked reset", error);
-        } finally {
-            if (this._redeemBankedResetCancellable === cancellable) {
-                this._redeemBankedResetCancellable = null;
-            }
-            if (!this._lifecycleCancellable.is_cancelled()) {
-                this._redeemingBankedReset = false;
-                this._emitChange();
-            }
-        }
+        const message = expiring
+            ? "Expiring banked Codex reset redeemed automatically."
+            : "Banked Codex reset redeemed automatically near a usage limit.";
+        await this._redeemBankedReset(credit.id, cancellable, message);
     }
 
     _emitChange() {

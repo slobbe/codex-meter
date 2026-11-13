@@ -8,6 +8,13 @@ export const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES = "background-refresh-
 
 export const SETTINGS_AUTO_APPLY_BANKED_RESET = "auto-apply-banked-reset";
 
+export const SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE = "auto-apply-banked-reset-on-usage";
+
+export const SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD =
+    "auto-apply-banked-reset-usage-threshold";
+
+export const SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW = "auto-apply-banked-reset-usage-window";
+
 export const MIN_REFRESH_INTERVAL_MINUTES = 0;
 
 export function getBackgroundRefreshIntervalSeconds(settings) {
@@ -47,5 +54,14 @@ export function readSettings(settings) {
             settings.get_string(SETTINGS_PERCENT_DISPLAY_MODE) === "left" ? "left" : "used",
         backgroundRefreshIntervalSeconds: getBackgroundRefreshIntervalSeconds(settings),
         autoApplyBankedReset: settings.get_boolean(SETTINGS_AUTO_APPLY_BANKED_RESET),
+        autoApplyBankedResetOnUsage: settings.get_boolean(
+            SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
+        ),
+        autoApplyBankedResetUsageWindow: settings.get_string(
+            SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW,
+        ),
+        autoApplyBankedResetUsageThreshold: settings.get_uint(
+            SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD,
+        ),
     };
 }

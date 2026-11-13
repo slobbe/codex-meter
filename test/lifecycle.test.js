@@ -29,6 +29,9 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export const predict = () => ({});
     export class PeriodicTask { start() { io.start?.(); } stop() {} }
     export const readSettings = () => ({ autoApplyBankedReset: false });
+    export const SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW = "usage-window";
+    export const SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE = "auto-usage";
+    export const SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD = "usage-threshold";
     export const getBackgroundRefreshIntervalSeconds = () => 0;
     export const SETTINGS_AUTO_APPLY_BANKED_RESET = 'auto-apply';
     export const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES = 'refresh';
@@ -37,6 +40,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export const listCodexBankedResets = () => {};
     export const redeemCodexBankedReset = (id, options) => io.redeem(options);
     export const selectCreditExpiringWithin = credits => credits[0];
+    export const selectCreditToRedeem = credits => credits[0];
 `)}`;
 const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
@@ -86,7 +90,7 @@ for (const action of ["stop", "toggle off"]) {
         };
         let followUps = 0;
         monitor.refreshUsage = monitor.refreshBankedResets = async () => followUps++;
-        const pending = monitor._autoApplyExpiringBankedReset([{ id: "credit" }], cancellable);
+        const pending = monitor._autoRedeemBankedReset([{ id: "credit" }], cancellable);
         if (action === "stop") monitor.stop();
         else callbacks.get("changed::auto-apply")();
         assert.equal(cancellable.is_cancelled(), true);

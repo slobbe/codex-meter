@@ -1,17 +1,21 @@
 import Adw from "gi://Adw";
 import Gio from "gi://Gio";
 import Gtk from "gi://Gtk";
+import { getUsageWindowMetadata, sortUsageQuotas } from "../codex/usage/model.js";
 import {
     migrateSettings,
     MIN_REFRESH_INTERVAL_MINUTES,
     SETTINGS_AUTO_APPLY_BANKED_RESET,
+    SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
+    SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD,
+    SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW,
     SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES,
     SETTINGS_PERCENT_DISPLAY_MODE,
     SETTINGS_TOP_PANEL_DISPLAY_MODE,
     SETTINGS_TOP_PANEL_INDICATOR_ICON,
 } from "./settings.js";
 
-export function createPreferencesPage(settings, metadata, window) {
+export function createPreferencesPage(settings, metadata, window, snapshot = null) {
     migrateSettings(settings);
     const settingsSignalIds = [];
     const page = new Adw.PreferencesPage({
@@ -20,7 +24,7 @@ export function createPreferencesPage(settings, metadata, window) {
     });
     page.add(createBehaviorGroup(settings, settingsSignalIds));
     page.add(createTopPanelGroup(settings, settingsSignalIds));
-    page.add(createBankedResetsGroup(settings));
+    page.add(createBankedResetsGroup(settings, settingsSignalIds, snapshot?.quotas ?? []));
     page.add(createFooterGroup(metadata));
     window.connect("close-request", () => {
         for (const id of settingsSignalIds.splice(0)) {
@@ -31,7 +35,7 @@ export function createPreferencesPage(settings, metadata, window) {
     return page;
 }
 
-function createBankedResetsGroup(settings) {
+function createBankedResetsGroup(settings, settingsSignalIds, quotas) {
     const group = new Adw.PreferencesGroup({ title: "Banked resets" });
     group.add(
         createBoundSwitchRow({
@@ -41,8 +45,94 @@ function createBankedResetsGroup(settings) {
             subtitle: "Redeem a banked reset automatically within 1 hour of expiry",
         }),
     );
+    group.add(
+        createBoundSwitchRow({
+            settings,
+            key: SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
+            title: "Auto-redeem on low remaining usage",
+            subtitle: "Redeem a reset if remaining usage falls below threshold",
+        }),
+    );
+    group.add(createUsageWindowRow(settings, settingsSignalIds, quotas));
+    group.add(createUsageThresholdRow(settings, settingsSignalIds));
 
     return group;
+}
+
+function createUsageWindowRow(settings, settingsSignalIds, quotas) {
+    const key = SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW;
+    const options = [
+        ["Any", "any"],
+        ...sortUsageQuotas(quotas).map((quota) => [
+            quota.limitWindowSeconds != null
+                ? getUsageWindowMetadata(quota.limitWindowSeconds).label
+                : quota.label,
+            quota.id,
+        ]),
+    ];
+    const row = new Adw.ComboRow({
+        title: "Usage Window",
+        subtitle: "Apply auto-redemption only to selected usage window",
+    });
+    let currentOptions;
+    let updating = false;
+    const update = () => {
+        updating = true;
+        const value = settings.get_string(key);
+        currentOptions = [...options];
+        if (!currentOptions.some(([, id]) => id === value)) {
+            currentOptions.push([`${value} (unavailable)`, value]);
+        }
+        row.model = Gtk.StringList.new(currentOptions.map(([label]) => label));
+        row.selected = currentOptions.findIndex(([, id]) => id === value);
+        updating = false;
+    };
+    update();
+    row.connect("notify::selected", () => {
+        if (!updating && currentOptions[row.selected]) {
+            settings.set_string(key, currentOptions[row.selected][1]);
+        }
+    });
+    settingsSignalIds.push(settings.connect(`changed::${key}`, update));
+    settings.bind(
+        SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
+        row,
+        "sensitive",
+        Gio.SettingsBindFlags.GET,
+    );
+    return row;
+}
+
+function createUsageThresholdRow(settings, settingsSignalIds) {
+    const key = SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD;
+    const row = new Adw.SpinRow({
+        title: "Threshold (% left)",
+        subtitle: "Threshold below which to redeem reset",
+        adjustment: new Gtk.Adjustment({
+            lower: 1,
+            upper: 100,
+            step_increment: 1,
+            page_increment: 5,
+            value: settings.get_uint(key),
+        }),
+        climb_rate: 1,
+        digits: 0,
+    });
+    row.connect("notify::value", () => {
+        settings.set_uint(key, Math.min(100, Math.max(1, Math.round(row.value))));
+    });
+    settingsSignalIds.push(
+        settings.connect(`changed::${key}`, () => {
+            row.value = settings.get_uint(key);
+        }),
+    );
+    settings.bind(
+        SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
+        row,
+        "sensitive",
+        Gio.SettingsBindFlags.GET,
+    );
+    return row;
 }
 
 function createTopPanelGroup(settings, settingsSignalIds) {

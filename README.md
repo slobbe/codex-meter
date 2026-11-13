@@ -17,7 +17,7 @@
 - 5-hour and weekly Codex usage limits.
 - Usage trends and limit-hit predictions.
 - Redeem banked resets.
-- Automatically redeem banked resets within 1 hour of expiry.
+- Automatically redeem banked resets before expiry or when remaining usage falls below a configurable threshold.
 
 ## Requirements
 

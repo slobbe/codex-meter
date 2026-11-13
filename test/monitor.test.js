@@ -18,6 +18,9 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export class UsageService {}
     export class PeriodicTask { start() {} stop() {} }
     export const readSettings = () => ({ autoApplyBankedReset: false });
+    export const SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW = "usage-window";
+    export const SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE = "auto-usage";
+    export const SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD = "usage-threshold";
     export const getBackgroundRefreshIntervalSeconds = () => 0;
     export const SETTINGS_AUTO_APPLY_BANKED_RESET = 'auto-apply';
     export const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES = 'refresh';
@@ -60,6 +63,161 @@ function fixture() {
     monitor.refreshUsage = async () => {};
     return { monitor, notifications, changes };
 }
+
+function enableUsageAutoApply(monitor, usedPercent = 96, resetAt = null) {
+    monitor._autoApplyBankedResetOnUsage = true;
+    monitor._autoApplyBankedResetUsageThreshold = 5;
+    monitor._autoApplyBankedResetUsageWindow = "any";
+    monitor._snapshot = { quotas: [{ usedPercent, resetAt }] };
+    return monitor._snapshot;
+}
+
+for (const [usedPercent, resetAt, expected] of [
+    [94.9, null, false],
+    [95, null, false],
+    [95.1, null, true],
+    [100, null, true],
+    [99, 1, false],
+    [96, 9_999_999_999, true],
+]) {
+    test(`usage auto-apply below 5% left: ${100 - usedPercent}% left with reset ${resetAt}`, () => {
+        const { monitor } = fixture();
+        const snapshot = enableUsageAutoApply(monitor, usedPercent, resetAt);
+        assert.equal(monitor._usageNeedsBankedReset(snapshot), expected);
+        monitor._autoApplyBankedResetOnUsage = false;
+        assert.equal(monitor._usageNeedsBankedReset(snapshot), false);
+    });
+}
+
+test("usage auto-apply checks every quota and rejects replaced snapshots", () => {
+    const { monitor } = fixture();
+    const snapshot = enableUsageAutoApply(monitor, 10);
+    snapshot.quotas.push({ usedPercent: 96 });
+    assert.equal(monitor._usageNeedsBankedReset(snapshot), true);
+    monitor._snapshot = { quotas: [] };
+    assert.equal(monitor._usageNeedsBankedReset(snapshot), false);
+});
+
+for (const [window, sessionUsed, weeklyUsed, expected] of [
+    ["any", 99, 10, true],
+    ["weekly", 99, 10, false],
+    ["weekly", 10, 99, true],
+    ["session", 10, 99, false],
+    ["session", 99, 10, true],
+    ["weekly", 99, 95, false],
+    ["window-3600", 99, 99, false],
+]) {
+    test(`selected window ${window}: session ${sessionUsed}, weekly ${weeklyUsed}`, () => {
+        const { monitor } = fixture();
+        const snapshot = enableUsageAutoApply(monitor);
+        monitor._autoApplyBankedResetUsageWindow = window;
+        snapshot.quotas = [
+            { id: "session", usedPercent: sessionUsed, resetAt: null },
+            { id: "weekly", usedPercent: weeklyUsed, resetAt: null },
+        ];
+        assert.equal(monitor._usageNeedsBankedReset(snapshot), expected);
+        snapshot.quotas.reverse();
+        assert.equal(
+            monitor._usageNeedsBankedReset(snapshot),
+            expected,
+            "selection uses ID, not order",
+        );
+    });
+}
+
+test("usage auto-apply selects earliest unexpired credit and shares redemption refreshes", async () => {
+    const { monitor, notifications } = fixture();
+    const snapshot = enableUsageAutoApply(monitor);
+    const expired = { ...earlier, id: "expired", expires_at: "2000-01-01T00:00:00Z" };
+    let calls = 0;
+    const ids = [];
+    api.list = async () => {
+        calls++;
+        return { credits: [selected, expired, earlier] };
+    };
+    api.redeem = async (id) => ids.push(id);
+    await monitor._refreshBankedResetsForAutoApply(snapshot);
+    assert.deepEqual(ids, [earlier.id]);
+    assert.equal(calls, 2);
+    assert.match(notifications[0], /near a usage limit/);
+});
+
+for (const blockedBy of ["manual", "disabled", "replaced", "stopped", "window changed"]) {
+    test(`usage auto-apply rechecks ${blockedBy} after inventory fetch`, async () => {
+        const { monitor, notifications } = fixture();
+        const snapshot = enableUsageAutoApply(monitor);
+        const response = deferred();
+        api.list = () => response.promise;
+        const ids = [];
+        api.redeem = async (id) => ids.push(id);
+        const pending = monitor._refreshBankedResetsForAutoApply(snapshot);
+        if (blockedBy === "manual") monitor._bankedResetPreparation = { creditId: earlier.id };
+        if (blockedBy === "disabled") monitor._autoApplyBankedResetOnUsage = false;
+        if (blockedBy === "replaced") monitor._snapshot = { quotas: [] };
+        if (blockedBy === "stopped") monitor.stop();
+        if (blockedBy === "window changed") monitor._autoApplyBankedResetUsageWindow = "weekly";
+        response.resolve(inventory);
+        await pending;
+        assert.deepEqual(ids, []);
+        assert.deepEqual(notifications, []);
+    });
+}
+
+test("overlapping automatic triggers redeem at most one credit", async () => {
+    const { monitor } = fixture();
+    const snapshot = enableUsageAutoApply(monitor);
+    monitor._autoApplyBankedReset = true;
+    const response = deferred();
+    let calls = 0;
+    api.list = async () => {
+        calls++;
+        return response.promise;
+    };
+    const ids = [];
+    api.redeem = async (id) => ids.push(id);
+    const usage = monitor._refreshBankedResetsForAutoApply(snapshot);
+    const expiry = monitor._refreshBankedResetsForAutoApply();
+    response.resolve(inventory);
+    await Promise.all([usage, expiry]);
+    assert.deepEqual(ids, [earlier.id]);
+    assert.equal(calls, 2, "one pre-redemption and one post-redemption inventory fetch");
+});
+
+test("live refresh auto-redeems once without deadlocking or consuming another credit", async () => {
+    const { monitor } = fixture();
+    enableUsageAutoApply(monitor);
+    monitor.refreshUsage = CodexMonitor.prototype.refreshUsage;
+    monitor._usageService = {
+        refresh: async () => ({ quotas: [{ usedPercent: 99, resetAt: null }] }),
+        readHistory: async () => [],
+        predict: async () => null,
+    };
+    api.list = async () => inventory;
+    const ids = [];
+    api.redeem = async (id) => ids.push(id);
+    await monitor.refreshUsage();
+    assert.deepEqual(ids, [earlier.id]);
+    assert.equal(monitor._refreshPromise, null);
+    assert.equal(monitor.state.redeemingBankedReset, false);
+});
+
+test("failed usage refresh never auto-redeems from an existing high-usage snapshot", async () => {
+    const { monitor } = fixture();
+    enableUsageAutoApply(monitor);
+    monitor.refreshUsage = CodexMonitor.prototype.refreshUsage;
+    monitor._usageService = {
+        refresh: async () => {
+            throw new Error("offline");
+        },
+    };
+    let calls = 0;
+    api.list = async () => {
+        calls++;
+        return inventory;
+    };
+    await monitor.refreshUsage();
+    assert.equal(calls, 0);
+});
 
 const earlier = { id: "earlier", status: "available", expires_at: "2098-01-01T00:00:00Z" };
 const selected = { id: "selected", status: "available", expires_at: "2099-01-01T00:00:00Z" };

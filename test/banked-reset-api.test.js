@@ -16,6 +16,9 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export class UsageService {}
     export class PeriodicTask {}
     export const readSettings = () => ({ autoApplyBankedReset: true });
+    export const SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW = "usage-window";
+    export const SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE = "auto-usage";
+    export const SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD = "usage-threshold";
     export const getBackgroundRefreshIntervalSeconds = () => 0;
     export const SETTINGS_AUTO_APPLY_BANKED_RESET = "auto-apply";
     export const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES = "refresh";
@@ -218,7 +221,7 @@ for (const automatic of [false, true]) {
             io.response = { code, windows_reset: code === "reset" ? 2 : 0 };
 
             if (automatic) {
-                await monitor._autoApplyExpiringBankedReset(
+                await monitor._autoRedeemBankedReset(
                     [
                         {
                             ...inventory.credits[0],
