@@ -2,7 +2,7 @@
 
 ## Project
 
-Codex Meter is a GNOME Shell extension written in JavaScript ES modules for GJS, supporting GNOME Shell 45–50. Runtime code lives in `src/`; tests live in `test/`.
+Codex Meter is a GNOME Shell extension written in JavaScript ES modules for GJS, supporting GNOME Shell 45–51. Runtime code lives in `src/`; tests live in `test/`.
 
 ## GJS Best Practices
 
