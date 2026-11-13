@@ -13,6 +13,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Changed preferences to group appearance settings together and separate background refresh, with clearer labels and default-first dropdown options.
 - Changed popup actions to a compact footer with the last refresh time and Refresh and Preferences icon buttons.
 - Changed popup bar colors to reflect usage pace, matching the panel indicator.
 - Changed popup pace text to use shorter, clearer quota predictions.

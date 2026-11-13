@@ -166,14 +166,67 @@ function windowFixture() {
 }
 const metadata = { name: "Codex Meter", "version-name": "test", url: "https://example.com" };
 
+test("preferences groups appearance and background refresh with descriptive labels", () => {
+    const page = createPreferencesPage(settingsFixture(), metadata, windowFixture());
+    assert.deepEqual(
+        page.children.slice(0, 3).map((group) => group.title),
+        ["Appearance", "Background refresh", "Banked resets"],
+    );
+    assert.deepEqual(
+        page.children[0].children.map((row) => row.title),
+        ["Percentage meaning", "Indicator icon", "Indicator progress style"],
+    );
+    assert.deepEqual(
+        page.children[0].children.map((row) => row.subtitle),
+        [
+            "Show remaining or used capacity",
+            "Icon shown in the top panel",
+            "How usage appears in the top panel",
+        ],
+    );
+    assert.deepEqual(
+        page.children[1].children.map((row) => row.title),
+        ["Interval (minutes)"],
+    );
+    assert.equal(page.children[1].children[0].subtitle, "Set to 0 to refresh manually");
+});
+
+test("appearance dropdowns select their first option by default", () => {
+    const page = createPreferencesPage(settingsFixture(), metadata, windowFixture());
+    assert.deepEqual(
+        page.children[0].children.map((row) => row.selected),
+        [0, 0, 0],
+    );
+});
+
+test("percentage meaning dropdown reads, writes, and tracks both meanings in order", () => {
+    const meanings = ["left", "used"];
+    for (const [index, meaning] of meanings.entries()) {
+        const settings = settingsFixture({ [SETTINGS_PERCENT_DISPLAY_MODE]: meaning });
+        const page = createPreferencesPage(settings, metadata, windowFixture());
+        const row = page.children[0].children[0];
+        assert.deepEqual(row.model, ["% left", "% used"]);
+        assert.equal(row.selected, index);
+
+        for (const [selected, value] of meanings.entries()) {
+            row.selected = selected;
+            row.emit("notify::selected");
+            assert.equal(settings.get_string(SETTINGS_PERCENT_DISPLAY_MODE), value);
+        }
+
+        settings.set_string(SETTINGS_PERCENT_DISPLAY_MODE, meaning);
+        assert.equal(row.selected, index);
+    }
+});
+
 test("icon dropdown reads, writes, and tracks all supported icon styles", () => {
-    const icons = ["openai", "codex", "text"];
+    const icons = ["codex", "openai", "text"];
     for (const [index, icon] of icons.entries()) {
         const settings = settingsFixture({ [SETTINGS_TOP_PANEL_INDICATOR_ICON]: icon });
         const page = createPreferencesPage(settings, metadata, windowFixture());
-        const group = page.children.find((child) => child.title === "Top panel indicator");
-        const row = group.children.find((child) => child.title === "Icon");
-        assert.deepEqual(row.model, ["OpenAI logo", "Codex logo", "'CX' monogram"]);
+        const group = page.children.find((child) => child.title === "Appearance");
+        const row = group.children.find((child) => child.title === "Indicator icon");
+        assert.deepEqual(row.model, ["Codex", "OpenAI", "'CX' monogram"]);
         assert.equal(row.selected, index);
 
         for (const [selected, value] of icons.entries()) {
@@ -192,9 +245,9 @@ test("display dropdown reads, writes, and tracks all display modes in order", ()
     for (const [index, mode] of modes.entries()) {
         const settings = settingsFixture({ [SETTINGS_TOP_PANEL_DISPLAY_MODE]: mode });
         const page = createPreferencesPage(settings, metadata, windowFixture());
-        const group = page.children.find((child) => child.title === "Top panel indicator");
-        const row = group.children.find((child) => child.title === "Show percentages as");
-        assert.deepEqual(row.model, ["Progress bar", "Circular progress bars", "Number"]);
+        const group = page.children.find((child) => child.title === "Appearance");
+        const row = group.children.find((child) => child.title === "Indicator progress style");
+        assert.deepEqual(row.model, ["Bar", "Circle", "Number"]);
         assert.equal(row.selected, index);
 
         for (const [selected, value] of modes.entries()) {
@@ -267,10 +320,10 @@ test("preferences migrates legacy selections before binding dropdowns", () => {
             [SETTINGS_TOP_PANEL_DISPLAY_MODE]: mode,
         });
         const page = createPreferencesPage(settings, metadata, windowFixture());
-        const group = page.children.find((child) => child.title === "Top panel indicator");
-        assert.equal(group.children.find((child) => child.title === "Icon").selected, 1);
+        const group = page.children.find((child) => child.title === "Appearance");
+        assert.equal(group.children.find((child) => child.title === "Indicator icon").selected, 0);
         assert.equal(
-            group.children.find((child) => child.title === "Show percentages as").selected,
+            group.children.find((child) => child.title === "Indicator progress style").selected,
             selected,
         );
         assert.equal(settings.get_string(SETTINGS_TOP_PANEL_INDICATOR_ICON), "codex");
@@ -631,8 +684,8 @@ test("closing preferences disconnects every settings callback without preventing
     const settings = settingsFixture();
     const window = windowFixture();
     const page = createPreferencesPage(settings, metadata, window);
-    const [percent, refresh] = page.children[0].children;
-    const [icon, display] = page.children[1].children;
+    const [percent, icon, display] = page.children[0].children;
+    const [refresh] = page.children[1].children;
     const signalIds = [...settings.signals.keys()];
     assert.equal(signalIds.length, 6);
 
@@ -642,7 +695,7 @@ test("closing preferences disconnects every settings callback without preventing
     settings.set_uint(SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES, 10);
     assert.deepEqual(
         [percent.selected, icon.selected, display.selected, refresh.value],
-        [0, 0, 2, 10],
+        [1, 1, 2, 10],
     );
 
     refresh.value = 12.6;
@@ -660,7 +713,7 @@ test("closing preferences disconnects every settings callback without preventing
     settings.set_uint(SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES, 30);
     assert.deepEqual(
         [percent.selected, icon.selected, display.selected, refresh.value],
-        [0, 0, 2, 13],
+        [1, 1, 2, 13],
     );
 
     assert.equal(window.close(), false);
@@ -671,22 +724,22 @@ test("closing one window preserves other windows and reopening does not leak han
     const settings = settingsFixture();
     const firstWindow = windowFixture();
     const firstPage = createPreferencesPage(settings, metadata, firstWindow);
-    const firstIcon = firstPage.children[1].children[0];
+    const firstIcon = firstPage.children[0].children[1];
 
     for (let i = 0; i < 3; i++) {
         const window = windowFixture();
         const page = createPreferencesPage(settings, metadata, window);
-        const icon = page.children[1].children[0];
+        const icon = page.children[0].children[1];
         assert.equal(settings.signals.size, 12);
         settings.set_string(SETTINGS_TOP_PANEL_INDICATOR_ICON, "openai");
-        assert.equal(firstIcon.selected, 0);
-        assert.equal(icon.selected, 0);
+        assert.equal(firstIcon.selected, 1);
+        assert.equal(icon.selected, 1);
 
         assert.equal(window.close(), false);
         assert.equal(settings.signals.size, 6);
         settings.set_string(SETTINGS_TOP_PANEL_INDICATOR_ICON, "text");
         assert.equal(firstIcon.selected, 2);
-        assert.equal(icon.selected, 0);
+        assert.equal(icon.selected, 1);
     }
 
     assert.equal(firstWindow.close(), false);

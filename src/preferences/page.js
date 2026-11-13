@@ -22,8 +22,8 @@ export function createPreferencesPage(settings, metadata, window, snapshot = nul
         title: "Codex Meter",
         icon_name: "codex-symbolic",
     });
-    page.add(createBehaviorGroup(settings, settingsSignalIds));
-    page.add(createTopPanelGroup(settings, settingsSignalIds));
+    page.add(createAppearanceGroup(settings, settingsSignalIds));
+    page.add(createBackgroundRefreshGroup(settings, settingsSignalIds));
     page.add(createBankedResetsGroup(settings, settingsSignalIds, snapshot?.quotas ?? []));
     page.add(createFooterGroup(metadata));
     window.connect("close-request", () => {
@@ -135,19 +135,33 @@ function createUsageThresholdRow(settings, settingsSignalIds) {
     return row;
 }
 
-function createTopPanelGroup(settings, settingsSignalIds) {
+function createAppearanceGroup(settings, settingsSignalIds) {
     const group = new Adw.PreferencesGroup({
-        title: "Top panel indicator",
+        title: "Appearance",
     });
     group.add(
         createBoundComboRow({
             settings,
             settingsSignalIds,
-            key: SETTINGS_TOP_PANEL_INDICATOR_ICON,
-            title: "Icon",
+            key: SETTINGS_PERCENT_DISPLAY_MODE,
+            title: "Percentage meaning",
+            subtitle: "Show remaining or used capacity",
             options: [
-                ["OpenAI logo", "openai"],
-                ["Codex logo", "codex"],
+                ["% left", "left"],
+                ["% used", "used"],
+            ],
+        }),
+    );
+    group.add(
+        createBoundComboRow({
+            settings,
+            settingsSignalIds,
+            key: SETTINGS_TOP_PANEL_INDICATOR_ICON,
+            title: "Indicator icon",
+            subtitle: "Icon shown in the top panel",
+            options: [
+                ["Codex", "codex"],
+                ["OpenAI", "openai"],
                 ["'CX' monogram", "text"],
             ],
         }),
@@ -157,10 +171,11 @@ function createTopPanelGroup(settings, settingsSignalIds) {
             settings,
             settingsSignalIds,
             key: SETTINGS_TOP_PANEL_DISPLAY_MODE,
-            title: "Show percentages as",
+            title: "Indicator progress style",
+            subtitle: "How usage appears in the top panel",
             options: [
-                ["Progress bar", "bars"],
-                ["Circular progress bars", "circular-bars"],
+                ["Bar", "bars"],
+                ["Circle", "circular-bars"],
                 ["Number", "percentages"],
             ],
         }),
@@ -169,27 +184,15 @@ function createTopPanelGroup(settings, settingsSignalIds) {
     return group;
 }
 
-function createBehaviorGroup(settings, settingsSignalIds) {
+function createBackgroundRefreshGroup(settings, settingsSignalIds) {
     const group = new Adw.PreferencesGroup({
-        title: "Behavior",
+        title: "Background refresh",
     });
-    group.add(
-        createBoundComboRow({
-            settings,
-            settingsSignalIds,
-            key: SETTINGS_PERCENT_DISPLAY_MODE,
-            title: "Display mode",
-            options: [
-                ["Percent used", "used"],
-                ["Percent left", "left"],
-            ],
-        }),
-    );
     group.add(createRefreshIntervalRow(settings, settingsSignalIds));
     return group;
 }
 
-function createBoundComboRow({ settings, settingsSignalIds, key, title, options }) {
+function createBoundComboRow({ settings, settingsSignalIds, key, title, subtitle, options }) {
     const getSelected = () =>
         Math.max(
             0,
@@ -197,6 +200,7 @@ function createBoundComboRow({ settings, settingsSignalIds, key, title, options 
         );
     const row = new Adw.ComboRow({
         title,
+        subtitle,
         model: Gtk.StringList.new(options.map(([label]) => label)),
         selected: getSelected(),
     });
@@ -223,7 +227,7 @@ function createBoundSwitchRow({ settings, key, title, subtitle }) {
 
 function createRefreshIntervalRow(settings, settingsSignalIds) {
     const row = new Adw.SpinRow({
-        title: "Background refresh interval (minutes)",
+        title: "Interval (minutes)",
         subtitle: "Set to 0 to refresh manually",
         adjustment: new Gtk.Adjustment({
             lower: MIN_REFRESH_INTERVAL_MINUTES,
