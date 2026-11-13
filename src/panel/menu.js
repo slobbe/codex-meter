@@ -213,12 +213,12 @@ export class CodexMeterPopupMenu {
             text: "",
             x_expand: true,
             x_align: Clutter.ActorAlign.START,
-            y_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.START,
             style_class: "cx-usage-prediction",
         });
         const resetLabel = new St.Label({
             text: "resets in --",
-            y_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.START,
             style_class: "cx-usage-detail-muted",
         });
         for (const label of [predictionLabel, resetLabel]) {

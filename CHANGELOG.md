@@ -14,6 +14,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Changed popup bar colors to reflect usage pace, matching the panel indicator.
 - Changed popup pace text to use shorter, clearer quota predictions.
+- Changed popup reset labels to show the reset date and time on a separate line.
 - Changed duration text to omit zero-valued secondary units.
 - Changed banked reset wording to consistently use "redeem" throughout the app and README.
 - Changed the banked reset confirmation modal structure.

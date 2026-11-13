@@ -304,9 +304,9 @@ export function formatReset(quota) {
     const relative = formatDuration(quota.resetAfterSeconds);
     const absolute = formatUnixTimestamp(quota.resetAt, useDate);
     if (relative === "--" && absolute === "--") return "resets in --";
-    if (relative === "--") return `resets in -- (${absolute})`;
+    if (relative === "--") return `resets in --\n(${absolute})`;
     if (absolute === "--") return `resets in ${relative}`;
-    return `resets in ${relative} (${absolute})`;
+    return `resets in ${relative}\n(${absolute})`;
 }
 
 export function formatDuration(totalSeconds) {

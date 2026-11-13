@@ -498,7 +498,7 @@ test("formats absolute resets by duration rather than row position", () => {
     const settings = { percentDisplayMode: "used" };
     for (const limitWindowSeconds of [3_600, 18_000, 86_399, 86_400, 604_800]) {
         const quota = { id: "custom", limitWindowSeconds, resetAt, resetAfterSeconds: 1_500 };
-        const expected = `resets in 25m (${formatTimestamp(
+        const expected = `resets in 25m\n(${formatTimestamp(
             new Date(resetAt * 1000).toISOString(),
             limitWindowSeconds >= 86_400,
         )})`;
@@ -511,6 +511,15 @@ test("formats absolute resets by duration rather than row position", () => {
             assert.equal(menu.usageItems.find((row) => row.id === quota.id).reset, expected);
         }
     }
+});
+
+test("puts an absolute reset on a second line when the relative reset is unknown", () => {
+    const resetAt = 1_700_014_400;
+    const absolute = formatTimestamp(new Date(resetAt * 1000).toISOString(), true);
+    assert.equal(
+        formatReset({ limitWindowSeconds: 604_800, resetAt }),
+        `resets in --\n(${absolute})`,
+    );
 });
 
 test("formats reached limits explicitly", () => {

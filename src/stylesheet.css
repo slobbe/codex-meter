@@ -76,6 +76,10 @@
     opacity: 0.75;
 }
 
+.cx-usage-detail-muted {
+    text-align: right;
+}
+
 .cx-usage-bar-fill.cx-color-safe {
     background-color: #49c16d;
 }
@@ -153,7 +157,7 @@
 }
 
 .cx-usage-detail {
-    margin-top: 2px;
+    margin-top: 4px;
     font-size: 0.9em;
 }
 
