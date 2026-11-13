@@ -4,13 +4,19 @@ on:
     push:
         tags:
             - "v[0-9]+.[0-9]+.[0-9]+"
+    workflow_dispatch:
+        inputs:
+            tag:
+                description: "Existing release tag (e.g. v0.12.0)"
+                required: true
+                type: string
 
 permissions:
     contents: write
     actions: read
 
 concurrency:
-    group: release-${{ github.ref }}
+    group: release-${{ inputs.tag || github.ref_name }}
     cancel-in-progress: false
 
 jobs:
@@ -21,6 +27,7 @@ jobs:
             - name: Check out repository
               uses: actions/checkout@v7
               with:
+                  ref: ${{ inputs.tag || github.ref }}
                   fetch-depth: 0
 
             - name: Set up Node.js
@@ -39,10 +46,11 @@ jobs:
               id: source
               env:
                   GH_TOKEN: ${{ github.token }}
+                  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
               shell: bash
               run: |
                   set -euo pipefail
-                  TAG="${GITHUB_REF_NAME}"
+                  TAG="${RELEASE_TAG}"
 
                   if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
                     echo "Release tag must match vMAJOR.MINOR.PATCH: ${TAG}" >&2
@@ -60,7 +68,7 @@ jobs:
                   CI_RUN_ID=""
                   for attempt in {1..20}; do
                     CI_RUN="$(gh api \
-                      "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${TAG_SHA}&event=push&per_page=1" \
+                      "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${TAG_SHA}&branch=main&event=push&per_page=1" \
                       --jq 'if .workflow_runs[0] then (.workflow_runs[0] | [.id, .status, .conclusion, .head_branch] | @tsv) else empty end')"
 
                     if [[ -z "${CI_RUN}" ]]; then
