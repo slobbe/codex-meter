@@ -53,7 +53,7 @@
       <description>Usage window ID to check for automatic banked reset redemption, or any to check all active windows</description>
     </key>
     <key name="auto-apply-banked-reset-usage-threshold" type="u">
-      <default>5</default>
+      <default>2</default>
       <summary>Remaining threshold (% left)</summary>
       <description>Percentage remaining below which any active limit triggers automatic banked reset redemption when enabled</description>
       <range min="1" max="100"/>

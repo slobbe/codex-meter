@@ -92,7 +92,7 @@ function settingsFixture(values = {}) {
     let nextSignalId = 1;
     const uints = {
         [SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES]: 5,
-        [SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD]: 5,
+        [SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD]: 2,
         ...values,
     };
     const booleans = {
@@ -304,7 +304,7 @@ test("migration preserves defaults and all non-ring icon/display selections", ()
         backgroundRefreshIntervalSeconds: 300,
         autoApplyBankedReset: false,
         autoApplyBankedResetOnUsage: false,
-        autoApplyBankedResetUsageThreshold: 5,
+        autoApplyBankedResetUsageThreshold: 2,
         autoApplyBankedResetUsageWindow: "any",
     });
 });
@@ -436,7 +436,7 @@ test("usage auto-redemption settings preserve independent toggles and thresholds
     }
 });
 
-test("usage auto-redemption schema is opt-in with a 1–100 threshold defaulting to 5", () => {
+test("usage auto-redemption schema is opt-in with a 1–100 threshold defaulting to 2", () => {
     const schema = readFileSync(
         new URL(
             "../src/schemas/org.gnome.shell.extensions.codex-meter.gschema.xml",
@@ -451,7 +451,7 @@ test("usage auto-redemption schema is opt-in with a 1–100 threshold defaulting
     const threshold = schema.match(
         /<key name="auto-apply-banked-reset-usage-threshold" type="u">([\s\S]*?)<\/key>/,
     )[1];
-    assert.match(threshold, /<default>5<\/default>/);
+    assert.match(threshold, /<default>2<\/default>/);
     assert.match(threshold, /<range min="1" max="100"\/>/);
 });
 
@@ -463,7 +463,7 @@ test("usage threshold reads, writes, tracks settings, and is sensitive only when
         const [expiry, usage, , threshold] = page.children[2].children;
         assert.equal(threshold.title, "Threshold (% left)");
         assert.equal(threshold.subtitle, "Threshold below which to redeem reset");
-        assert.equal(threshold.value, 5);
+        assert.equal(threshold.value, 2);
         assert.equal(threshold.adjustment.lower, 1);
         assert.equal(threshold.adjustment.upper, 100);
         assert.equal(threshold.adjustment.step_increment, 1);

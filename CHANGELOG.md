@@ -9,7 +9,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 - Added GNOME Shell 51 compatibility.
-- Added opt-in banked reset auto-redemption when any or a selected usage window falls below a configurable remaining percentage (default 5%).
+- Added opt-in banked reset auto-redemption when any or a selected usage window falls below a configurable remaining percentage (default 2%).
 
 ### Changed
 
