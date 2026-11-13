@@ -4,19 +4,13 @@ on:
     push:
         tags:
             - "v[0-9]+.[0-9]+.[0-9]+"
-    workflow_dispatch:
-        inputs:
-            tag:
-                description: "Existing release tag (e.g. v0.12.0)"
-                required: true
-                type: string
 
 permissions:
     contents: write
     actions: read
 
 concurrency:
-    group: release-${{ inputs.tag || github.ref_name }}
+    group: release-${{ github.ref }}
     cancel-in-progress: false
 
 jobs:
@@ -27,7 +21,6 @@ jobs:
             - name: Check out repository
               uses: actions/checkout@v7
               with:
-                  ref: ${{ inputs.tag || github.ref }}
                   fetch-depth: 0
 
             - name: Set up Node.js
@@ -46,11 +39,11 @@ jobs:
               id: source
               env:
                   GH_TOKEN: ${{ github.token }}
-                  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
               shell: bash
               run: |
                   set -euo pipefail
-                  TAG="${RELEASE_TAG}"
+                  TAG="${GITHUB_REF_NAME}"
 
                   if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
                     echo "Release tag must match vMAJOR.MINOR.PATCH: ${TAG}" >&2
