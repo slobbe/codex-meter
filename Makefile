@@ -51,6 +51,7 @@ pack:
 	stage=$$(mktemp -d); \
 	trap 'rm -rf "$$stage"' EXIT HUP INT TERM; \
 	cp -R src/. "$$stage/"; \
+	cp LICENSE "$$stage/"; \
 	build_version="$(VERSION)"; \
 	if [ "$(DEV)" = "1" ]; then \
 		build_version=$$(git --no-pager rev-parse --short HEAD); \
