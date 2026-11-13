@@ -42,7 +42,7 @@ export class UsageRing {
         for (const [index, half] of this._halves.entries()) {
             half.state = bars[index] ?? null;
             if (half.colorClass) half.area.remove_style_class_name(half.colorClass);
-            half.colorClass = half.state?.colorStyleClass ?? "cx-color-green";
+            half.colorClass = half.state?.colorStyleClass ?? "cx-color-safe";
             half.area.add_style_class_name(half.colorClass);
             half.area.visible = half.state !== null;
             half.area.queue_repaint();

@@ -58,7 +58,7 @@
     border-radius: 999px;
 }
 
-.cx-color-green {
+.cx-color-safe {
     color: #49c16d;
 }
 
@@ -66,7 +66,8 @@
     color: #e59a2f;
 }
 
-.cx-color-danger {
+.cx-color-danger,
+.cx-color-exhausted {
     color: #d9534f;
 }
 
@@ -75,7 +76,7 @@
     opacity: 0.75;
 }
 
-.cx-usage-bar-fill.cx-color-green {
+.cx-usage-bar-fill.cx-color-safe {
     background-color: #49c16d;
 }
 
@@ -83,7 +84,7 @@
     background-color: #e59a2f;
 }
 
-.cx-usage-bar-fill.cx-color-danger {
+.cx-usage-bar-fill.cx-color-exhausted {
     background-color: #d9534f;
 }
 

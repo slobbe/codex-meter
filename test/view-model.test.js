@@ -59,7 +59,7 @@ test("circular and straight panel bars use the same quota values in used and rem
     }
 });
 
-test("panel bar colors follow each quota's pace rather than its usage percentage", () => {
+test("panel and popup bar colors follow each quota's pace rather than its usage percentage", () => {
     const fetchedAt = 1_700_000_000;
     const quotas = [
         { id: "fast", usedPercent: 20, resetAfterSeconds: 16_200 },
@@ -76,10 +76,10 @@ test("panel bar colors follow each quota's pace rather than its usage percentage
     const prediction = predict([], snapshot);
     const expectedColors = {
         fast: "cx-color-warning",
-        slow: "cx-color-green",
-        "at-reset": "cx-color-green",
-        reached: "cx-color-danger",
-        unknown: "cx-color-green",
+        slow: "cx-color-safe",
+        "at-reset": "cx-color-safe",
+        reached: "cx-color-exhausted",
+        unknown: "cx-color-safe",
     };
     for (const topPanelDisplayMode of ["bars", "circular-bars"]) {
         for (const percentDisplayMode of ["used", "left"]) {
@@ -94,9 +94,19 @@ test("panel bar colors follow each quota's pace rather than its usage percentage
                     percentDisplayMode === "left" ? 100 - quota.usedPercent : quota.usedPercent,
                 );
             }
+            const menu = createMenuViewModel(settings, snapshot, prediction);
+            for (const row of menu.usageItems) {
+                assert.equal(row.colorStyleClass, expectedColors[row.id], row.id);
+            }
+            const menuWithoutPrediction = createMenuViewModel(settings, snapshot, null);
+            assert.ok(
+                menuWithoutPrediction.usageItems.every(
+                    (row) => row.colorStyleClass === "cx-color-safe",
+                ),
+            );
             const withoutPrediction = createPanelBarViewModel(settings, snapshot, null);
             assert.ok(
-                withoutPrediction.bars.every((bar) => bar.colorStyleClass === "cx-color-green"),
+                withoutPrediction.bars.every((bar) => bar.colorStyleClass === "cx-color-safe"),
             );
         }
     }
@@ -120,6 +130,7 @@ test("uses one generic loading row and no rows for errors or empty snapshots", (
                     displayBaselinePercentValue: null,
                     percentLabel: percentDisplayMode,
                     predictionStyle: "muted",
+                    colorStyleClass: "cx-color-safe",
                 },
             ],
             errorMessage: null,
@@ -260,7 +271,7 @@ test("renders quotas shortest first in menu values and panel bars and percentage
                         id: quota.id,
                         percentValue: quota.usedPercent,
                         displayPercentValue: percents[index],
-                        colorStyleClass: "cx-color-green",
+                        colorStyleClass: "cx-color-safe",
                     })),
                     showBars: topPanelDisplayMode === "bars" && quotas.length > 0,
                     showLabel: topPanelDisplayMode !== "bars" && quotas.length > 0,
@@ -330,7 +341,7 @@ test("sorts cached snapshots without mutation and keeps missing or invalid durat
         assert.equal(menu.usageItems[0].prediction, "Pace: safe");
         assert.equal(menu.usageItems[1].prediction, "Quota exhausted");
         assert.equal(menu.usageItems[0].predictionStyle, "safe");
-        assert.equal(menu.usageItems[1].predictionStyle, "danger");
+        assert.equal(menu.usageItems[1].predictionStyle, "exhausted");
         assert.equal(menu.usageItems[0].value, `${expected[0].usedPercent}%`);
         assert.equal(menu.usageItems[1].value, `${expected[1].usedPercent}%`);
         assert.equal(panel.label, menu.usageItems.map((row) => row.value).join("/"));
@@ -369,7 +380,7 @@ test("keeps predictions keyed by quota id across reordered collections without m
             [
                 ["hourly", "safe"],
                 ["daily", "warning"],
-                ["weekly", "danger"],
+                ["weekly", "exhausted"],
             ],
         );
         assert.equal(menu.usageItems[0].prediction, "Pace: safe");
@@ -398,19 +409,19 @@ test("normalizes every panel bar while preserving unknown percentage labels", ()
                     id: "negative",
                     percentValue: 0,
                     displayPercentValue: left ? 100 : 0,
-                    colorStyleClass: "cx-color-green",
+                    colorStyleClass: "cx-color-safe",
                 },
                 {
                     id: "over",
                     percentValue: 100,
                     displayPercentValue: left ? 0 : 100,
-                    colorStyleClass: "cx-color-green",
+                    colorStyleClass: "cx-color-safe",
                 },
                 {
                     id: "unknown",
                     percentValue: 0,
                     displayPercentValue: left ? 100 : 0,
-                    colorStyleClass: "cx-color-green",
+                    colorStyleClass: "cx-color-safe",
                 },
             ]);
             assert.equal(
@@ -580,7 +591,7 @@ test("shows a single weekly quota without placeholder rows or bars", () => {
             id: "weekly",
             percentValue: 12,
             displayPercentValue: 12,
-            colorStyleClass: "cx-color-green",
+            colorStyleClass: "cx-color-safe",
         },
     ]);
     assert.equal(panel.label, "12%");
@@ -633,7 +644,8 @@ test("preserves complete menu rows for session only, week only, both, and neithe
                     displayPercentValue: left ? 100 - percent : percent,
                     displayBaselinePercentValue: left ? 100 - baseline : baseline,
                     percentLabel: mode,
-                    predictionStyle: isSession ? "safe" : "danger",
+                    predictionStyle: isSession ? "safe" : "exhausted",
+                    colorStyleClass: isSession ? "cx-color-safe" : "cx-color-exhausted",
                 });
             }
         }

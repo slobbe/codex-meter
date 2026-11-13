@@ -101,6 +101,7 @@ export class CodexMeterPopupMenu {
             percentValue: viewModel.percentValue,
             displayPercentValue: viewModel.displayPercentValue,
             displayBaselinePercentValue: viewModel.displayBaselinePercentValue,
+            colorStyleClass: viewModel.colorStyleClass,
         });
     }
 
@@ -424,15 +425,14 @@ function setPredictionStyleClass(label, style) {
 }
 
 function getPredictionColorStyleClass(style) {
-    if (style === "safe") return "cx-color-green";
     if (style === "muted") return "cx-muted";
     return `cx-color-${style}`;
 }
 
 function removeColorStyleClasses(actor) {
-    actor.remove_style_class_name("cx-color-green");
+    actor.remove_style_class_name("cx-color-safe");
     actor.remove_style_class_name("cx-color-warning");
-    actor.remove_style_class_name("cx-color-danger");
+    actor.remove_style_class_name("cx-color-exhausted");
     actor.remove_style_class_name("cx-muted");
 }
 

@@ -171,7 +171,8 @@ test("reconciles usage rows through 0 -> 3 -> 1 -> 0 and updates all row data", 
         value: `${index * 10}%`,
         percentLabel: "used",
         prediction: `Prediction ${id}`,
-        predictionStyle: ["safe", "warning", "danger"][index],
+        predictionStyle: ["safe", "warning", "exhausted"][index],
+        colorStyleClass: ["cx-color-safe", "cx-color-warning", "cx-color-exhausted"][index],
         reset: `Reset ${id}`,
         percentValue: index * 10,
         displayPercentValue: 100 - index * 10,
@@ -187,7 +188,7 @@ test("reconciles usage rows through 0 -> 3 -> 1 -> 0 and updates all row data", 
             item.predictionLabel.classes,
             new Set([
                 vm.predictionStyle === "safe"
-                    ? "cx-color-green"
+                    ? "cx-color-safe"
                     : vm.predictionStyle === "muted"
                       ? "cx-muted"
                       : `cx-color-${vm.predictionStyle}`,
@@ -197,6 +198,7 @@ test("reconciles usage rows through 0 -> 3 -> 1 -> 0 and updates all row data", 
             percentValue: vm.percentValue,
             displayPercentValue: vm.displayPercentValue,
             displayBaselinePercentValue: vm.displayBaselinePercentValue,
+            colorStyleClass: vm.colorStyleClass,
         });
     };
     menu.setUsageItems(viewModels);

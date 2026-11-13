@@ -17,7 +17,7 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage, predic
             id: quota.id,
             percentValue: normalizePercent(quota.usedPercent),
             displayPercentValue: convertPercentForDisplay(quota.usedPercent, percentDisplayMode),
-            colorStyleClass: getPanelBarColorStyleClass(prediction?.quotas?.[quota.id]),
+            colorStyleClass: getPaceColorStyleClass(prediction?.quotas?.[quota.id]),
         })),
         showBars,
         showLabel,
@@ -102,6 +102,7 @@ function createQuotaRowViewModel(quota, prediction, percentDisplayMode) {
         baselinePercentValue: calculateBaselinePercent(quota),
         percentDisplayMode,
         predictionStyle: getPredictionStyleClass(quotaPrediction),
+        colorStyleClass: getPaceColorStyleClass(quotaPrediction),
     });
 }
 
@@ -115,6 +116,7 @@ export function createUsageItemViewModel({
     baselinePercentValue = null,
     percentDisplayMode = "used",
     predictionStyle = "muted",
+    colorStyleClass = "cx-color-safe",
 }) {
     const normalizedPercentValue = normalizePercent(percentValue);
     const normalizedBaselinePercentValue = Number.isFinite(baselinePercentValue)
@@ -134,6 +136,7 @@ export function createUsageItemViewModel({
                 : convertPercentForDisplay(normalizedBaselinePercentValue, percentDisplayMode),
         percentLabel: percentDisplayMode,
         predictionStyle,
+        colorStyleClass,
     };
 }
 
@@ -269,22 +272,15 @@ export function calculateBaselinePercent(quota) {
     return normalizePercent(((limitWindowSeconds - resetAfterSeconds) / limitWindowSeconds) * 100);
 }
 
-function getPanelBarColorStyleClass(prediction) {
+function getPaceColorStyleClass(prediction) {
     switch (prediction?.trend) {
         case "limit reached":
-            return "cx-color-danger";
+            return "cx-color-exhausted";
         case "unsafe":
             return "cx-color-warning";
         default:
-            return "cx-color-green";
+            return "cx-color-safe";
     }
-}
-
-export function getUsageBarColorStyleClass(percentValue) {
-    const percent = normalizePercent(percentValue);
-    if (percent >= 100) return "cx-color-danger";
-    if (percent > 75) return "cx-color-warning";
-    return "cx-color-green";
 }
 
 export function formatPercent(value) {
@@ -388,7 +384,7 @@ export function formatLimitPrediction(prediction, quota) {
 export function getPredictionStyleClass(prediction) {
     switch (prediction?.trend) {
         case "limit reached":
-            return "danger";
+            return "exhausted";
         case "unsafe":
             return "warning";
         case "safe":

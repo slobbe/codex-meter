@@ -53,7 +53,7 @@ test("ring paints first quota up the left and second up the right from six o'clo
     assert.equal(ring.actor.children[2].gicon, "codex-icon");
     ring.update([
         { percentValue: 25, displayPercentValue: 75, colorStyleClass: "cx-color-warning" },
-        { percentValue: 80, displayPercentValue: 20, colorStyleClass: "cx-color-green" },
+        { percentValue: 80, displayPercentValue: 20, colorStyleClass: "cx-color-safe" },
     ]);
     for (const [index, method, fraction] of [
         [0, "arc", 0.75],
@@ -80,7 +80,7 @@ test("ring paints first quota up the left and second up the right from six o'clo
         );
     }
     assert.ok(ring.actor.children[0].classes.has("cx-color-warning"));
-    assert.ok(ring.actor.children[1].classes.has("cx-color-green"));
+    assert.ok(ring.actor.children[1].classes.has("cx-color-safe"));
 });
 
 test("ring switches between logos and CX text without changing its sizing classes", () => {
@@ -101,7 +101,7 @@ test("ring switches between logos and CX text without changing its sizing classe
 test("ring handles zero, full, single and absent quotas without stale fill or colors", () => {
     const ring = new UsageRing("icon");
     ring.update([
-        { percentValue: 100, displayPercentValue: 0, colorStyleClass: "cx-color-danger" },
+        { percentValue: 100, displayPercentValue: 0, colorStyleClass: "cx-color-exhausted" },
         { percentValue: 0, displayPercentValue: 100 },
     ]);
     const [left, right] = ring.actor.children;
@@ -110,9 +110,9 @@ test("ring handles zero, full, single and absent quotas without stale fill or co
     assert.equal(left.calls.filter(([name]) => name === "arc").length, 1);
     const arcs = right.calls.filter(([name]) => name === "arcNegative");
     assert.deepEqual(arcs[0], arcs[1], "100% fills the whole half, not the full circle");
-    assert.ok(left.classes.has("cx-color-danger"));
+    assert.ok(left.classes.has("cx-color-exhausted"));
     ring.update([{ percentValue: 20, displayPercentValue: 80 }]);
-    assert.deepEqual([...left.classes], ["cx-color-green"]);
+    assert.deepEqual([...left.classes], ["cx-color-safe"]);
     assert.equal(left.visible, true);
     assert.equal(right.visible, false);
     ring.update([]);

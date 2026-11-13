@@ -1,14 +1,10 @@
 import Clutter from "gi://Clutter";
 import St from "gi://St";
-import {
-    calculateBarFillWidth,
-    calculateBarMarkerPosition,
-    getUsageBarColorStyleClass,
-} from "./view-model.js";
+import { calculateBarFillWidth, calculateBarMarkerPosition } from "./view-model.js";
 
 const BASELINE_MARKER_WIDTH = 3;
 
-const COLOR_STYLE_CLASSES = ["cx-color-green", "cx-color-warning", "cx-color-danger", "cx-muted"];
+const COLOR_STYLE_CLASSES = ["cx-color-safe", "cx-color-warning", "cx-color-exhausted", "cx-muted"];
 
 export class UsageBar {
     constructor(variant) {
@@ -85,10 +81,6 @@ export class UsageBar {
         for (const styleClass of COLOR_STYLE_CLASSES) {
             this._barFill.remove_style_class_name(styleClass);
         }
-        this._barFill.add_style_class_name(
-            this._variant === "panel"
-                ? (this._state.colorStyleClass ?? "cx-color-green")
-                : getUsageBarColorStyleClass(this._state.percentValue),
-        );
+        this._barFill.add_style_class_name(this._state.colorStyleClass ?? "cx-color-safe");
     }
 }

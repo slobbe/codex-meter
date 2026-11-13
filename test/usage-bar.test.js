@@ -38,35 +38,34 @@ test("panel bars use pace colors and clear the previous color on updates", () =>
     const bar = new UsageBar("panel");
     for (const [percentValue, colorStyleClass] of [
         [20, "cx-color-warning"],
-        [90, "cx-color-green"],
-        [100, "cx-color-danger"],
-        [20, "cx-color-green"],
+        [90, "cx-color-safe"],
+        [100, "cx-color-exhausted"],
+        [20, "cx-color-safe"],
         [90, undefined],
     ]) {
         bar.update({ percentValue, displayPercentValue: 100 - percentValue, colorStyleClass });
-        assert.deepEqual([...bar._barFill.classes], [colorStyleClass ?? "cx-color-green"]);
+        assert.deepEqual([...bar._barFill.classes], [colorStyleClass ?? "cx-color-safe"]);
         assert.equal(bar._barFill.width, 100 - percentValue);
     }
 });
 
-test("popup bars retain usage thresholds regardless of any pace color", () => {
+test("popup bars use pace colors while preserving fill and baseline markers", () => {
     const bar = new UsageBar("menu");
-    for (const [percentValue, expectedColor] of [
-        [20, "cx-color-green"],
-        [75, "cx-color-green"],
-        [76, "cx-color-warning"],
-        [99, "cx-color-warning"],
-        [100, "cx-color-danger"],
-        [0, "cx-color-green"],
+    for (const [percentValue, colorStyleClass] of [
+        [20, "cx-color-warning"],
+        [90, "cx-color-safe"],
+        [100, "cx-color-exhausted"],
+        [20, "cx-color-safe"],
+        [90, undefined],
     ]) {
         for (const displayPercentValue of [percentValue, 100 - percentValue]) {
             bar.update({
                 percentValue,
                 displayPercentValue,
                 displayBaselinePercentValue: 50,
-                colorStyleClass: "cx-color-danger",
+                colorStyleClass,
             });
-            assert.deepEqual([...bar._barFill.classes], [expectedColor]);
+            assert.deepEqual([...bar._barFill.classes], [colorStyleClass ?? "cx-color-safe"]);
             assert.equal(bar._barFill.width, displayPercentValue);
             assert.equal(bar._barMarker.visible, true);
         }
