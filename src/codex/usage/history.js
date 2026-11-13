@@ -1,4 +1,5 @@
 import GLib from "gi://GLib";
+import Gio from "gi://Gio";
 import { STATE_DIR } from "../../io/paths.js";
 import { appendFile, isCancellationError, readFile, writeFile } from "../../io/files.js";
 
@@ -9,14 +10,29 @@ const HISTORY_PATH = GLib.build_filenamev([STATE_DIR, "codex", "usage-history.js
 
 export async function readHistory(path = HISTORY_PATH, cancellable = null) {
     cancellable?.set_error_if_cancelled();
-    if (!fileExists(path)) return [];
+
+    let rows;
+    let history;
     try {
-        return normalizeHistoryEntries(parseJsonlHistory(await readFile(path, cancellable)));
+        rows = parseJsonlHistory(await readFile(path, cancellable));
+        history = normalizeHistoryEntries(rows);
     } catch (error) {
         if (isCancellationError(error)) throw error;
+        if (
+            error instanceof Error &&
+            error.cause instanceof GLib.Error &&
+            error.cause.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)
+        ) {
+            return [];
+        }
         console.error("Unable to read usage history", error);
         return [];
     }
+    if (history.length !== rows.length) {
+        await rewriteHistory(history, path, cancellable);
+    }
+    cancellable?.set_error_if_cancelled();
+    return history;
 }
 
 /**
@@ -31,14 +47,10 @@ export async function rewriteHistory(rows, path = HISTORY_PATH, cancellable = nu
     const normalizedRows = normalizeHistoryEntries(rows);
     await writeFile(
         path,
-        normalizedRows.map((row) => JSON.stringify(row)).join("\n") +
-            (normalizedRows.length ? "\n" : ""),
+        // A newline also represents empty JSONL without a zero-length Gio write.
+        normalizedRows.map((row) => JSON.stringify(row)).join("\n") + "\n",
         cancellable,
     );
-}
-
-function fileExists(path) {
-    return GLib.file_test(path, GLib.FileTest.EXISTS);
 }
 
 function parseJsonlHistory(text) {
@@ -53,8 +65,7 @@ function parseJsonlHistory(text) {
             } catch (_error) {
                 return null;
             }
-        })
-        .filter((row) => row !== null);
+        });
 }
 
 export function normalizeHistoryEntries(rows) {

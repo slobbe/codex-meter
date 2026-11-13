@@ -22,7 +22,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export const appendHistoryRow = (row, path, cancellable) => io.append(cancellable);
     export const rewriteHistory = (rows, path, cancellable) => io.rewrite(cancellable);
     export const MAX_HISTORY_ENTRIES = 1;
-    export const normalizeHistoryEntries = rows => rows;
+    export const normalizeHistoryEntries = rows => rows.slice(-1);
     export const normalizeHistoryEntry = row => row;
     export const hasSameQuotaValues = () => false;
     export const toHistoryEntry = snapshot => snapshot;
@@ -137,7 +137,11 @@ for (const stage of ["cacheRead", "fetch", "cacheWrite", "historyRead", "append"
                     entered.resolve();
                     await result.promise;
                 }
-                return name === "historyRead" ? [{ timestamp: "old", quotas: [] }] : snapshot;
+                return name === "historyRead"
+                    ? stage === "append"
+                        ? []
+                        : [{ timestamp: "old", quotas: [] }]
+                    : snapshot;
             };
         }
         stubs.io.start = () => events.push("start");
@@ -165,7 +169,7 @@ for (const stage of ["cacheRead", "fetch", "cacheWrite", "historyRead", "append"
         assert.equal(monitor.state.snapshot, null);
         assert.equal(
             monitor._usageService.history?.some((row) => row.timestamp === "new") ?? false,
-            stage === "rewrite",
+            false,
         );
     });
 }
@@ -178,7 +182,11 @@ for (const stage of ["cacheWrite", "historyRead", "append", "rewrite"]) {
             stubs.io[name] = async () => {
                 events.push(name);
                 if (name === stage) throw original;
-                return name === "historyRead" ? [{}] : { timestamp: "new", quotas: [] };
+                return name === "historyRead"
+                    ? stage === "append"
+                        ? []
+                        : [{}]
+                    : { timestamp: "new", quotas: [] };
             };
         }
         await assert.rejects(new UsageService().refresh(), (error) => error === original);

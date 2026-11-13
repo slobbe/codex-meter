@@ -4,7 +4,6 @@ All notable changes from version 0.10.0 onward will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-
 ## v0.12.0 (2026-11-13)
 
 ### Added
@@ -30,6 +29,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Fixed reset confirmation dialogs remaining briefly after the extension is disabled.
 - Fixed release and development archives omitting the license text.
 - Fixed filesystem operations potentially blocking GNOME Shell on slow storage.
+- Fixed usage history remaining on disk beyond its retention limits.
 
 ## v0.11.1 (2026-11-03)
 

@@ -5,7 +5,6 @@ import { toHistoryEntry } from "./model.js";
 import {
     appendHistoryRow,
     hasSameQuotaValues,
-    MAX_HISTORY_ENTRIES,
     normalizeHistoryEntries,
     normalizeHistoryEntry,
     readHistory,
@@ -50,9 +49,12 @@ export class UsageService {
 
     async loadHistory({ cancellable = null } = {}) {
         cancellable?.set_error_if_cancelled();
-        if (this.history) return this.history;
-
-        const history = await readHistory(undefined, cancellable);
+        const history = this.history
+            ? normalizeHistoryEntries(this.history)
+            : await readHistory(undefined, cancellable);
+        if (this.history && history.length !== this.history.length) {
+            await rewriteHistory(history, undefined, cancellable);
+        }
         cancellable?.set_error_if_cancelled();
         this.history = history;
         return this.history;
@@ -67,13 +69,19 @@ export class UsageService {
         const lastRow = history.at(-1);
         if (lastRow && hasSameQuotaValues(lastRow, row)) return;
 
-        await appendHistoryRow(row, undefined, cancellable);
-        cancellable?.set_error_if_cancelled();
-        history.push(row);
-
-        if (history.length > MAX_HISTORY_ENTRIES) {
-            this.history = normalizeHistoryEntries(history);
-            await rewriteHistory(this.history, undefined, cancellable);
+        const updatedHistory = normalizeHistoryEntries([...history, row]);
+        try {
+            if (updatedHistory.length !== history.length + 1) {
+                await rewriteHistory(updatedHistory, undefined, cancellable);
+            } else {
+                await appendHistoryRow(row, undefined, cancellable);
+            }
+            cancellable?.set_error_if_cancelled();
+            this.history = updatedHistory;
+        } catch (error) {
+            // A failed or cancelled write may already have changed the file.
+            this.history = null;
+            throw error;
         }
     }
 
