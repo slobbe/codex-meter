@@ -1,6 +1,6 @@
 <div align="center">
   <h1>Codex Meter</h1>
-  <p>Codex usage and resets, at a glance.</p>
+  <p>Codex usage limits and resets from your GNOME panel.</p>
   <p>
     <a href="https://extensions.gnome.org/extension/9993/codex-meter/"><img src="https://img.shields.io/gnome-extensions/v/codex-meter%40slobbe.github.io?label=GNOME%20Extensions&logo=gnome&color=blue" alt="GNOME Extensions version"></a>
     <a href="https://extensions.gnome.org/extension/9993/codex-meter/"><img src="https://img.shields.io/gnome-extensions/dt/codex-meter%40slobbe.github.io?logo=gnome&color=blue&label=Downloads" alt="GNOME Extensions downloads"></a>
@@ -13,7 +13,7 @@
   <img src="docs/assets/screenshot.png" width="512" alt="Codex Meter preview">
 </p>
 
-A GNOME Shell extension that shows your remaining Codex quota, resets, and usage trends from the top bar.
+A GNOME Shell extension that shows your Codex usage limits, resets, and usage trends from the panel.
 
 ## Features
 
