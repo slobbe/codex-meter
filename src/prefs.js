@@ -4,6 +4,8 @@ import Gtk from "gi://Gtk";
 import { ExtensionPreferences } from "resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js";
 
 import { UsageService } from "./codex/usage/service.js";
+import { readFile } from "./io/files.js";
+import { parseReleaseNotes } from "./preferences/about-content.js";
 import { SETTINGS_CREDENTIALS_PATH } from "./preferences/settings.js";
 import { createPreferencesPage } from "./preferences/page.js";
 
@@ -31,6 +33,14 @@ export default class CodexMeterPreferences extends ExtensionPreferences {
                 });
             if (cancellable.is_cancelled()) return;
         } while (credentialsPath !== settings.get_string(SETTINGS_CREDENTIALS_PATH));
-        window.add(createPreferencesPage(settings, this.metadata, window, snapshot));
+        const changelog = await readFile(`${this.path}/CHANGELOG.md`, cancellable).catch(
+            (error) => {
+                if (!cancellable.is_cancelled()) throw error;
+                return "";
+            },
+        );
+        if (cancellable.is_cancelled()) return;
+        const releaseNotes = parseReleaseNotes(changelog);
+        window.add(createPreferencesPage(settings, this.metadata, window, snapshot, releaseNotes));
     }
 }

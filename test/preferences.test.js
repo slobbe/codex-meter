@@ -23,7 +23,11 @@ import {
 const pageUrl = new URL("../src/preferences/page.js", import.meta.url).href;
 const prefsUrl = new URL("../src/prefs.js", import.meta.url).href;
 const snapshotStubUrl = `data:text/javascript,${encodeURIComponent(`
-    export const cache = { read: async () => null };
+    export const cache = {
+        read: async () => null,
+        readChangelog: async () => "## [Unreleased] v0.13.0\\n\\n### Added\\n\\n- Latest feature.",
+    };
+    export const readFile = (path, cancellable) => cache.readChangelog(path, cancellable);
     export class UsageService {
         constructor(credentialsPath) { this.credentialsPath = credentialsPath; }
         readCachedSnapshot({ cancellable }) { return cache.read(cancellable, this.credentialsPath); }
@@ -63,6 +67,12 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         }
     }
     export const dialogs = [];
+    export const aboutWindows = [];
+    class AboutWindow extends Widget {
+        constructor(options) { super(options); aboutWindows.push(this); }
+        add_link(title, url) { (this.links ??= []).push({ title, url }); }
+        present() { this.presented = true; }
+    }
     class FileChooserNative extends Widget {
         constructor(options) { super(options); dialogs.push(this); }
         add_filter(filter) { (this.filters ??= []).push(filter); }
@@ -79,7 +89,8 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export default {
         PreferencesPage: Widget, PreferencesGroup: Widget, SwitchRow: Widget, ActionRow: Widget,
         ComboRow: Widget, SpinRow: Widget, Adjustment: Widget, Box: Widget, Label: Widget,
-        Button: Widget, FileChooserNative,
+        Button: Widget, Image: Widget, FileChooserNative, AboutWindow,
+        License: { GPL_3_0: 9 },
         FileFilter: class extends Widget {
             add_pattern(pattern) { (this.patterns ??= []).push(pattern); }
         },
@@ -88,6 +99,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         File: { new_for_path: path => ({ get_path: () => path }) },
         get_home_dir: () => "/home/test",
         build_filenamev: parts => parts.join("/"),
+
         Cancellable: class {
             cancel() { this.cancelled = true; }
             is_cancelled() { return this.cancelled ?? false; }
@@ -98,13 +110,16 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     };
     export class ExtensionPreferences {}
 `)}`;
-const { default: toolkit, dialogs } = await import(stubUrl);
+const { default: toolkit, dialogs, aboutWindows } = await import(stubUrl);
 const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
         if (context.parentURL === pageUrl && specifier === "../codex/auth/auth.js") {
             return { url: authStubUrl, shortCircuit: true };
         }
-        if (context.parentURL === prefsUrl && specifier === "./codex/usage/service.js") {
+        if (
+            context.parentURL === prefsUrl &&
+            ["./codex/usage/service.js", "./io/files.js"].includes(specifier)
+        ) {
             return { url: snapshotStubUrl, shortCircuit: true };
         }
         if (context.parentURL === prefsUrl && specifier.includes("banked-resets")) {
@@ -222,7 +237,58 @@ function windowFixture() {
         },
     };
 }
-const metadata = { name: "Codex Meter", "version-name": "test", url: "https://example.com" };
+const metadata = {
+    name: "Codex Meter",
+    "version-name": "test",
+    url: "https://example.com",
+    description:
+        "Monitor & manage Codex usage limits.\n\n- Keep <credentials> private.\n- Read `auth.json`.",
+};
+
+test("preferences footer About link opens a modal About window with project details", () => {
+    const window = windowFixture();
+    const page = createPreferencesPage(settingsFixture(), metadata, window);
+    const group = page.children.at(-1);
+    assert.equal(group.children.length, 1);
+    const box = group.children[0];
+    assert.equal(box.orientation, toolkit.Orientation.VERTICAL);
+    assert.equal(box.children.length, 2);
+    const [version, link] = box.children;
+    assert.equal(version.label, "Codex Meter test");
+    assert.deepEqual(version.css_classes, ["caption", "dim-label"]);
+    assert.equal(link.label, '<a href="about:codex-meter">About</a>');
+    assert.equal(link.use_markup, true);
+    const before = aboutWindows.length;
+    assert.equal(link.signals["activate-link"](link, "about:codex-meter"), true);
+    assert.equal(aboutWindows.length, before + 1);
+    const about = aboutWindows.at(-1);
+    assert.equal(about.transient_for, window);
+    assert.equal(about.modal, true);
+    assert.equal(about.destroy_with_parent, true);
+    assert.equal(about.application_name, metadata.name);
+    assert.equal(about.application_icon, "codex-meter");
+    assert.equal(
+        readFileSync(
+            new URL(`../src/icons/${about.application_icon}.svg`, import.meta.url),
+            "utf8",
+        ),
+        readFileSync(new URL("../docs/assets/logo/logo.svg", import.meta.url), "utf8"),
+    );
+    assert.equal(about.version, metadata["version-name"]);
+    assert.equal(about.developer_name, "Sebastian Lobbe");
+    assert.deepEqual(about.developers, ["Sebastian Lobbe <s@lobbe.cc>"]);
+    assert.equal(
+        about.comments,
+        "Monitor &amp; manage Codex usage limits.\n\n• Keep &lt;credentials&gt; private.\n• Read <tt>auth.json</tt>.",
+    );
+    assert.equal(about.website, metadata.url);
+    assert.equal(about.issue_url, `${metadata.url}/issues`);
+    assert.equal(about.license_type, toolkit.License.GPL_3_0);
+    assert.equal(about.links, undefined);
+    assert.equal(about.presented, true);
+    assert.equal(about.release_notes, undefined);
+    window.close();
+});
 
 test("preferences groups appearance and background refresh with descriptive labels", () => {
     const page = createPreferencesPage(settingsFixture(), metadata, windowFixture());
@@ -1019,10 +1085,45 @@ test("preferences entry point reads cached usage without loading inventory", asy
     assert.deepEqual(page.children[2].children[2].model, ["Any", "Cached window"]);
     assert.equal(cancellable.is_cancelled(), false);
     assert.equal(page.children[5].children[0].children[0].label, "Codex Meter test");
+    page.children[5].children[0].children[1].signals["activate-link"]();
+    const about = aboutWindows.at(-1);
+    assert.equal(about.release_notes_version, "0.13.0");
+    assert.equal(
+        about.release_notes,
+        "<p><em>Added</em></p>\n<ul>\n<li>Latest feature.</li>\n</ul>",
+    );
     assert.equal(settings.signals.size, 8);
     assert.equal(window.close(), false);
     assert.equal(cancellable.is_cancelled(), true);
     assert.equal(settings.signals.size, 0);
+});
+
+test("closing preferences during a changelog read prevents late page creation", async (t) => {
+    const originalRead = cache.readChangelog;
+    t.after(() => {
+        cache.readChangelog = originalRead;
+    });
+    let finish;
+    let cancellable;
+    cache.readChangelog = (path, value) => {
+        assert.equal(path, "/extension/CHANGELOG.md");
+        cancellable = value;
+        return new Promise((resolve) => {
+            finish = resolve;
+        });
+    };
+    const prefs = new CodexMeterPreferences();
+    prefs.path = "/extension";
+    prefs.getSettings = () => settingsFixture();
+    prefs.metadata = metadata;
+    const window = windowFixture();
+    const pending = prefs.fillPreferencesWindow(window);
+    await new Promise((resolve) => setImmediate(resolve));
+    window.close();
+    assert.equal(cancellable.is_cancelled(), true);
+    finish("## v0.13.0\n- Latest feature.");
+    await pending;
+    assert.deepEqual(window.children, []);
 });
 
 test("preferences entry point tolerates an empty usage cache", async () => {

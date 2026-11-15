@@ -5,6 +5,7 @@ import Gtk from "gi://Gtk";
 import { getCodexCredentials } from "../codex/auth/auth.js";
 import { isCodexError } from "../codex/error.js";
 import { getUsageWindowMetadata, sortUsageQuotas } from "../codex/usage/model.js";
+import { formatDescription } from "./about-content.js";
 import {
     DEFAULT_CREDENTIALS_PATH,
     migrateSettings,
@@ -22,7 +23,13 @@ import {
     SETTINGS_USAGE_NOTIFICATION_THRESHOLD,
 } from "./settings.js";
 
-export function createPreferencesPage(settings, metadata, window, snapshot = null) {
+export function createPreferencesPage(
+    settings,
+    metadata,
+    window,
+    snapshot = null,
+    releaseNotes = null,
+) {
     migrateSettings(settings);
     const settingsSignalIds = [];
     const page = new Adw.PreferencesPage({
@@ -35,7 +42,7 @@ export function createPreferencesPage(settings, metadata, window, snapshot = nul
     page.add(createBackgroundRefreshGroup(settings, settingsSignalIds));
     const credentials = createCredentialsGroup(settings, settingsSignalIds, window);
     page.add(credentials.group);
-    page.add(createFooterGroup(metadata));
+    page.add(createFooterGroup(metadata, window, releaseNotes));
     window.connect("close-request", () => {
         credentials.cleanup();
         for (const id of settingsSignalIds.splice(0)) {
@@ -425,35 +432,49 @@ function createRefreshIntervalRow(settings, settingsSignalIds) {
     return row;
 }
 
-function createFooterGroup(metadata) {
-    const footerGroup = new Adw.PreferencesGroup();
-    const footerBox = new Gtk.Box({
+function createFooterGroup(metadata, window, releaseNotes) {
+    const group = new Adw.PreferencesGroup();
+    const box = new Gtk.Box({
         orientation: Gtk.Orientation.VERTICAL,
         spacing: 4,
         margin_top: 12,
         margin_bottom: 12,
     });
-    footerBox.append(
+    box.append(
         new Gtk.Label({
             label: `${metadata.name} ${metadata["version-name"]}`,
             css_classes: ["caption", "dim-label"],
         }),
     );
-    footerBox.append(
-        new Gtk.Label({
-            label: "Not affiliated with or endorsed by OpenAI.",
-            wrap: true,
-            justify: Gtk.Justification.CENTER,
-            css_classes: ["caption", "dim-label"],
-        }),
-    );
-    const links = new Gtk.Label({
-        css_classes: ["caption", "dim-label"],
+    const link = new Gtk.Label({
+        label: '<a href="about:codex-meter">About</a>',
+        use_markup: true,
+        css_classes: ["caption"],
     });
-    links.set_markup(
-        `<a href="${metadata.url}">Source code</a> · <a href="${metadata.url}/issues">Report a bug</a>`,
-    );
-    footerBox.append(links);
-    footerGroup.add(footerBox);
-    return footerGroup;
+    link.connect("activate-link", () => {
+        const about = new Adw.AboutWindow({
+            transient_for: window,
+            modal: true,
+            destroy_with_parent: true,
+            application_name: metadata.name,
+            application_icon: "codex-meter",
+            version: metadata["version-name"],
+            developer_name: "Sebastian Lobbe",
+            developers: ["Sebastian Lobbe <s@lobbe.cc>"],
+            comments: formatDescription(metadata.description),
+            website: metadata.url,
+            issue_url: `${metadata.url}/issues`,
+            license_type: Gtk.License.GPL_3_0,
+        });
+        if (releaseNotes) {
+            about.release_notes = releaseNotes.markup;
+            about.release_notes_version = releaseNotes.version;
+        }
+
+        about.present();
+        return true;
+    });
+    box.append(link);
+    group.add(box);
+    return group;
 }
