@@ -1,10 +1,11 @@
 <div align="center">
   <h1>Codex Meter</h1>
-  <p>A GNOME Shell extension to monitor and manage Codex usage limits from your top bar.</p>
+  <p>Codex usage and resets, at a glance.</p>
   <p>
     <a href="https://extensions.gnome.org/extension/9993/codex-meter/"><img src="https://img.shields.io/gnome-extensions/v/codex-meter%40slobbe.github.io?label=GNOME%20Extensions&logo=gnome&color=blue" alt="GNOME Extensions version"></a>
     <a href="https://extensions.gnome.org/extension/9993/codex-meter/"><img src="https://img.shields.io/gnome-extensions/dt/codex-meter%40slobbe.github.io?logo=gnome&color=blue&label=Downloads" alt="GNOME Extensions downloads"></a>
     <a href="#requirements"><img src="https://img.shields.io/badge/Shell_versions-45--51-blue?logo=gnome" alt="GNOME Shell 45-51"></a>
+    <a href="https://github.com/slobbe/codex-meter/blob/main/LICENSE"><img alt="GitHub License" src="https://img.shields.io/github/license/slobbe/codex-meter"></a>
     <a href="https://github.com/slobbe/codex-meter/actions/workflows/ci.yml"><img src="https://github.com/slobbe/codex-meter/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"></a>
   </p>
 </div>
@@ -12,17 +13,20 @@
   <img src="docs/assets/screenshot.png" width="512" alt="Codex Meter preview">
 </p>
 
+A GNOME Shell extension that shows your remaining Codex quota, resets, and usage trends from the top bar.
+
 ## Features
 
-- 5-hour and weekly Codex usage limits.
-- Usage trends and limit-hit predictions.
-- Redeem banked resets.
-- Automatically redeem banked resets before expiry or when remaining usage falls below a configurable threshold.
+- **Usage limits**: Track remaining or used quota for your Codex usage windows.
+- **Usage pace**: See usage trends and estimates of whether your quota will last until it resets.
+- **Banked resets**: Redeem individual resets or enable automatic redemption before expiry or when quota runs low.
+- **Display options**: Choose between percentages, bars or circular progress indicators.
+- **Notifications**: Get notified when usage reaches a threshold or your quota is exhausted.
 
 ## Requirements
 
-- [ChatGPT desktop app](https://chatgpt.com/download/) or [Codex CLI](https://developers.openai.com/codex/cli), signed in with your ChatGPT account on the same machine
-- GNOME Shell 45–51
+- GNOME Shell 45–51.
+- [Codex CLI](https://developers.openai.com/codex/cli) or the [ChatGPT desktop app](https://chatgpt.com/download/), signed in with your ChatGPT account on the same machine.
 
 ## Install
 
@@ -78,6 +82,6 @@ Usage data is cached locally in `~/.cache/codex-meter` and `~/.local/state/codex
 
 [GPL-3.0-or-later](LICENSE)
 
-<div align="center">
-<i>Not affiliated with or endorsed by OpenAI.</i>
-</div>
+## Disclaimer
+
+This extension is not affiliated with or endorsed by OpenAI.
