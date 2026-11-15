@@ -32,7 +32,7 @@ export async function getCodexCredentials(
     ) {
         throw new CodexError(
             "missing-auth",
-            "Codex access token is missing. Run `codex login` and try again.",
+            "Codex access token is missing or invalid. Select a valid Codex credentials file in Preferences or sign in again.",
             "Codex auth data does not contain a valid access token",
         );
     }
@@ -49,13 +49,20 @@ async function readCodexAuth(path, cancellable) {
         if (typeof auth !== "object" || auth === null || Array.isArray(auth)) {
             throw new CodexError(
                 "missing-auth",
-                "Codex auth file is malformed. Run `codex login` and try again.",
+                "Codex auth file must contain a JSON object. Select a valid Codex credentials file in Preferences or sign in again.",
                 `Codex auth file at "${path}" does not contain a valid JSON object`,
             );
         }
         return auth;
     } catch (error) {
         if (isCancellationError(error) || error instanceof CodexError) throw error;
+        if (error instanceof SyntaxError) {
+            throw new CodexError(
+                "missing-auth",
+                "Codex auth file contains invalid JSON. Select a valid Codex credentials file in Preferences or sign in again.",
+                `Codex auth file at "${path}" contains invalid JSON`,
+            );
+        }
         if (
             error instanceof Error &&
             error.cause instanceof GLib.Error &&
@@ -63,20 +70,14 @@ async function readCodexAuth(path, cancellable) {
         ) {
             throw new CodexError(
                 "missing-auth",
-                "Codex auth file is missing. Run `codex login` and try again.",
+                "Codex auth file is missing. Select a valid Codex credentials file in Preferences or sign in again.",
                 `Codex auth file does not exist at "${path}"`,
             );
         }
         throw new CodexError(
             "missing-auth",
-            "Codex auth file could not be read. Run `codex login` and try again.",
-            `Failed to read Codex auth file at "${path}": Failed to read JSON file "${path}": ${formatError(error)}`,
+            "Codex auth file could not be read. Select a valid Codex credentials file in Preferences or sign in again.",
+            `Failed to read Codex auth file at "${path}"`,
         );
     }
-}
-
-function formatError(error) {
-    if (error instanceof Error && error.message) return error.message;
-    if (typeof error === "string" && error.length > 0) return error;
-    return "Unknown error";
 }

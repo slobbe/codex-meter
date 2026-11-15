@@ -43,7 +43,25 @@ try {
     const { DEFAULT_CREDENTIALS_PATH } = await import("../src/preferences/settings.js");
     const { resolveCredentialsPath, getCodexCredentials } =
         await import("../src/codex/auth/auth.js");
-    const { writeJsonFile } = await import("../src/io/files.js");
+    const { writeFile, writeJsonFile } = await import("../src/io/files.js");
+
+    async function assertCredentialsError(path, problem, privateContent = "private-token") {
+        let caught;
+        try {
+            await getCodexCredentials(null, path);
+        } catch (error) {
+            caught = error;
+        }
+        assertEqual(caught?.kind, "missing-auth", "invalid credentials error kind");
+        assertEqual(
+            caught.message,
+            `${problem} Select a valid Codex credentials file in Preferences or sign in again.`,
+            "actionable credentials error",
+        );
+        for (const text of [caught.message, caught.technicalMessage, String(caught)]) {
+            assertEqual(text.includes(privateContent), false, "error must not expose credentials");
+        }
+    }
 
     assertEqual(
         resolveCredentialsPath(),
@@ -57,23 +75,53 @@ try {
     );
     const authPath = GLib.build_filenamev([directory, "custom-auth.json"]);
     await writeJsonFile(authPath, {
-        tokens: { access_token: "fake-token", account_id: "fake-account" },
+        tokens: { access_token: " \tfake-token\n", account_id: " fake-account " },
     });
     const credentials = await getCodexCredentials(null, authPath);
     assertEqual(credentials.accessToken, "fake-token", "custom credentials token");
     assertEqual(credentials.accountId, "fake-account", "custom credentials account");
     const missingPath = GLib.build_filenamev([directory, "missing-auth.json"]);
-    let missingError;
-    try {
-        await getCodexCredentials(null, missingPath);
-    } catch (error) {
-        missingError = error;
+    await assertCredentialsError(missingPath, "Codex auth file is missing.");
+    await assertCredentialsError(directory, "Codex auth file could not be read.");
+
+    for (const text of ["{", '{"tokens":{"access_token":"private-token"},', "private-token"]) {
+        await writeFile(authPath, text);
+        await assertCredentialsError(authPath, "Codex auth file contains invalid JSON.");
     }
-    assertEqual(
-        missingError?.kind,
-        "missing-auth",
-        "missing custom file must not fall back to default",
-    );
+    for (const data of [null, [], "private-token", 42, true]) {
+        await writeJsonFile(authPath, data);
+        await assertCredentialsError(authPath, "Codex auth file must contain a JSON object.");
+    }
+    for (const data of [
+        {},
+        { tokens: null },
+        { tokens: "private-token" },
+        { tokens: {} },
+        ...[
+            null,
+            "",
+            " \t\n",
+            42,
+            true,
+            {},
+            [],
+            "private-token other",
+            "private-token\tother",
+            "private-token\nother",
+        ].map((access_token) => ({ tokens: { access_token } })),
+    ]) {
+        await writeJsonFile(authPath, data);
+        await assertCredentialsError(authPath, "Codex access token is missing or invalid.");
+    }
+    for (const account_id of [undefined, null, "", " \t", 42]) {
+        await writeJsonFile(authPath, {
+            tokens: { access_token: " \tfake-token\n", account_id },
+        });
+        const optionalAccount = await getCodexCredentials(null, authPath);
+        assertEqual(optionalAccount.accessToken, "fake-token", "valid token is trimmed");
+        assertEqual(optionalAccount.accountId, null, "account ID is optional");
+    }
+    print("ok - local credentials validation and safe actionable errors");
     const { CACHE_DIR, STATE_DIR } = await import("../src/io/paths.js");
 
     const legacy = new UsageService();

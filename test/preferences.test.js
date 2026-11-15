@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 import test from "node:test";
+import { CodexError } from "../src/codex/error.js";
 import {
     DEFAULT_CREDENTIALS_PATH,
     migrateSettings,
@@ -27,6 +28,11 @@ const snapshotStubUrl = `data:text/javascript,${encodeURIComponent(`
     }
 `)}`;
 const { cache } = await import(snapshotStubUrl);
+const authStubUrl = `data:text/javascript,${encodeURIComponent(`
+    export const validation = { read: async () => ({ accessToken: "fake-token" }) };
+    export const getCodexCredentials = (cancellable, path) => validation.read(cancellable, path);
+`)}`;
+const { validation } = await import(authStubUrl);
 const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export class Widget {
         constructor(options = {}) {
@@ -93,6 +99,9 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
 const { default: toolkit, dialogs } = await import(stubUrl);
 const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
+        if (context.parentURL === pageUrl && specifier === "../codex/auth/auth.js") {
+            return { url: authStubUrl, shortCircuit: true };
+        }
         if (context.parentURL === prefsUrl && specifier === "./codex/usage/service.js") {
             return { url: snapshotStubUrl, shortCircuit: true };
         }
@@ -264,7 +273,7 @@ test("credentials group follows banked resets and tracks the configured file", (
     assert.equal(row.subtitle, "/tmp/custom-auth.json");
 });
 
-test("credentials Browse initializes the current file and saves local selections", () => {
+test("credentials Browse initializes the current file and saves local selections", async () => {
     for (const [configured, resolved] of [
         [DEFAULT_CREDENTIALS_PATH, "/home/test/.codex/auth.json"],
         ["~/work/auth.json", "/home/test/work/auth.json"],
@@ -296,6 +305,7 @@ test("credentials Browse initializes the current file and saves local selections
         const lateResponse = dialog.signals.response;
         dialog.file = toolkit.File.new_for_path("/tmp/selected.json");
         dialog.emit("response", toolkit.ResponseType.ACCEPT);
+        await new Promise(setImmediate);
         assert.deepEqual(settings.writes, [
             { key: SETTINGS_CREDENTIALS_PATH, value: "/tmp/selected.json" },
         ]);
@@ -378,6 +388,104 @@ test("closing preferences destroys the credentials chooser and prevents late wri
     assert.equal(dialogs.length, count);
     assert.equal(window.close(), false);
 });
+
+test("credentials selection validates before saving and shows safe inline errors", async (t) => {
+    t.after(() => {
+        validation.read = async () => ({ accessToken: "fake-token" });
+    });
+    const settings = settingsFixture({ [SETTINGS_CREDENTIALS_PATH]: "/tmp/previous.json" });
+    const window = windowFixture();
+    const page = createPreferencesPage(settings, metadata, window);
+    const [row, errorLabel] = page.children[3].children;
+    const [browse] = row.children;
+    assert.equal(errorLabel.visible, false);
+    for (const failure of [
+        new CodexError("missing-auth", "Selected file does not contain valid JSON."),
+        new Error("Sensitive technical detail"),
+    ]) {
+        validation.read = async (cancellable, path) => {
+            assert.equal(path, "/tmp/invalid.json");
+            assert.equal(cancellable.is_cancelled(), false);
+            throw failure;
+        };
+        browse.emit("clicked");
+        const dialog = dialogs.at(-1);
+        dialog.file = toolkit.File.new_for_path("/tmp/invalid.json");
+        dialog.emit("response", toolkit.ResponseType.ACCEPT);
+        assert.deepEqual(settings.writes, []);
+        await new Promise(setImmediate);
+        assert.equal(errorLabel.visible, true);
+        assert.equal(
+            errorLabel.label,
+            failure instanceof CodexError
+                ? failure.message
+                : "Could not verify this file. Select a readable Codex credentials file.",
+        );
+        assert.equal(settings.get_string(SETTINGS_CREDENTIALS_PATH), "/tmp/previous.json");
+        assert.equal(row.subtitle, "/tmp/previous.json");
+    }
+    validation.read = async () => ({ accessToken: "fake-token" });
+    browse.emit("clicked");
+    assert.equal(errorLabel.visible, false);
+    const dialog = dialogs.at(-1);
+    dialog.file = toolkit.File.new_for_path("/tmp/valid.json");
+    dialog.emit("response", toolkit.ResponseType.ACCEPT);
+    await new Promise(setImmediate);
+    assert.equal(settings.get_string(SETTINGS_CREDENTIALS_PATH), "/tmp/valid.json");
+    assert.equal(errorLabel.visible, false);
+    window.close();
+});
+
+for (const action of ["close", "reset", "browse", "external change"]) {
+    for (const fails of [false, true]) {
+        test(`${action} cancels pending credentials validation and ignores late ${fails ? "errors" : "success"}`, async (t) => {
+            t.after(() => {
+                validation.read = async () => ({ accessToken: "fake-token" });
+            });
+            let finish;
+            let cancellable;
+            validation.read = (value) => {
+                cancellable = value;
+                return new Promise((resolve, reject) => {
+                    finish = () =>
+                        fails
+                            ? reject(new CodexError("missing-auth", "Late failure"))
+                            : resolve({ accessToken: "fake-token" });
+                });
+            };
+            const settings = settingsFixture({ [SETTINGS_CREDENTIALS_PATH]: "/tmp/previous.json" });
+            const window = windowFixture();
+            const page = createPreferencesPage(settings, metadata, window);
+            const [row, errorLabel] = page.children[3].children;
+            const [browse, reset] = row.children;
+            browse.emit("clicked");
+            const dialog = dialogs.at(-1);
+            dialog.file = toolkit.File.new_for_path("/tmp/pending.json");
+            dialog.emit("response", toolkit.ResponseType.ACCEPT);
+            assert.deepEqual(settings.writes, []);
+            assert.equal(cancellable.is_cancelled(), false);
+            if (action === "close") window.close();
+            else if (action === "reset") reset.emit("clicked");
+            else if (action === "browse") browse.emit("clicked");
+            else settings.set_string(SETTINGS_CREDENTIALS_PATH, "/tmp/external.json");
+            assert.equal(cancellable.is_cancelled(), true);
+            const writes = [...settings.writes];
+            finish();
+            await new Promise(setImmediate);
+            assert.deepEqual(settings.writes, writes);
+            assert.equal(errorLabel.visible, false);
+            assert.equal(
+                settings.get_string(SETTINGS_CREDENTIALS_PATH),
+                action === "reset"
+                    ? DEFAULT_CREDENTIALS_PATH
+                    : action === "external change"
+                      ? "/tmp/external.json"
+                      : "/tmp/previous.json",
+            );
+            window.close();
+        });
+    }
+}
 
 test("appearance dropdowns select their first option by default", () => {
     const page = createPreferencesPage(settingsFixture(), metadata, windowFixture());

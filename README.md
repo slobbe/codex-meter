@@ -48,7 +48,7 @@ If GNOME does not pick it up immediately, log out and back in.
 
 By default, Codex Meter reads `~/.codex/auth.json`. To use a different local credentials file, open **Preferences → Credentials → Browse…** and select the JSON file. Use the reset button to restore the default path.
 
-Changes apply immediately without restarting the extension. Usage caches and history are kept separately for each credentials-file path. The extension never modifies the credentials file.
+Usage caches and history are kept separately for each credentials-file path. The extension never modifies the credentials file.
 
 ## Uninstall
 

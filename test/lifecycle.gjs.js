@@ -74,6 +74,7 @@ async function testInFlightCancellationPreservation() {
             () => writeFile(localPath, "text"),
             () => appendFile(localPath, "text"),
             () => getCodexCredentials(),
+            () => getCodexCredentials(null, localPath),
             () => readSnapshot(),
             () => readHistory(localPath),
         ]) {
@@ -215,13 +216,21 @@ async function testAsyncAuthErrors() {
             [Gio.IOErrorEnum.PERMISSION_DENIED, "Codex auth file could not be read."],
         ]) {
             Gio.File.prototype.load_contents_async = async () => {
-                throw new GLib.Error(Gio.io_error_quark(), code, "read failure");
+                throw new GLib.Error(Gio.io_error_quark(), code, "private-credential-content");
             };
             let caught = false;
             try {
                 await getCodexCredentials();
             } catch (error) {
-                if (!error.message.startsWith(message) || !error.message.includes("codex login")) {
+                if (
+                    !error.message.startsWith(message) ||
+                    !error.message.includes(
+                        "Select a valid Codex credentials file in Preferences",
+                    ) ||
+                    !error.message.includes("or sign in again.") ||
+                    error.message.includes("private-credential-content") ||
+                    error.technicalMessage.includes("private-credential-content")
+                ) {
                     throw error;
                 }
                 caught = true;
@@ -229,9 +238,9 @@ async function testAsyncAuthErrors() {
             if (!caught) throw new Error("Auth read failure was swallowed");
         }
         for (const [text, message] of [
-            ["[]", "Codex auth file is malformed."],
-            ["{", "Codex auth file could not be read."],
-            ["{}", "Codex access token is missing."],
+            ["[]", "Codex auth file must contain a JSON object."],
+            ["{", "Codex auth file contains invalid JSON."],
+            ["{}", "Codex access token is missing or invalid."],
         ]) {
             Gio.File.prototype.load_contents_async = async () => [new TextEncoder().encode(text)];
             let caught = false;

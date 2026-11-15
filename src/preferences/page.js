@@ -2,6 +2,8 @@ import Adw from "gi://Adw";
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
 import Gtk from "gi://Gtk";
+import { getCodexCredentials } from "../codex/auth/auth.js";
+import { isCodexError } from "../codex/error.js";
 import { getUsageWindowMetadata, sortUsageQuotas } from "../codex/usage/model.js";
 import {
     DEFAULT_CREDENTIALS_PATH,
@@ -57,10 +59,48 @@ function createCredentialsGroup(settings, settingsSignalIds, window) {
     row.add_suffix(browse);
     row.add_suffix(reset);
     group.add(row);
+    const errorLabel = new Gtk.Label({
+        visible: false,
+        wrap: true,
+        xalign: 0,
+        margin_top: 6,
+        css_classes: ["error"],
+    });
+    group.add(errorLabel);
+
+    let closed = false;
+    let validationCancellable = null;
+    const clearValidation = () => {
+        validationCancellable?.cancel();
+        validationCancellable = null;
+        errorLabel.visible = false;
+        errorLabel.label = "";
+    };
+    const validateSelection = async (path) => {
+        clearValidation();
+        const cancellable = new Gio.Cancellable();
+        validationCancellable = cancellable;
+        try {
+            await getCodexCredentials(cancellable, path);
+            if (closed || cancellable.is_cancelled() || validationCancellable !== cancellable)
+                return;
+            settings.set_string(SETTINGS_CREDENTIALS_PATH, path);
+        } catch (error) {
+            if (closed || cancellable.is_cancelled() || validationCancellable !== cancellable)
+                return;
+            errorLabel.label = isCodexError(error)
+                ? error.message
+                : "Could not verify this file. Select a readable Codex credentials file.";
+            errorLabel.visible = true;
+        } finally {
+            if (validationCancellable === cancellable) validationCancellable = null;
+        }
+    };
 
     const resolvePath = (path) =>
         path.startsWith("~/") ? GLib.build_filenamev([GLib.get_home_dir(), path.slice(2)]) : path;
     const update = () => {
+        clearValidation();
         const path = settings.get_string(SETTINGS_CREDENTIALS_PATH);
         row.subtitle = path;
         reset.sensitive = resolvePath(path) !== resolvePath(DEFAULT_CREDENTIALS_PATH);
@@ -68,7 +108,6 @@ function createCredentialsGroup(settings, settingsSignalIds, window) {
     update();
     settingsSignalIds.push(settings.connect(`changed::${SETTINGS_CREDENTIALS_PATH}`, update));
 
-    let closed = false;
     let dialog = null;
     let responseSignalId = null;
     const destroyDialog = () => {
@@ -81,6 +120,7 @@ function createCredentialsGroup(settings, settingsSignalIds, window) {
     };
     const browseSignalId = browse.connect("clicked", () => {
         if (closed) return;
+        clearValidation();
         if (dialog) {
             dialog.show();
             return;
@@ -105,18 +145,21 @@ function createCredentialsGroup(settings, settingsSignalIds, window) {
             const path =
                 response === Gtk.ResponseType.ACCEPT ? chooser.get_file()?.get_path() : null;
             destroyDialog();
-            if (path) settings.set_string(SETTINGS_CREDENTIALS_PATH, path);
+            if (path) void validateSelection(path);
         });
         dialog.show();
     });
     const resetSignalId = reset.connect("clicked", () => {
-        if (!closed) settings.reset(SETTINGS_CREDENTIALS_PATH);
+        if (closed) return;
+        clearValidation();
+        settings.reset(SETTINGS_CREDENTIALS_PATH);
     });
     return {
         group,
         cleanup() {
             if (closed) return;
             closed = true;
+            clearValidation();
             destroyDialog();
             browse.disconnect(browseSignalId);
             reset.disconnect(resetSignalId);
