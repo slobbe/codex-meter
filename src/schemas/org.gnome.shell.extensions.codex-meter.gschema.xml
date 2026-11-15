@@ -2,6 +2,12 @@
 <schemalist>
   <schema id="org.gnome.shell.extensions.codex-meter" path="/org/gnome/shell/extensions/codex-meter/">
 
+    <key name="credentials-path" type="s">
+      <default>'~/.codex/auth.json'</default>
+      <summary>Credentials file</summary>
+      <description>Local Codex credentials file. A leading ~/ is resolved to the user's home directory.</description>
+    </key>
+
     <key name="top-panel-display-mode" type="s">
       <default>'bars'</default>
       <summary>Show percentages as</summary>

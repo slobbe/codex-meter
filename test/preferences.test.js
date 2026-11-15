@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 import test from "node:test";
 import {
+    DEFAULT_CREDENTIALS_PATH,
     migrateSettings,
     readSettings,
     SETTINGS_AUTO_APPLY_BANKED_RESET,
@@ -10,6 +11,7 @@ import {
     SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD,
     SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW,
     SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES,
+    SETTINGS_CREDENTIALS_PATH,
     SETTINGS_PERCENT_DISPLAY_MODE,
     SETTINGS_TOP_PANEL_DISPLAY_MODE,
     SETTINGS_TOP_PANEL_INDICATOR_ICON,
@@ -19,7 +21,10 @@ const pageUrl = new URL("../src/preferences/page.js", import.meta.url).href;
 const prefsUrl = new URL("../src/prefs.js", import.meta.url).href;
 const snapshotStubUrl = `data:text/javascript,${encodeURIComponent(`
     export const cache = { read: async () => null };
-    export const readSnapshot = cancellable => cache.read(cancellable);
+    export class UsageService {
+        constructor(credentialsPath) { this.credentialsPath = credentialsPath; }
+        readCachedSnapshot({ cancellable }) { return cache.read(cancellable, this.credentialsPath); }
+    }
 `)}`;
 const { cache } = await import(snapshotStubUrl);
 const stubUrl = `data:text/javascript,${encodeURIComponent(`
@@ -31,8 +36,16 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         }
         add(child) { this.children.push(child); }
         append(child) { this.add(child); }
-        connect(signal, callback) { (this.signals ??= {})[signal] = callback; }
-        emit(signal) { this.signals[signal](); }
+        connect(signal, callback) {
+            (this.signals ??= {})[signal] = callback;
+            return signal;
+        }
+        disconnect(id) {
+            if (!this.signals?.[id]) throw new Error("Signal already disconnected");
+            delete this.signals[id];
+        }
+        emit(signal, ...args) { this.signals?.[signal]?.(this, ...args); }
+        add_suffix(child) { this.add(child); }
         set_markup(markup) { this.markup = markup; }
         get model() { return this._model; }
         set model(value) {
@@ -41,9 +54,32 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
             this.signals?.["notify::selected"]?.();
         }
     }
+    export const dialogs = [];
+    class FileChooserNative extends Widget {
+        constructor(options) { super(options); dialogs.push(this); }
+        add_filter(filter) { (this.filters ??= []).push(filter); }
+        set_filter(filter) { this.filter = filter; }
+        set_file(file) { this.file = file; }
+        get_file() { return this.file; }
+        show() { this.shown = (this.shown ?? 0) + 1; }
+        destroy() {
+            if (this.destroyed) throw new Error("Dialog already destroyed");
+            if (Object.keys(this.signals ?? {}).length) throw new Error("Dialog signals still connected");
+            this.destroyed = true;
+        }
+    }
     export default {
-        PreferencesPage: Widget, PreferencesGroup: Widget, SwitchRow: Widget,
+        PreferencesPage: Widget, PreferencesGroup: Widget, SwitchRow: Widget, ActionRow: Widget,
         ComboRow: Widget, SpinRow: Widget, Adjustment: Widget, Box: Widget, Label: Widget,
+        Button: Widget, FileChooserNative,
+        FileFilter: class extends Widget {
+            add_pattern(pattern) { (this.patterns ??= []).push(pattern); }
+        },
+        FileChooserAction: { OPEN: 0 }, ResponseType: { ACCEPT: -3, CANCEL: -6, DELETE_EVENT: -4 },
+        Align: { CENTER: 3 },
+        File: { new_for_path: path => ({ get_path: () => path }) },
+        get_home_dir: () => "/home/test",
+        build_filenamev: parts => parts.join("/"),
         Cancellable: class {
             cancel() { this.cancelled = true; }
             is_cancelled() { return this.cancelled ?? false; }
@@ -54,9 +90,10 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     };
     export class ExtensionPreferences {}
 `)}`;
+const { default: toolkit, dialogs } = await import(stubUrl);
 const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
-        if (context.parentURL === prefsUrl && specifier === "./codex/usage/snapshot.js") {
+        if (context.parentURL === prefsUrl && specifier === "./codex/usage/service.js") {
             return { url: snapshotStubUrl, shortCircuit: true };
         }
         if (context.parentURL === prefsUrl && specifier.includes("banked-resets")) {
@@ -86,6 +123,7 @@ function settingsFixture(values = {}) {
         "top-panel-display-mode": "bars",
         "percent-display-mode": "left",
         [SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW]: "any",
+        [SETTINGS_CREDENTIALS_PATH]: DEFAULT_CREDENTIALS_PATH,
         ...values,
     };
     const signals = new Map();
@@ -116,6 +154,13 @@ function settingsFixture(values = {}) {
         disconnected: [],
         bindings,
         writes: [],
+        resets: [],
+        reset(key) {
+            assert.equal(key, SETTINGS_CREDENTIALS_PATH);
+            this.resets.push(key);
+            strings[key] = DEFAULT_CREDENTIALS_PATH;
+            emit(`changed::${key}`);
+        },
         get_string: (key) => strings[key],
         set_string(key, value) {
             this.writes.push({ key, value });
@@ -189,6 +234,149 @@ test("preferences groups appearance and background refresh with descriptive labe
         ["Interval (minutes)"],
     );
     assert.equal(page.children[1].children[0].subtitle, "Set to 0 to refresh manually");
+});
+
+test("credentials group follows banked resets and tracks the configured file", () => {
+    const settings = settingsFixture();
+    const window = windowFixture();
+    const page = createPreferencesPage(settings, metadata, window);
+    assert.deepEqual(
+        page.children.slice(0, 4).map((group) => group.title),
+        ["Appearance", "Background refresh", "Banked resets", "Credentials"],
+    );
+    assert.equal(page.children[4].children[0].children[0].label, "Codex Meter test");
+    const row = page.children[3].children[0];
+    const [, reset] = row.children;
+    assert.equal(row.title, "Credentials file");
+    assert.equal(row.subtitle, DEFAULT_CREDENTIALS_PATH);
+    assert.equal(row.subtitle_selectable, true);
+    assert.equal(reset.sensitive, false);
+    assert.deepEqual(settings.writes, []);
+
+    settings.set_string(SETTINGS_CREDENTIALS_PATH, "/home/test/.codex/auth.json");
+    assert.equal(row.subtitle, "/home/test/.codex/auth.json");
+    assert.equal(reset.sensitive, false);
+    settings.set_string(SETTINGS_CREDENTIALS_PATH, "/tmp/custom-auth.json");
+    assert.equal(row.subtitle, "/tmp/custom-auth.json");
+    assert.equal(reset.sensitive, true);
+    window.close();
+    settings.set_string(SETTINGS_CREDENTIALS_PATH, DEFAULT_CREDENTIALS_PATH);
+    assert.equal(row.subtitle, "/tmp/custom-auth.json");
+});
+
+test("credentials Browse initializes the current file and saves local selections", () => {
+    for (const [configured, resolved] of [
+        [DEFAULT_CREDENTIALS_PATH, "/home/test/.codex/auth.json"],
+        ["~/work/auth.json", "/home/test/work/auth.json"],
+        ["/tmp/auth.json", "/tmp/auth.json"],
+    ]) {
+        const settings = settingsFixture({ [SETTINGS_CREDENTIALS_PATH]: configured });
+        const window = windowFixture();
+        const page = createPreferencesPage(settings, metadata, window);
+        const row = page.children[3].children[0];
+        const [browse, reset] = row.children;
+        const count = dialogs.length;
+        browse.emit("clicked");
+        const dialog = dialogs.at(-1);
+        assert.equal(dialogs.length, count + 1);
+        assert.equal(dialog.transient_for, window);
+        assert.equal(dialog.modal, true);
+        assert.equal(dialog.action, toolkit.FileChooserAction.OPEN);
+        assert.equal(dialog.filters.length, 1);
+        assert.equal(dialog.filter, dialog.filters[0]);
+        assert.equal(dialog.filter.name, "JSON files (*.json)");
+        assert.deepEqual(dialog.filter.patterns, ["*.json"]);
+        assert.equal(dialog.file.get_path(), resolved);
+        assert.equal(dialog.shown, 1);
+        assert.deepEqual(settings.writes, []);
+        browse.emit("clicked");
+        assert.equal(dialogs.length, count + 1);
+        assert.equal(dialog.shown, 2);
+
+        const lateResponse = dialog.signals.response;
+        dialog.file = toolkit.File.new_for_path("/tmp/selected.json");
+        dialog.emit("response", toolkit.ResponseType.ACCEPT);
+        assert.deepEqual(settings.writes, [
+            { key: SETTINGS_CREDENTIALS_PATH, value: "/tmp/selected.json" },
+        ]);
+        assert.equal(row.subtitle, "/tmp/selected.json");
+        assert.equal(reset.sensitive, true);
+        assert.equal(dialog.destroyed, true);
+        assert.deepEqual(dialog.signals, {});
+        lateResponse(dialog, toolkit.ResponseType.ACCEPT);
+        assert.equal(settings.writes.length, 1);
+
+        browse.emit("clicked");
+        assert.notEqual(dialogs.at(-1), dialog);
+        assert.equal(dialogs.at(-1).file.get_path(), "/tmp/selected.json");
+        window.close();
+    }
+});
+
+test("credentials chooser cancellation and non-local or empty selections leave settings unchanged", () => {
+    for (const [response, file] of [
+        [toolkit.ResponseType.CANCEL, toolkit.File.new_for_path("/tmp/ignored.json")],
+        [toolkit.ResponseType.DELETE_EVENT, null],
+        [toolkit.ResponseType.ACCEPT, null],
+        [toolkit.ResponseType.ACCEPT, { get_path: () => null }],
+    ]) {
+        const settings = settingsFixture();
+        const window = windowFixture();
+        const page = createPreferencesPage(settings, metadata, window);
+        const row = page.children[3].children[0];
+        row.children[0].emit("clicked");
+        const dialog = dialogs.at(-1);
+        dialog.file = file;
+        dialog.emit("response", response);
+        assert.deepEqual(settings.writes, []);
+        assert.equal(row.subtitle, DEFAULT_CREDENTIALS_PATH);
+        assert.equal(dialog.destroyed, true);
+        assert.deepEqual(dialog.signals, {});
+        window.close();
+    }
+});
+
+test("credentials reset uses the schema default and updates the row", () => {
+    const settings = settingsFixture({ [SETTINGS_CREDENTIALS_PATH]: "~/custom/auth.json" });
+    const window = windowFixture();
+    const page = createPreferencesPage(settings, metadata, window);
+    const row = page.children[3].children[0];
+    const [, reset] = row.children;
+    assert.equal(reset.sensitive, true);
+    reset.emit("clicked");
+    assert.deepEqual(settings.resets, [SETTINGS_CREDENTIALS_PATH]);
+    assert.deepEqual(settings.writes, []);
+    assert.equal(settings.get_string(SETTINGS_CREDENTIALS_PATH), DEFAULT_CREDENTIALS_PATH);
+    assert.equal(row.subtitle, DEFAULT_CREDENTIALS_PATH);
+    assert.equal(reset.sensitive, false);
+    window.close();
+});
+
+test("closing preferences destroys the credentials chooser and prevents late writes", () => {
+    const settings = settingsFixture({ [SETTINGS_CREDENTIALS_PATH]: "/tmp/custom.json" });
+    const window = windowFixture();
+    const page = createPreferencesPage(settings, metadata, window);
+    const [browse, reset] = page.children[3].children[0].children;
+    const lateBrowse = browse.signals.clicked;
+    const lateReset = reset.signals.clicked;
+    browse.emit("clicked");
+    const dialog = dialogs.at(-1);
+    const lateResponse = dialog.signals.response;
+    dialog.file = toolkit.File.new_for_path("/tmp/late.json");
+    assert.equal(window.close(), false);
+    assert.equal(dialog.destroyed, true);
+    assert.deepEqual(dialog.signals, {});
+    assert.deepEqual(browse.signals, {});
+    assert.deepEqual(reset.signals, {});
+    assert.equal(settings.signals.size, 0);
+    const count = dialogs.length;
+    lateResponse(dialog, toolkit.ResponseType.ACCEPT);
+    lateBrowse();
+    lateReset();
+    assert.deepEqual(settings.writes, []);
+    assert.deepEqual(settings.resets, []);
+    assert.equal(dialogs.length, count);
+    assert.equal(window.close(), false);
 });
 
 test("appearance dropdowns select their first option by default", () => {
@@ -619,8 +807,8 @@ test("preferences entry point reads cached usage without loading inventory", asy
     assert.equal(page.title, "Codex Meter");
     assert.deepEqual(page.children[2].children[2].model, ["Any", "Cached window"]);
     assert.equal(cancellable.is_cancelled(), false);
-    assert.equal(page.children[3].children[0].children[0].label, "Codex Meter test");
-    assert.equal(settings.signals.size, 6);
+    assert.equal(page.children[4].children[0].children[0].label, "Codex Meter test");
+    assert.equal(settings.signals.size, 7);
     assert.equal(window.close(), false);
     assert.equal(cancellable.is_cancelled(), true);
     assert.equal(settings.signals.size, 0);
@@ -687,7 +875,7 @@ test("closing preferences disconnects every settings callback without preventing
     const [percent, icon, display] = page.children[0].children;
     const [refresh] = page.children[1].children;
     const signalIds = [...settings.signals.keys()];
-    assert.equal(signalIds.length, 6);
+    assert.equal(signalIds.length, 7);
 
     settings.set_string(SETTINGS_PERCENT_DISPLAY_MODE, "used");
     settings.set_string(SETTINGS_TOP_PANEL_INDICATOR_ICON, "openai");
@@ -730,13 +918,13 @@ test("closing one window preserves other windows and reopening does not leak han
         const window = windowFixture();
         const page = createPreferencesPage(settings, metadata, window);
         const icon = page.children[0].children[1];
-        assert.equal(settings.signals.size, 12);
+        assert.equal(settings.signals.size, 14);
         settings.set_string(SETTINGS_TOP_PANEL_INDICATOR_ICON, "openai");
         assert.equal(firstIcon.selected, 1);
         assert.equal(icon.selected, 1);
 
         assert.equal(window.close(), false);
-        assert.equal(settings.signals.size, 6);
+        assert.equal(settings.signals.size, 7);
         settings.set_string(SETTINGS_TOP_PANEL_INDICATOR_ICON, "text");
         assert.equal(firstIcon.selected, 2);
         assert.equal(icon.selected, 1);
@@ -744,5 +932,5 @@ test("closing one window preserves other windows and reopening does not leak han
 
     assert.equal(firstWindow.close(), false);
     assert.equal(settings.signals.size, 0);
-    assert.equal(settings.disconnected.length, 24);
+    assert.equal(settings.disconnected.length, 28);
 });

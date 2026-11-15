@@ -44,6 +44,12 @@ gnome-extensions enable codex-meter@slobbe.github.io
 
 If GNOME does not pick it up immediately, log out and back in.
 
+## Credentials file
+
+By default, Codex Meter reads `~/.codex/auth.json`. To use a different local credentials file, open **Preferences → Credentials → Browse…** and select the JSON file. Use the reset button to restore the default path.
+
+Changes apply immediately without restarting the extension. Usage caches and history are kept separately for each credentials-file path. The extension never modifies the credentials file.
+
 ## Uninstall
 
 To uninstall:
@@ -64,7 +70,7 @@ Codex Meter relies on ChatGPT backend endpoints, so upstream changes may affect 
 
 ## Privacy
 
-Codex Meter reads credentials from `~/.codex/auth.json` to request usage and banked reset data from ChatGPT. It does not store credentials or send them anywhere else.
+Codex Meter reads credentials from the file selected in Preferences (default `~/.codex/auth.json`) to request usage and banked reset data from ChatGPT. It does not store credentials or send them anywhere else.
 
 Usage data is cached locally in `~/.cache/codex-meter` and `~/.local/state/codex-meter`, with history kept for roughly 21 days (up to 25,000 entries).
 

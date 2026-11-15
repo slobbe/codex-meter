@@ -26,15 +26,16 @@ const AUTO_APPLY_BANKED_RESET_WINDOW_MS = 60 * 60 * 1000;
 export class CodexMonitor {
     onChange = null;
 
-    constructor(settings, notify) {
+    constructor(settings, notify, credentialsPath = undefined) {
         this._settings = settings;
+        this._credentialsPath = credentialsPath;
         this._notify = notify;
         const values = readSettings(settings);
         this._autoApplyBankedReset = values.autoApplyBankedReset;
         this._autoApplyBankedResetOnUsage = values.autoApplyBankedResetOnUsage;
         this._autoApplyBankedResetUsageThreshold = values.autoApplyBankedResetUsageThreshold;
         this._autoApplyBankedResetUsageWindow = values.autoApplyBankedResetUsageWindow;
-        this._usageService = new UsageService();
+        this._usageService = new UsageService(credentialsPath);
         this._usageRefreshTask = new PeriodicTask(values.backgroundRefreshIntervalSeconds, () =>
             this.refreshUsage(),
         );
@@ -160,7 +161,10 @@ export class CodexMonitor {
         this._bankedResetRefreshPromise = Promise.resolve().then(async () => {
             try {
                 cancellable.set_error_if_cancelled();
-                const response = await listCodexBankedResets({ cancellable });
+                const response = await listCodexBankedResets({
+                    cancellable,
+                    credentialsPath: this._credentialsPath,
+                });
                 if (this._lifecycleCancellable.is_cancelled()) return null;
                 this._bankedResetSnapshot = response;
                 return response;
@@ -249,7 +253,10 @@ export class CodexMonitor {
         this._redeemBankedResetCancellable = cancellable;
         this._emitChange();
         try {
-            await redeemCodexBankedReset(creditId, { cancellable });
+            await redeemCodexBankedReset(creditId, {
+                cancellable,
+                credentialsPath: this._credentialsPath,
+            });
             if (this._lifecycleCancellable.is_cancelled() || cancellable.is_cancelled()) return;
             this._notify(automaticMessage ?? "Banked Codex reset redeemed.");
             // A request started before redemption must finish before fetching fresh inventory.

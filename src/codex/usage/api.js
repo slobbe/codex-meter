@@ -19,7 +19,7 @@ const CODEX_API_CONFIG = {
 export async function refreshCodexUsage(options = {}) {
     const cancellable = options.cancellable ?? null;
     cancellable?.set_error_if_cancelled();
-    const token = await getCodexAccessToken(cancellable);
+    const token = await getCodexAccessToken(cancellable, options.credentialsPath);
     cancellable?.set_error_if_cancelled();
     const apiResponse = await fetchJson(CODEX_USAGE_URL, CODEX_API_CONFIG, {
         headers: { Authorization: `Bearer ${token}` },

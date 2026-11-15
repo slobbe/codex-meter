@@ -17,7 +17,7 @@ import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
 import { CodexMonitor } from "./background/monitor.js";
 import { CodexMeterIndicator } from "./panel/indicator.js";
-import { migrateSettings } from "./preferences/settings.js";
+import { migrateSettings, SETTINGS_CREDENTIALS_PATH } from "./preferences/settings.js";
 
 export default class CodexMeterExtension extends Extension {
     _monitor = null;
@@ -27,8 +27,22 @@ export default class CodexMeterExtension extends Extension {
     enable() {
         const settings = this.getSettings();
         migrateSettings(settings);
-        this._monitor = new CodexMonitor(settings, (message) =>
-            Main.notify("Codex Meter", message),
+        this._settings = settings;
+        this._credentialsChangedId = settings.connect(
+            `changed::${SETTINGS_CREDENTIALS_PATH}`,
+            () => {
+                this._stopRuntime();
+                this._startRuntime(settings);
+            },
+        );
+        this._startRuntime(settings);
+    }
+
+    _startRuntime(settings) {
+        this._monitor = new CodexMonitor(
+            settings,
+            (message) => Main.notify("Codex Meter", message),
+            settings.get_string(SETTINGS_CREDENTIALS_PATH),
         );
         this._indicator = new CodexMeterIndicator(this, this._monitor);
         Main.panel.addToStatusArea(this.uuid, this._indicator);
@@ -37,6 +51,13 @@ export default class CodexMeterExtension extends Extension {
     }
 
     disable() {
+        this._settings.disconnect(this._credentialsChangedId);
+        this._settings = null;
+        this._credentialsChangedId = null;
+        this._stopRuntime();
+    }
+
+    _stopRuntime() {
         this._monitor?.stop();
         this._indicator?.destroy();
         this._monitor = null;

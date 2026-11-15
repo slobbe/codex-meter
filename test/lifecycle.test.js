@@ -6,6 +6,12 @@ const serviceUrl = new URL("../src/codex/usage/service.js", import.meta.url).hre
 const monitorUrl = new URL("../src/background/monitor.js", import.meta.url).href;
 const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export const io = {};
+    export const CACHE_DIR = '/cache';
+    export const STATE_DIR = '/state';
+    export const DEFAULT_CREDENTIALS_PATH = '~/.codex/auth.json';
+    export const SNAPSHOT_PATH = '/cache/codex/snapshot.json';
+    export const HISTORY_PATH = '/state/codex/usage-history.jsonl';
+    export const resolveCredentialsPath = (path = DEFAULT_CREDENTIALS_PATH) => path;
     export class CancellationError extends Error {}
     export class Cancellable {
         cancel() { this.cancelled = true; }

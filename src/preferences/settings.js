@@ -1,3 +1,7 @@
+export const SETTINGS_CREDENTIALS_PATH = "credentials-path";
+
+export const DEFAULT_CREDENTIALS_PATH = "~/.codex/auth.json";
+
 export const SETTINGS_TOP_PANEL_DISPLAY_MODE = "top-panel-display-mode";
 
 export const SETTINGS_TOP_PANEL_INDICATOR_ICON = "top-panel-indicator-icon";

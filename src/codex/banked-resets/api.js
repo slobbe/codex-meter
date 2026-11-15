@@ -23,7 +23,7 @@ const CODEX_BANKED_RESETS_API_CONFIG = {
 export async function listCodexBankedResets(options = {}) {
     const cancellable = options.cancellable ?? null;
     cancellable?.set_error_if_cancelled();
-    const credentials = await getCodexCredentials(cancellable);
+    const credentials = await getCodexCredentials(cancellable, options.credentialsPath);
     cancellable?.set_error_if_cancelled();
     const response = await fetchJson(CODEX_BANKED_RESETS_URL, CODEX_BANKED_RESETS_API_CONFIG, {
         headers: createCodexBankedResetHeaders(credentials.accessToken, credentials.accountId),
@@ -36,7 +36,7 @@ export async function listCodexBankedResets(options = {}) {
 export async function redeemCodexBankedReset(creditId, options = {}) {
     const cancellable = options.cancellable ?? null;
     cancellable?.set_error_if_cancelled();
-    const credentials = await getCodexCredentials(cancellable);
+    const credentials = await getCodexCredentials(cancellable, options.credentialsPath);
     cancellable?.set_error_if_cancelled();
     const request = {
         credit_id: creditId,

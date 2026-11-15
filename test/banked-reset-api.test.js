@@ -24,7 +24,8 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES = "refresh";
     export const isCancellationError = () => false;
     export const formatRefreshFailure = () => "Usage refresh failed";
-    export async function getCodexCredentials(cancellable) {
+    export async function getCodexCredentials(cancellable, credentialsPath) {
+        io.authPaths.push(credentialsPath);
         io.authCalls.push(cancellable);
         await io.afterAuth?.();
         return io.credentials;
@@ -73,6 +74,7 @@ beforeEach(() => {
         credentials: { accessToken: "test-token", accountId: "test-account" },
         response: { available_count: 1, credits: [{ id: "credit-a", status: "available" }] },
         authCalls: [],
+        authPaths: [],
         requests: [],
         afterAuth: null,
         afterFetch: null,
@@ -80,6 +82,12 @@ beforeEach(() => {
 });
 
 for (const [name, operation] of operations) {
+    test(`${name} reads credentials from the configured file`, async () => {
+        if (name === "redeem") io.response = { code: "reset", windows_reset: 2 };
+        await operation({ credentialsPath: "/custom/auth.json" });
+        assert.deepEqual(io.authPaths, ["/custom/auth.json"]);
+    });
+
     test(`${name} sends authentication headers and optional account ID`, async () => {
         for (const accountId of ["test-account", null]) {
             io.credentials.accountId = accountId;

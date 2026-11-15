@@ -6,9 +6,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased] v0.13.0
 
-### Changed
+### Added
 
-- Changed release preparation to accept a different version from the planned changelog version, require a version higher than the latest release tag, and allow missing unreleased notes.
+- Added ability to configure a custom credentials file path (default `~/.codex/auth.json`).
 
 ## v0.12.0 (2026-11-13)
 

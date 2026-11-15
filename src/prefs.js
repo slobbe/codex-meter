@@ -3,7 +3,8 @@ import Gio from "gi://Gio";
 import Gtk from "gi://Gtk";
 import { ExtensionPreferences } from "resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js";
 
-import { readSnapshot } from "./codex/usage/snapshot.js";
+import { UsageService } from "./codex/usage/service.js";
+import { SETTINGS_CREDENTIALS_PATH } from "./preferences/settings.js";
 import { createPreferencesPage } from "./preferences/page.js";
 
 export default class CodexMeterPreferences extends ExtensionPreferences {
@@ -18,11 +19,18 @@ export default class CodexMeterPreferences extends ExtensionPreferences {
             cancellable.cancel();
             return false;
         });
-        const snapshot = await readSnapshot(cancellable).catch((error) => {
-            if (!cancellable.is_cancelled()) throw error;
-            return null;
-        });
-        if (cancellable.is_cancelled()) return;
+        let snapshot;
+        let credentialsPath;
+        do {
+            credentialsPath = settings.get_string(SETTINGS_CREDENTIALS_PATH);
+            snapshot = await new UsageService(credentialsPath)
+                .readCachedSnapshot({ cancellable })
+                .catch((error) => {
+                    if (!cancellable.is_cancelled()) throw error;
+                    return null;
+                });
+            if (cancellable.is_cancelled()) return;
+        } while (credentialsPath !== settings.get_string(SETTINGS_CREDENTIALS_PATH));
         window.add(createPreferencesPage(settings, this.metadata, window, snapshot));
     }
 }

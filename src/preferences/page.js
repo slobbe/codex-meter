@@ -1,8 +1,10 @@
 import Adw from "gi://Adw";
 import Gio from "gi://Gio";
+import GLib from "gi://GLib";
 import Gtk from "gi://Gtk";
 import { getUsageWindowMetadata, sortUsageQuotas } from "../codex/usage/model.js";
 import {
+    DEFAULT_CREDENTIALS_PATH,
     migrateSettings,
     MIN_REFRESH_INTERVAL_MINUTES,
     SETTINGS_AUTO_APPLY_BANKED_RESET,
@@ -10,6 +12,7 @@ import {
     SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD,
     SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW,
     SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES,
+    SETTINGS_CREDENTIALS_PATH,
     SETTINGS_PERCENT_DISPLAY_MODE,
     SETTINGS_TOP_PANEL_DISPLAY_MODE,
     SETTINGS_TOP_PANEL_INDICATOR_ICON,
@@ -25,14 +28,100 @@ export function createPreferencesPage(settings, metadata, window, snapshot = nul
     page.add(createAppearanceGroup(settings, settingsSignalIds));
     page.add(createBackgroundRefreshGroup(settings, settingsSignalIds));
     page.add(createBankedResetsGroup(settings, settingsSignalIds, snapshot?.quotas ?? []));
+    const credentials = createCredentialsGroup(settings, settingsSignalIds, window);
+    page.add(credentials.group);
     page.add(createFooterGroup(metadata));
     window.connect("close-request", () => {
+        credentials.cleanup();
         for (const id of settingsSignalIds.splice(0)) {
             settings.disconnect(id);
         }
         return false;
     });
     return page;
+}
+
+function createCredentialsGroup(settings, settingsSignalIds, window) {
+    const group = new Adw.PreferencesGroup({ title: "Credentials" });
+    const row = new Adw.ActionRow({
+        title: "Credentials file",
+        subtitle_selectable: true,
+        use_markup: false,
+    });
+    const browse = new Gtk.Button({ label: "Browse…", valign: Gtk.Align.CENTER });
+    const reset = new Gtk.Button({
+        icon_name: "edit-undo-symbolic",
+        tooltip_text: "Reset to default credentials file",
+        valign: Gtk.Align.CENTER,
+    });
+    row.add_suffix(browse);
+    row.add_suffix(reset);
+    group.add(row);
+
+    const resolvePath = (path) =>
+        path.startsWith("~/") ? GLib.build_filenamev([GLib.get_home_dir(), path.slice(2)]) : path;
+    const update = () => {
+        const path = settings.get_string(SETTINGS_CREDENTIALS_PATH);
+        row.subtitle = path;
+        reset.sensitive = resolvePath(path) !== resolvePath(DEFAULT_CREDENTIALS_PATH);
+    };
+    update();
+    settingsSignalIds.push(settings.connect(`changed::${SETTINGS_CREDENTIALS_PATH}`, update));
+
+    let closed = false;
+    let dialog = null;
+    let responseSignalId = null;
+    const destroyDialog = () => {
+        if (!dialog) return;
+        const current = dialog;
+        dialog = null;
+        current.disconnect(responseSignalId);
+        responseSignalId = null;
+        current.destroy();
+    };
+    const browseSignalId = browse.connect("clicked", () => {
+        if (closed) return;
+        if (dialog) {
+            dialog.show();
+            return;
+        }
+        dialog = new Gtk.FileChooserNative({
+            title: "Select credentials file",
+            transient_for: window,
+            modal: true,
+            action: Gtk.FileChooserAction.OPEN,
+            accept_label: "Select",
+            cancel_label: "Cancel",
+        });
+        const filter = new Gtk.FileFilter({ name: "JSON files (*.json)" });
+        filter.add_pattern("*.json");
+        dialog.add_filter(filter);
+        dialog.set_filter(filter);
+        dialog.set_file(
+            Gio.File.new_for_path(resolvePath(settings.get_string(SETTINGS_CREDENTIALS_PATH))),
+        );
+        responseSignalId = dialog.connect("response", (chooser, response) => {
+            if (closed || chooser !== dialog) return;
+            const path =
+                response === Gtk.ResponseType.ACCEPT ? chooser.get_file()?.get_path() : null;
+            destroyDialog();
+            if (path) settings.set_string(SETTINGS_CREDENTIALS_PATH, path);
+        });
+        dialog.show();
+    });
+    const resetSignalId = reset.connect("clicked", () => {
+        if (!closed) settings.reset(SETTINGS_CREDENTIALS_PATH);
+    });
+    return {
+        group,
+        cleanup() {
+            if (closed) return;
+            closed = true;
+            destroyDialog();
+            browse.disconnect(browseSignalId);
+            reset.disconnect(resetSignalId);
+        },
+    };
 }
 
 function createBankedResetsGroup(settings, settingsSignalIds, quotas) {
