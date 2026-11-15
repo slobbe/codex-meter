@@ -9,6 +9,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 - Added ability to configure a custom credentials file path (default `~/.codex/auth.json`).
+- Added optional notifications for low and exhausted usage windows, with a configurable warning threshold.
 
 ## v0.12.0 (2026-11-13)
 

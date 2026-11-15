@@ -64,5 +64,16 @@
       <description>Percentage remaining below which any active limit triggers automatic banked reset redemption when enabled</description>
       <range min="1" max="100"/>
     </key>
+    <key name="usage-notifications" type="b">
+      <default>false</default>
+      <summary>Usage notifications</summary>
+      <description>Notify after successful usage refreshes when remaining usage is low or exhausted, once per notification level per quota cycle while enabled</description>
+    </key>
+    <key name="usage-notification-threshold" type="u">
+      <default>10</default>
+      <summary>Warning threshold (% left)</summary>
+      <description>Percentage remaining at or below which to warn when usage notifications are enabled</description>
+      <range min="1" max="100"/>
+    </key>
   </schema>
 </schemalist>

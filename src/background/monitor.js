@@ -7,6 +7,8 @@ import {
     SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD,
     SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW,
     SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES,
+    SETTINGS_USAGE_NOTIFICATIONS,
+    SETTINGS_USAGE_NOTIFICATION_THRESHOLD,
 } from "../preferences/settings.js";
 import { UsageService } from "../codex/usage/service.js";
 import { isCodexError } from "../codex/error.js";
@@ -31,6 +33,9 @@ export class CodexMonitor {
         this._credentialsPath = credentialsPath;
         this._notify = notify;
         const values = readSettings(settings);
+        this._usageNotifications = values.usageNotifications;
+        this._usageNotificationThreshold = values.usageNotificationThreshold;
+        this._usageNotificationStates = new Map();
         this._autoApplyBankedReset = values.autoApplyBankedReset;
         this._autoApplyBankedResetOnUsage = values.autoApplyBankedResetOnUsage;
         this._autoApplyBankedResetUsageThreshold = values.autoApplyBankedResetUsageThreshold;
@@ -117,6 +122,9 @@ export class CodexMonitor {
         this._settings.disconnect(this._autoApplyThresholdChangedId);
         this._settings.disconnect(this._autoApplyWindowChangedId);
         this._settings.disconnect(this._refreshIntervalChangedId);
+        this._settings.disconnect(this._usageNotificationsChangedId);
+        this._settings.disconnect(this._usageNotificationThresholdChangedId);
+        this._usageNotificationStates.clear();
         this.onChange = null;
     }
 
@@ -279,6 +287,21 @@ export class CodexMonitor {
     }
 
     _connectSettings() {
+        this._usageNotificationsChangedId = this._settings.connect(
+            `changed::${SETTINGS_USAGE_NOTIFICATIONS}`,
+            () => {
+                this._usageNotifications = this._settings.get_boolean(SETTINGS_USAGE_NOTIFICATIONS);
+                this._usageNotificationStates.clear();
+            },
+        );
+        this._usageNotificationThresholdChangedId = this._settings.connect(
+            `changed::${SETTINGS_USAGE_NOTIFICATION_THRESHOLD}`,
+            () => {
+                this._usageNotificationThreshold = this._settings.get_uint(
+                    SETTINGS_USAGE_NOTIFICATION_THRESHOLD,
+                );
+            },
+        );
         this._autoApplyChangedId = this._settings.connect(
             `changed::${SETTINGS_AUTO_APPLY_BANKED_RESET}`,
             () => {
@@ -339,6 +362,7 @@ export class CodexMonitor {
             this._cachedFailureMessage = null;
             await this._loadPrediction(this._snapshot, cancellable);
             cancellable?.set_error_if_cancelled();
+            this._notifyUsage(snapshot);
             return snapshot;
         } catch (error) {
             if (this._lifecycleCancellable.is_cancelled() || isCancellationError(error)) return;
@@ -422,6 +446,39 @@ export class CodexMonitor {
         } catch (error) {
             if (isCancellationError(error)) throw error;
             this._history = [];
+        }
+    }
+
+    _notifyUsage(snapshot) {
+        if (!this._usageNotifications || this._lifecycleCancellable.is_cancelled()) return;
+        const now = Date.now() / 1000;
+        for (const quota of snapshot.quotas) {
+            if ((quota.resetAt ?? Infinity) <= now) continue;
+            const remaining = Math.max(0, 100 - quota.usedPercent);
+            // limitReached is account-wide, not specific to this usage window.
+            const exhausted = remaining === 0;
+            let state = this._usageNotificationStates.get(quota.id);
+            // A new reset deadline or a redeemed reset starts a fresh notification cycle.
+            if (
+                !state ||
+                state.resetAt !== (quota.resetAt ?? null) ||
+                (state.exhausted && !exhausted) ||
+                (quota.usedPercent === 0 && state.usedPercent > 0)
+            ) {
+                state = { resetAt: quota.resetAt ?? null, warned: false, exhausted: false };
+                this._usageNotificationStates.set(quota.id, state);
+            }
+            state.usedPercent = quota.usedPercent;
+            if (exhausted && !state.exhausted) {
+                state.warned = true;
+                state.exhausted = true;
+                this._notify(`${quota.label} usage window exhausted.`);
+            } else if (!state.warned && remaining <= this._usageNotificationThreshold) {
+                state.warned = true;
+                this._notify(
+                    `${quota.label} usage window is running low: ${Number(remaining.toFixed(1))}% left.`,
+                );
+            }
         }
     }
 

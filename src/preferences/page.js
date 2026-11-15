@@ -18,6 +18,8 @@ import {
     SETTINGS_PERCENT_DISPLAY_MODE,
     SETTINGS_TOP_PANEL_DISPLAY_MODE,
     SETTINGS_TOP_PANEL_INDICATOR_ICON,
+    SETTINGS_USAGE_NOTIFICATIONS,
+    SETTINGS_USAGE_NOTIFICATION_THRESHOLD,
 } from "./settings.js";
 
 export function createPreferencesPage(settings, metadata, window, snapshot = null) {
@@ -32,6 +34,7 @@ export function createPreferencesPage(settings, metadata, window, snapshot = nul
     page.add(createBankedResetsGroup(settings, settingsSignalIds, snapshot?.quotas ?? []));
     const credentials = createCredentialsGroup(settings, settingsSignalIds, window);
     page.add(credentials.group);
+    page.add(createNotificationsGroup(settings, settingsSignalIds));
     page.add(createFooterGroup(metadata));
     window.connect("close-request", () => {
         credentials.cleanup();
@@ -265,6 +268,43 @@ function createUsageThresholdRow(settings, settingsSignalIds) {
         Gio.SettingsBindFlags.GET,
     );
     return row;
+}
+
+function createNotificationsGroup(settings, settingsSignalIds) {
+    const group = new Adw.PreferencesGroup({ title: "Notifications" });
+    group.add(
+        createBoundSwitchRow({
+            settings,
+            key: SETTINGS_USAGE_NOTIFICATIONS,
+            title: "Usage notifications",
+            subtitle: "Notify when remaining usage is low or exhausted",
+        }),
+    );
+    const key = SETTINGS_USAGE_NOTIFICATION_THRESHOLD;
+    const row = new Adw.SpinRow({
+        title: "Warning threshold (% left)",
+        subtitle: "Warn when remaining usage reaches this threshold",
+        adjustment: new Gtk.Adjustment({
+            lower: 1,
+            upper: 100,
+            step_increment: 1,
+            page_increment: 5,
+            value: settings.get_uint(key),
+        }),
+        climb_rate: 1,
+        digits: 0,
+    });
+    row.connect("notify::value", () => {
+        settings.set_uint(key, Math.min(100, Math.max(1, Math.round(row.value))));
+    });
+    settingsSignalIds.push(
+        settings.connect(`changed::${key}`, () => {
+            row.value = settings.get_uint(key);
+        }),
+    );
+    settings.bind(SETTINGS_USAGE_NOTIFICATIONS, row, "sensitive", Gio.SettingsBindFlags.GET);
+    group.add(row);
+    return group;
 }
 
 function createAppearanceGroup(settings, settingsSignalIds) {

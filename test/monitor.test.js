@@ -18,6 +18,8 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export class UsageService {}
     export class PeriodicTask { start() {} stop() {} }
     export const readSettings = () => ({ autoApplyBankedReset: false });
+    export const SETTINGS_USAGE_NOTIFICATIONS = "usage-notifications";
+    export const SETTINGS_USAGE_NOTIFICATION_THRESHOLD = "usage-notification-threshold";
     export const SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW = "usage-window";
     export const SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE = "auto-usage";
     export const SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD = "usage-threshold";
@@ -57,12 +59,162 @@ function deferred() {
 function fixture() {
     const notifications = [];
     const changes = [];
-    const settings = { connect() {}, disconnect() {} };
+    const callbacks = new Map();
+    const settings = {
+        connect(signal, callback) {
+            callbacks.set(signal, callback);
+            return signal;
+        },
+        disconnect(signal) {
+            callbacks.delete(signal);
+        },
+        get_boolean: () => false,
+        get_uint: () => 10,
+    };
     const monitor = new CodexMonitor(settings, (message) => notifications.push(message));
     monitor.onChange = (state) => changes.push(state);
     monitor.refreshUsage = async () => {};
-    return { monitor, notifications, changes };
+    return { monitor, notifications, changes, settings, callbacks };
 }
+
+function notificationQuota(usedPercent, overrides = {}) {
+    return { id: "session", label: "5 hours", usedPercent, resetAt: 9_999_999_999, ...overrides };
+}
+
+function enableNotifications(monitor) {
+    monitor._usageNotifications = true;
+    monitor._usageNotificationThreshold = 10;
+}
+
+test("usage notifications are opt-in, inclusive at threshold, and deduplicated per level", () => {
+    const { monitor, notifications } = fixture();
+    const notify = (used) => monitor._notifyUsage({ quotas: [notificationQuota(used)] });
+    notify(100);
+    assert.deepEqual(notifications, []);
+    enableNotifications(monitor);
+    notify(89.9);
+    assert.deepEqual(notifications, []);
+    notify(90);
+    assert.deepEqual(notifications, ["5 hours usage window is running low: 10% left."]);
+    notify(91);
+    notify(95);
+    notify(89);
+    notify(91);
+    assert.deepEqual(notifications, ["5 hours usage window is running low: 10% left."]);
+    notify(100);
+    notify(100);
+    assert.equal(notifications.length, 2);
+    assert.equal(notifications[1], "5 hours usage window exhausted.");
+});
+
+test("jumping straight to exhausted skips the warning", () => {
+    for (const quota of [notificationQuota(100), notificationQuota(101)]) {
+        const { monitor, notifications } = fixture();
+        enableNotifications(monitor);
+        monitor._notifyUsage({ quotas: [quota] });
+        monitor._notifyUsage({ quotas: [quota] });
+        assert.deepEqual(notifications, ["5 hours usage window exhausted."]);
+    }
+});
+
+test("account-wide limitReached does not report unexhausted windows as exhausted", () => {
+    const { monitor, notifications } = fixture();
+    enableNotifications(monitor);
+    monitor._notifyUsage({
+        quotas: [
+            notificationQuota(100, { limitReached: true }),
+            notificationQuota(50, { id: "weekly", label: "Weekly", limitReached: true }),
+        ],
+    });
+    assert.deepEqual(notifications, ["5 hours usage window exhausted."]);
+});
+
+test("notifications track windows independently and ignore expired windows", () => {
+    const { monitor, notifications } = fixture();
+    enableNotifications(monitor);
+    const snapshot = {
+        quotas: [
+            notificationQuota(100, { id: "expired", resetAt: 1 }),
+            notificationQuota(91),
+            notificationQuota(100, { id: "weekly", label: "Weekly" }),
+        ],
+    };
+    monitor._notifyUsage(snapshot);
+    monitor._notifyUsage(snapshot);
+    assert.deepEqual(notifications, [
+        "5 hours usage window is running low: 9% left.",
+        "Weekly usage window exhausted.",
+    ]);
+});
+
+test("new deadlines and redeemed resets rearm usage notifications", () => {
+    const { monitor, notifications } = fixture();
+    enableNotifications(monitor);
+    for (const quota of [
+        notificationQuota(91),
+        notificationQuota(91, { resetAt: 9_999_999_999 + 1 }),
+        notificationQuota(0, { resetAt: 9_999_999_999 + 1 }),
+        notificationQuota(91, { resetAt: 9_999_999_999 + 1 }),
+        notificationQuota(100, { resetAt: 9_999_999_999 + 1 }),
+        notificationQuota(91, { resetAt: 9_999_999_999 + 1 }),
+    ])
+        monitor._notifyUsage({ quotas: [quota] });
+    assert.equal(notifications.length, 5);
+});
+
+test("notification settings take effect on the next refresh and disconnect on stop", () => {
+    const { monitor, notifications, callbacks, settings } = fixture();
+    settings.get_boolean = () => true;
+    callbacks.get("changed::usage-notifications")();
+    monitor._notifyUsage({ quotas: [notificationQuota(91)] });
+    assert.deepEqual(notifications, []);
+    settings.get_uint = () => 10;
+    callbacks.get("changed::usage-notification-threshold")();
+    monitor._notifyUsage({ quotas: [notificationQuota(91)] });
+    assert.equal(notifications.length, 1);
+    settings.get_boolean = () => false;
+    callbacks.get("changed::usage-notifications")();
+    monitor._notifyUsage({ quotas: [notificationQuota(100)] });
+    assert.equal(notifications.length, 1);
+    monitor.stop();
+    assert.equal(callbacks.size, 0);
+    monitor._usageNotifications = true;
+    monitor._notifyUsage({ quotas: [notificationQuota(100)] });
+    assert.equal(notifications.length, 1);
+});
+
+test("only successful live refreshes send usage notifications, never cached or failed usage", async () => {
+    const { monitor, notifications } = fixture();
+    enableNotifications(monitor);
+    const snapshot = { quotas: [notificationQuota(100)] };
+    monitor._usageService = {
+        readCachedSnapshot: async () => snapshot,
+        readHistory: async () => [],
+        predict: async () => null,
+        refresh: async () => {
+            throw new Error("offline");
+        },
+    };
+    await monitor._loadCachedSnapshot();
+    await monitor._refreshUsageOnce();
+    assert.deepEqual(notifications, []);
+    monitor._usageService.refresh = async () => snapshot;
+    await monitor._refreshUsageOnce();
+    await monitor._refreshUsageOnce();
+    assert.deepEqual(notifications, ["5 hours usage window exhausted."]);
+});
+
+test("stop during a usage refresh prevents late usage notifications", async () => {
+    const { monitor, notifications } = fixture();
+    enableNotifications(monitor);
+    const response = deferred();
+    monitor._usageService = { refresh: () => response.promise };
+    const pending = monitor._refreshUsageOnce();
+    monitor.stop();
+    response.resolve({ quotas: [notificationQuota(100)] });
+    await pending;
+    assert.deepEqual(notifications, []);
+});
 
 function enableUsageAutoApply(monitor, usedPercent = 96, resetAt = null) {
     monitor._autoApplyBankedResetOnUsage = true;

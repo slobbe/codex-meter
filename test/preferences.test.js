@@ -16,6 +16,8 @@ import {
     SETTINGS_PERCENT_DISPLAY_MODE,
     SETTINGS_TOP_PANEL_DISPLAY_MODE,
     SETTINGS_TOP_PANEL_INDICATOR_ICON,
+    SETTINGS_USAGE_NOTIFICATIONS,
+    SETTINGS_USAGE_NOTIFICATION_THRESHOLD,
 } from "../src/preferences/settings.js";
 
 const pageUrl = new URL("../src/preferences/page.js", import.meta.url).href;
@@ -140,11 +142,13 @@ function settingsFixture(values = {}) {
     const uints = {
         [SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES]: 5,
         [SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD]: 2,
+        [SETTINGS_USAGE_NOTIFICATION_THRESHOLD]: 10,
         ...values,
     };
     const booleans = {
         [SETTINGS_AUTO_APPLY_BANKED_RESET]: false,
         [SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE]: false,
+        [SETTINGS_USAGE_NOTIFICATIONS]: false,
         ...values,
     };
     const bindings = [];
@@ -253,7 +257,7 @@ test("credentials group follows banked resets and tracks the configured file", (
         page.children.slice(0, 4).map((group) => group.title),
         ["Appearance", "Background refresh", "Banked resets", "Credentials"],
     );
-    assert.equal(page.children[4].children[0].children[0].label, "Codex Meter test");
+    assert.equal(page.children[5].children[0].children[0].label, "Codex Meter test");
     const row = page.children[3].children[0];
     const [, reset] = row.children;
     assert.equal(row.title, "Credentials file");
@@ -602,6 +606,8 @@ test("migration preserves defaults and all non-ring icon/display selections", ()
         autoApplyBankedResetOnUsage: false,
         autoApplyBankedResetUsageThreshold: 2,
         autoApplyBankedResetUsageWindow: "any",
+        usageNotifications: false,
+        usageNotificationThreshold: 10,
     });
 });
 
@@ -686,7 +692,7 @@ test("preferences banked resets group keeps expiry and usage toggles separate", 
         group.children[0].subtitle,
         "Redeem a banked reset automatically within 1 hour of expiry",
     );
-    assert.equal(settings.bindings.length, 4);
+    assert.equal(settings.bindings.length, 6);
     assert.equal(settings.bindings[0].key, SETTINGS_AUTO_APPLY_BANKED_RESET);
     assert.equal(group.children[1].title, "Auto-redeem on low remaining usage");
     assert.equal(
@@ -713,6 +719,103 @@ test("preferences banked resets group keeps expiry and usage toggles separate", 
     });
     assert.equal(settings.bindings[0].row, group.children[0]);
     assert.equal(settings.bindings[0].property, "active");
+});
+
+test("readSettings preserves opt-in usage notification settings and thresholds", () => {
+    assert.equal(SETTINGS_USAGE_NOTIFICATIONS, "usage-notifications");
+    assert.equal(SETTINGS_USAGE_NOTIFICATION_THRESHOLD, "usage-notification-threshold");
+    const settings = settingsFixture();
+    const before = readSettings(settings);
+    assert.equal(settings.get_boolean(SETTINGS_USAGE_NOTIFICATIONS), false);
+    assert.equal(settings.get_uint(SETTINGS_USAGE_NOTIFICATION_THRESHOLD), 10);
+    for (const enabled of [true, false]) {
+        settings.set_boolean(SETTINGS_USAGE_NOTIFICATIONS, enabled);
+        assert.equal(settings.get_boolean(SETTINGS_USAGE_NOTIFICATIONS), enabled);
+        for (const threshold of [1, 25, 100]) {
+            settings.set_uint(SETTINGS_USAGE_NOTIFICATION_THRESHOLD, threshold);
+            assert.equal(settings.get_uint(SETTINGS_USAGE_NOTIFICATION_THRESHOLD), threshold);
+            assert.deepEqual(readSettings(settings), {
+                ...before,
+                usageNotifications: enabled,
+                usageNotificationThreshold: threshold,
+            });
+        }
+    }
+});
+
+test("usage notification schema defaults to disabled with a 1–100 threshold of 10", () => {
+    const schema = readFileSync(
+        new URL(
+            "../src/schemas/org.gnome.shell.extensions.codex-meter.gschema.xml",
+            import.meta.url,
+        ),
+        "utf8",
+    );
+    const toggle = schema.match(/<key name="usage-notifications" type="b">([\s\S]*?)<\/key>/)[1];
+    const threshold = schema.match(
+        /<key name="usage-notification-threshold" type="u">([\s\S]*?)<\/key>/,
+    )[1];
+    assert.match(toggle, /<default>false<\/default>/);
+    assert.match(threshold, /<default>10<\/default>/);
+    assert.match(threshold, /<range min="1" max="100"\/>/);
+});
+
+test("notification preferences roundtrip threshold, track sensitivity, and clean up callbacks", () => {
+    for (const enabled of [false, true]) {
+        const settings = settingsFixture({ [SETTINGS_USAGE_NOTIFICATIONS]: enabled });
+        const window = windowFixture();
+        const page = createPreferencesPage(settings, metadata, window);
+        const group = page.children[4];
+        assert.equal(group.title, "Notifications");
+        assert.equal(page.children[3].title, "Credentials");
+        assert.equal(page.children[5].children[0].children[0].label, "Codex Meter test");
+        const [toggle, threshold] = group.children;
+        assert.equal(toggle.title, "Usage notifications");
+        assert.equal(toggle.active, enabled);
+        assert.equal(threshold.title, "Warning threshold (% left)");
+        assert.equal(threshold.value, 10);
+        assert.equal(threshold.adjustment.lower, 1);
+        assert.equal(threshold.adjustment.upper, 100);
+        assert.equal(threshold.adjustment.step_increment, 1);
+        assert.equal(threshold.digits, 0);
+        assert.equal(threshold.sensitive, enabled);
+        assert.deepEqual(settings.writes, []);
+        assert.deepEqual(settings.bindings.slice(-2), [
+            { key: SETTINGS_USAGE_NOTIFICATIONS, row: toggle, property: "active", flags: 0 },
+            { key: SETTINGS_USAGE_NOTIFICATIONS, row: threshold, property: "sensitive", flags: 1 },
+        ]);
+        settings.set_boolean(SETTINGS_USAGE_NOTIFICATIONS, !enabled);
+        assert.equal(toggle.active, !enabled);
+        assert.equal(threshold.sensitive, !enabled);
+        settings.set_boolean(SETTINGS_USAGE_NOTIFICATIONS, enabled);
+        assert.equal(toggle.active, enabled);
+        assert.equal(threshold.sensitive, enabled);
+        settings.set_boolean(SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE, true);
+        assert.equal(threshold.sensitive, enabled);
+        for (const value of [1, 30, 100]) {
+            settings.set_uint(SETTINGS_USAGE_NOTIFICATION_THRESHOLD, value);
+            assert.equal(threshold.value, value);
+        }
+        for (const [value, expected] of [
+            [4.6, 5],
+            [0, 1],
+            [101, 100],
+        ]) {
+            threshold.value = value;
+            threshold.emit("notify::value");
+            assert.equal(settings.get_uint(SETTINGS_USAGE_NOTIFICATION_THRESHOLD), expected);
+            assert.equal(threshold.value, expected);
+        }
+        assert.equal(settings.get_uint(SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD), 2);
+        const signalIds = [...settings.signals.keys()];
+        assert.equal(window.close(), false);
+        assert.equal(settings.signals.size, 0);
+        assert.deepEqual(settings.disconnected, signalIds);
+        settings.set_uint(SETTINGS_USAGE_NOTIFICATION_THRESHOLD, 50);
+        assert.equal(threshold.value, 100);
+        assert.equal(window.close(), false);
+        assert.deepEqual(settings.disconnected, signalIds);
+    }
 });
 
 test("usage auto-redemption settings preserve independent toggles and thresholds", () => {
@@ -915,8 +1018,8 @@ test("preferences entry point reads cached usage without loading inventory", asy
     assert.equal(page.title, "Codex Meter");
     assert.deepEqual(page.children[2].children[2].model, ["Any", "Cached window"]);
     assert.equal(cancellable.is_cancelled(), false);
-    assert.equal(page.children[4].children[0].children[0].label, "Codex Meter test");
-    assert.equal(settings.signals.size, 7);
+    assert.equal(page.children[5].children[0].children[0].label, "Codex Meter test");
+    assert.equal(settings.signals.size, 8);
     assert.equal(window.close(), false);
     assert.equal(cancellable.is_cancelled(), true);
     assert.equal(settings.signals.size, 0);
@@ -983,7 +1086,7 @@ test("closing preferences disconnects every settings callback without preventing
     const [percent, icon, display] = page.children[0].children;
     const [refresh] = page.children[1].children;
     const signalIds = [...settings.signals.keys()];
-    assert.equal(signalIds.length, 7);
+    assert.equal(signalIds.length, 8);
 
     settings.set_string(SETTINGS_PERCENT_DISPLAY_MODE, "used");
     settings.set_string(SETTINGS_TOP_PANEL_INDICATOR_ICON, "openai");
@@ -1026,13 +1129,13 @@ test("closing one window preserves other windows and reopening does not leak han
         const window = windowFixture();
         const page = createPreferencesPage(settings, metadata, window);
         const icon = page.children[0].children[1];
-        assert.equal(settings.signals.size, 14);
+        assert.equal(settings.signals.size, 16);
         settings.set_string(SETTINGS_TOP_PANEL_INDICATOR_ICON, "openai");
         assert.equal(firstIcon.selected, 1);
         assert.equal(icon.selected, 1);
 
         assert.equal(window.close(), false);
-        assert.equal(settings.signals.size, 7);
+        assert.equal(settings.signals.size, 8);
         settings.set_string(SETTINGS_TOP_PANEL_INDICATOR_ICON, "text");
         assert.equal(firstIcon.selected, 2);
         assert.equal(icon.selected, 1);
@@ -1040,5 +1143,5 @@ test("closing one window preserves other windows and reopening does not leak han
 
     assert.equal(firstWindow.close(), false);
     assert.equal(settings.signals.size, 0);
-    assert.equal(settings.disconnected.length, 28);
+    assert.equal(settings.disconnected.length, 32);
 });

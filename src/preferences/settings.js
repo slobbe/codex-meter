@@ -19,6 +19,10 @@ export const SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD =
 
 export const SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW = "auto-apply-banked-reset-usage-window";
 
+export const SETTINGS_USAGE_NOTIFICATIONS = "usage-notifications";
+
+export const SETTINGS_USAGE_NOTIFICATION_THRESHOLD = "usage-notification-threshold";
+
 export const MIN_REFRESH_INTERVAL_MINUTES = 0;
 
 export function getBackgroundRefreshIntervalSeconds(settings) {
@@ -67,5 +71,7 @@ export function readSettings(settings) {
         autoApplyBankedResetUsageThreshold: settings.get_uint(
             SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD,
         ),
+        usageNotifications: settings.get_boolean(SETTINGS_USAGE_NOTIFICATIONS),
+        usageNotificationThreshold: settings.get_uint(SETTINGS_USAGE_NOTIFICATION_THRESHOLD),
     };
 }
