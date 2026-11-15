@@ -30,11 +30,11 @@ export function createPreferencesPage(settings, metadata, window, snapshot = nul
         icon_name: "codex-symbolic",
     });
     page.add(createAppearanceGroup(settings, settingsSignalIds));
-    page.add(createBackgroundRefreshGroup(settings, settingsSignalIds));
+    page.add(createNotificationsGroup(settings, settingsSignalIds));
     page.add(createBankedResetsGroup(settings, settingsSignalIds, snapshot?.quotas ?? []));
+    page.add(createBackgroundRefreshGroup(settings, settingsSignalIds));
     const credentials = createCredentialsGroup(settings, settingsSignalIds, window);
     page.add(credentials.group);
-    page.add(createNotificationsGroup(settings, settingsSignalIds));
     page.add(createFooterGroup(metadata));
     window.connect("close-request", () => {
         credentials.cleanup();

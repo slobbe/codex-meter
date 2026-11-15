@@ -227,8 +227,8 @@ const metadata = { name: "Codex Meter", "version-name": "test", url: "https://ex
 test("preferences groups appearance and background refresh with descriptive labels", () => {
     const page = createPreferencesPage(settingsFixture(), metadata, windowFixture());
     assert.deepEqual(
-        page.children.slice(0, 3).map((group) => group.title),
-        ["Appearance", "Background refresh", "Banked resets"],
+        page.children.slice(0, 5).map((group) => group.title),
+        ["Appearance", "Notifications", "Banked resets", "Background refresh", "Credentials"],
     );
     assert.deepEqual(
         page.children[0].children.map((row) => row.title),
@@ -243,22 +243,22 @@ test("preferences groups appearance and background refresh with descriptive labe
         ],
     );
     assert.deepEqual(
-        page.children[1].children.map((row) => row.title),
+        page.children[3].children.map((row) => row.title),
         ["Interval (minutes)"],
     );
-    assert.equal(page.children[1].children[0].subtitle, "Set to 0 to refresh manually");
+    assert.equal(page.children[3].children[0].subtitle, "Set to 0 to refresh manually");
 });
 
-test("credentials group follows banked resets and tracks the configured file", () => {
+test("credentials group follows background refresh and tracks the configured file", () => {
     const settings = settingsFixture();
     const window = windowFixture();
     const page = createPreferencesPage(settings, metadata, window);
     assert.deepEqual(
-        page.children.slice(0, 4).map((group) => group.title),
-        ["Appearance", "Background refresh", "Banked resets", "Credentials"],
+        page.children.slice(0, 5).map((group) => group.title),
+        ["Appearance", "Notifications", "Banked resets", "Background refresh", "Credentials"],
     );
     assert.equal(page.children[5].children[0].children[0].label, "Codex Meter test");
-    const row = page.children[3].children[0];
+    const row = page.children[4].children[0];
     const [, reset] = row.children;
     assert.equal(row.title, "Credentials file");
     assert.equal(row.subtitle, DEFAULT_CREDENTIALS_PATH);
@@ -286,7 +286,7 @@ test("credentials Browse initializes the current file and saves local selections
         const settings = settingsFixture({ [SETTINGS_CREDENTIALS_PATH]: configured });
         const window = windowFixture();
         const page = createPreferencesPage(settings, metadata, window);
-        const row = page.children[3].children[0];
+        const row = page.children[4].children[0];
         const [browse, reset] = row.children;
         const count = dialogs.length;
         browse.emit("clicked");
@@ -337,7 +337,7 @@ test("credentials chooser cancellation and non-local or empty selections leave s
         const settings = settingsFixture();
         const window = windowFixture();
         const page = createPreferencesPage(settings, metadata, window);
-        const row = page.children[3].children[0];
+        const row = page.children[4].children[0];
         row.children[0].emit("clicked");
         const dialog = dialogs.at(-1);
         dialog.file = file;
@@ -354,7 +354,7 @@ test("credentials reset uses the schema default and updates the row", () => {
     const settings = settingsFixture({ [SETTINGS_CREDENTIALS_PATH]: "~/custom/auth.json" });
     const window = windowFixture();
     const page = createPreferencesPage(settings, metadata, window);
-    const row = page.children[3].children[0];
+    const row = page.children[4].children[0];
     const [, reset] = row.children;
     assert.equal(reset.sensitive, true);
     reset.emit("clicked");
@@ -370,7 +370,7 @@ test("closing preferences destroys the credentials chooser and prevents late wri
     const settings = settingsFixture({ [SETTINGS_CREDENTIALS_PATH]: "/tmp/custom.json" });
     const window = windowFixture();
     const page = createPreferencesPage(settings, metadata, window);
-    const [browse, reset] = page.children[3].children[0].children;
+    const [browse, reset] = page.children[4].children[0].children;
     const lateBrowse = browse.signals.clicked;
     const lateReset = reset.signals.clicked;
     browse.emit("clicked");
@@ -400,7 +400,7 @@ test("credentials selection validates before saving and shows safe inline errors
     const settings = settingsFixture({ [SETTINGS_CREDENTIALS_PATH]: "/tmp/previous.json" });
     const window = windowFixture();
     const page = createPreferencesPage(settings, metadata, window);
-    const [row, errorLabel] = page.children[3].children;
+    const [row, errorLabel] = page.children[4].children;
     const [browse] = row.children;
     assert.equal(errorLabel.visible, false);
     for (const failure of [
@@ -460,7 +460,7 @@ for (const action of ["close", "reset", "browse", "external change"]) {
             const settings = settingsFixture({ [SETTINGS_CREDENTIALS_PATH]: "/tmp/previous.json" });
             const window = windowFixture();
             const page = createPreferencesPage(settings, metadata, window);
-            const [row, errorLabel] = page.children[3].children;
+            const [row, errorLabel] = page.children[4].children;
             const [browse, reset] = row.children;
             browse.emit("clicked");
             const dialog = dialogs.at(-1);
@@ -693,32 +693,32 @@ test("preferences banked resets group keeps expiry and usage toggles separate", 
         "Redeem a banked reset automatically within 1 hour of expiry",
     );
     assert.equal(settings.bindings.length, 6);
-    assert.equal(settings.bindings[0].key, SETTINGS_AUTO_APPLY_BANKED_RESET);
+    assert.equal(settings.bindings[2].key, SETTINGS_AUTO_APPLY_BANKED_RESET);
     assert.equal(group.children[1].title, "Auto-redeem on low remaining usage");
     assert.equal(
         group.children[1].subtitle,
         "Redeem a reset if remaining usage falls below threshold",
     );
-    assert.deepEqual(settings.bindings[1], {
+    assert.deepEqual(settings.bindings[3], {
         key: SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
         row: group.children[1],
         property: "active",
         flags: 0,
     });
-    assert.deepEqual(settings.bindings[2], {
+    assert.deepEqual(settings.bindings[4], {
         key: SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
         row: group.children[2],
         property: "sensitive",
         flags: 1,
     });
-    assert.deepEqual(settings.bindings[3], {
+    assert.deepEqual(settings.bindings[5], {
         key: SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
         row: group.children[3],
         property: "sensitive",
         flags: 1,
     });
-    assert.equal(settings.bindings[0].row, group.children[0]);
-    assert.equal(settings.bindings[0].property, "active");
+    assert.equal(settings.bindings[2].row, group.children[0]);
+    assert.equal(settings.bindings[2].property, "active");
 });
 
 test("readSettings preserves opt-in usage notification settings and thresholds", () => {
@@ -765,9 +765,9 @@ test("notification preferences roundtrip threshold, track sensitivity, and clean
         const settings = settingsFixture({ [SETTINGS_USAGE_NOTIFICATIONS]: enabled });
         const window = windowFixture();
         const page = createPreferencesPage(settings, metadata, window);
-        const group = page.children[4];
+        const group = page.children[1];
         assert.equal(group.title, "Notifications");
-        assert.equal(page.children[3].title, "Credentials");
+        assert.equal(page.children[4].title, "Credentials");
         assert.equal(page.children[5].children[0].children[0].label, "Codex Meter test");
         const [toggle, threshold] = group.children;
         assert.equal(toggle.title, "Usage notifications");
@@ -780,7 +780,7 @@ test("notification preferences roundtrip threshold, track sensitivity, and clean
         assert.equal(threshold.digits, 0);
         assert.equal(threshold.sensitive, enabled);
         assert.deepEqual(settings.writes, []);
-        assert.deepEqual(settings.bindings.slice(-2), [
+        assert.deepEqual(settings.bindings.slice(0, 2), [
             { key: SETTINGS_USAGE_NOTIFICATIONS, row: toggle, property: "active", flags: 0 },
             { key: SETTINGS_USAGE_NOTIFICATIONS, row: threshold, property: "sensitive", flags: 1 },
         ]);
@@ -1084,7 +1084,7 @@ test("closing preferences disconnects every settings callback without preventing
     const window = windowFixture();
     const page = createPreferencesPage(settings, metadata, window);
     const [percent, icon, display] = page.children[0].children;
-    const [refresh] = page.children[1].children;
+    const [refresh] = page.children[3].children;
     const signalIds = [...settings.signals.keys()];
     assert.equal(signalIds.length, 8);
 
