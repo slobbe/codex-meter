@@ -8,7 +8,7 @@
         "type": "git",
         "url": "git+https://github.com/slobbe/codex-meter.git"
     },
-    "author": "Sebastian Lobbe <slobbe@lobbe.cc>",
+    "author": "Sebastian Lobbe <s@lobbe.cc>",
     "license": "GPL-3.0-or-later",
     "bugs": {
         "url": "https://github.com/slobbe/codex-meter/issues"
