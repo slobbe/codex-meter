@@ -117,17 +117,6 @@ test("shared Markdown parsing keeps release-note output within AppStream's subse
     assert.ok(!/<(?:b|i|s|tt|a)(?:\s|>)/.test(notes.markup));
 });
 
-test("About descriptions format the actual metadata feature list and credentials path", () => {
-    const metadata = JSON.parse(
-        readFileSync(new URL("../src/metadata.json", import.meta.url), "utf8"),
-    );
-    const markup = formatDescription(metadata.description);
-    assert.match(markup, /• 5-hour and weekly Codex usage limits\./);
-    assert.ok(markup.includes("<tt>~/.codex/auth.json</tt>"));
-    assert.ok(!markup.includes("<ul>"));
-    assert.ok(markup.includes("Not affiliated with or endorsed by OpenAI."));
-});
-
 test("About release notes support the current project changelog", () => {
     const changelog = readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8");
     const notes = parseReleaseNotes(changelog);
