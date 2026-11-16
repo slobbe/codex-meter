@@ -271,11 +271,10 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             errorMessage,
             cachedFailureMessage,
         );
-        this._popupMenu.setError(viewModel.errorMessage);
         this._popupMenu.setStatus({
-            title: viewModel.statusTitle,
-            message: viewModel.statusMessage,
-            visible: Boolean(viewModel.statusTitle || viewModel.statusMessage),
+            severity: viewModel.errorMessage ? "error" : "warning",
+            title: viewModel.errorMessage ? "Unable to load usage" : viewModel.statusTitle,
+            message: viewModel.errorMessage ?? viewModel.statusMessage,
         });
         this._popupMenu.setUsageItems(viewModel.usageItems);
         this._popupMenu.setTrend(viewModel.trend);

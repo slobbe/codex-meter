@@ -148,19 +148,14 @@ try {
 
 test("usage, activity, and banner rows stay vertical without the removed St property", () => {
     const menu = new CodexMeterPopupMenu({});
-    const items = [menu._createUsageItem("Usage"), menu.trendItem, menu.errorItem, menu.statusItem];
+    const items = [menu._createUsageItem("Usage"), menu.trendItem, menu.statusItem];
     for (const item of items) {
         assert.equal(item.children[0].layout_manager.orientation, "vertical");
     }
 });
 
 test("reconciles usage rows through 0 -> 3 -> 1 -> 0 and updates all row data", (t) => {
-    for (const method of [
-        "_createErrorItem",
-        "_createStatusItem",
-        "_createTrendItem",
-        "_createHeaderItem",
-    ]) {
+    for (const method of ["_createBannerItem", "_createTrendItem", "_createHeaderItem"]) {
         t.mock.method(CodexMeterPopupMenu.prototype, method, () => ({}));
     }
     const menu = new CodexMeterPopupMenu({});
@@ -220,7 +215,7 @@ test("reconciles usage rows through 0 -> 3 -> 1 -> 0 and updates all row data", 
     };
     menu.setUsageItems(viewModels);
     const rows = [...menu.usageItems];
-    assert.deepEqual(items, [...fixedItems.slice(0, 3), ...rows, ...fixedItems.slice(3)]);
+    assert.deepEqual(items, [...fixedItems.slice(0, 1), ...rows, ...fixedItems.slice(1)]);
     rows.forEach((item, index) => assertRow(item, viewModels[index]));
     menu.syncBars();
     assert.deepEqual(
@@ -232,7 +227,7 @@ test("reconciles usage rows through 0 -> 3 -> 1 -> 0 and updates all row data", 
     menu.setUsageItems(reordered);
     assert.deepEqual(menu.usageItems, rows);
     rows.forEach((item, index) => assertRow(item, reordered[index]));
-    assert.deepEqual(items, [...fixedItems.slice(0, 3), ...rows, ...fixedItems.slice(3)]);
+    assert.deepEqual(items, [...fixedItems.slice(0, 1), ...rows, ...fixedItems.slice(1)]);
 
     const updated = {
         ...viewModels[2],
@@ -255,7 +250,7 @@ test("reconciles usage rows through 0 -> 3 -> 1 -> 0 and updates all row data", 
         assert.equal(row.usageBar.actor.destroyed, true);
         assert.deepEqual(row.usageBar.actor.signals, {});
     }
-    assert.deepEqual(items, [...fixedItems.slice(0, 3), rows[0], ...fixedItems.slice(3)]);
+    assert.deepEqual(items, [...fixedItems.slice(0, 1), rows[0], ...fixedItems.slice(1)]);
     menu.syncBars();
     assert.deepEqual(
         rows.map((item) => item.usageBar.syncCount),
@@ -308,24 +303,23 @@ test("popup constrains its width independently of pace text and visible content"
         assertFixedWidth();
     }
     menu.setUsageItems([]);
-    menu.setError("Long error details ".repeat(20));
+    menu.setStatus({
+        severity: "error",
+        title: "Unable to load usage",
+        message: "Long error details ".repeat(20),
+    });
     assertFixedWidth();
-    assert.equal(menu.errorItem.children[0].width, undefined);
+    assert.equal(menu.statusItem.children[0].width, undefined);
 });
 
 test("banners preserve expansion defaults and user toggles across detail updates", () => {
-    const menu = Object.create(CodexMeterPopupMenu.prototype);
-    menu.errorItem = menu._createErrorItem();
-    menu.statusItem = menu._createStatusItem();
-
-    for (const [item, update, initiallyExpanded] of [
-        [menu.errorItem, (message) => menu.setError(message), true],
-        [
-            menu.statusItem,
-            (message) => menu.setStatus({ title: "Showing cached data", message, visible: true }),
-            false,
-        ],
+    for (const [severity, title, initiallyExpanded] of [
+        ["error", "Unable to load usage", true],
+        ["warning", "Showing cached data", false],
     ]) {
+        const menu = new CodexMeterPopupMenu({});
+        const item = menu.statusItem;
+        const update = (message) => menu.setStatus({ severity, title, message });
         const [heading, message] = item.children[0].children;
         const expander = heading.child.children[2];
         const assertExpanded = (expanded) => {
@@ -372,50 +366,58 @@ test("banners preserve expansion defaults and user toggles across detail updates
     }
 });
 
-test("setError shows and clears the error banner without changing detail expansion behavior", () => {
-    const details = [];
-    const menu = Object.create(CodexMeterPopupMenu.prototype);
-    menu.errorItem = {
-        visible: false,
-        setDetails: (...args) => details.push(args),
-    };
-
-    menu.setError("Unable to refresh");
-    assert.equal(menu.errorItem.visible, true);
-    assert.deepEqual(details.at(-1), ["Unable to refresh", true]);
-
+test("one status banner switches severity, resets expansion, and clears", () => {
+    const menu = new CodexMeterPopupMenu({});
+    const item = menu.statusItem;
+    const [heading] = item.children[0].children;
+    for (const severity of ["error", "warning", "error"]) {
+        const isError = severity === "error";
+        menu.setStatus({ severity, title: "Status", message: "Same details" });
+        assert.equal(menu.statusItem, item);
+        assert.equal(item.visible, true);
+        assert.equal(item.icon.icon_name, `dialog-${severity}-symbolic`);
+        const color = isError ? "danger" : "warning";
+        assert.equal(item.icon.style_class, `popup-menu-icon cx-color-${color}`);
+        assert.equal(item.titleLabel.style_class, `cx-error-title cx-color-${color}`);
+        assert.equal(item.messageLabel.style_class, `cx-error-message cx-error-message-${color}`);
+        assert.equal(item.messageLabel.visible, isError);
+        heading.signals.clicked();
+        menu.setStatus({ severity, title: "Status", message: "Same details" });
+        assert.equal(item.messageLabel.visible, !isError);
+    }
     for (const message of [null, "", undefined]) {
-        menu.setError(message);
-        assert.equal(menu.errorItem.visible, false);
-        assert.deepEqual(details.at(-1), [message, true]);
+        menu.setStatus({ message });
+        assert.equal(item.visible, false);
+        assert.equal(item.messageLabel.visible, false);
     }
 });
 
-test("setError never writes view-model-owned usage or trend visibility", () => {
+test("setStatus never writes view-model-owned usage or trend visibility", () => {
     for (const rowVisible of [false, true]) {
         for (const rowCount of [0, 1, 3]) {
             for (const trendVisible of [false, true]) {
-                const menu = Object.create(CodexMeterPopupMenu.prototype);
-                menu.errorItem = { visible: false, setDetails() {} };
+                const menu = new CodexMeterPopupMenu({});
                 const actor = (visible) =>
                     Object.defineProperty({}, "visible", {
                         get: () => visible,
-                        set: () => assert.fail("setError must not write usage or trend visibility"),
+                        set: () =>
+                            assert.fail("setStatus must not write usage or trend visibility"),
                     });
                 menu.usageItems = Array.from({ length: rowCount }, () => actor(rowVisible));
                 menu.trendItem = actor(trendVisible);
-
-                for (const message of ["Unable to refresh", null, ""]) {
-                    menu.setError(message);
-                    for (const item of menu.usageItems) assert.equal(item.visible, rowVisible);
-                    assert.equal(menu.trendItem.visible, trendVisible);
+                for (const severity of ["error", "warning"]) {
+                    for (const message of ["Unable to refresh", null, ""]) {
+                        menu.setStatus({ severity, message });
+                        for (const item of menu.usageItems) assert.equal(item.visible, rowVisible);
+                        assert.equal(menu.trendItem.visible, trendVisible);
+                    }
                 }
             }
         }
     }
 });
 
-test("noninteractive header precedes usage and activity, then banked resets and native actions", () => {
+test("noninteractive header precedes usage and activity, then banked resets, footer, and status banner", () => {
     const calls = [];
     const menu = new CodexMeterPopupMenu({
         onRefresh: () => calls.push("refresh"),
@@ -430,16 +432,15 @@ test("noninteractive header precedes usage and activity, then banked resets and 
     });
     assert.deepEqual(items, [
         menu.headerItem,
-        menu.errorItem,
-        menu.statusItem,
         menu.trendItem,
-        items[4],
+        items[2],
         menu.bankedResetsItem,
-        items[6],
+        items[4],
         menu.footerItem,
+        menu.statusItem,
     ]);
+    assert.equal(items[2].constructor.name, "PopupSeparatorMenuItem");
     assert.equal(items[4].constructor.name, "PopupSeparatorMenuItem");
-    assert.equal(items[6].constructor.name, "PopupSeparatorMenuItem");
     assert.equal(menu.footerItem.reactive, false);
     assert.equal(menu.footerItem.can_focus, false);
     assert.deepEqual(menu.footerItem.children, [

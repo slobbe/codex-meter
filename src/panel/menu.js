@@ -30,8 +30,7 @@ export class CodexMeterPopupMenu {
         keepResetScrolling();
 
         this.footerItem = this._createFooterItem();
-        this.errorItem = this._createErrorItem();
-        this.statusItem = this._createStatusItem();
+        this.statusItem = this._createBannerItem();
         this.usageItems = [];
         this.trendItem = this._createTrendItem();
         this.headerItem = this._createHeaderItem();
@@ -41,14 +40,15 @@ export class CodexMeterPopupMenu {
         this._menu = menu;
         menu.box.add_style_class_name("cx-popup-menu");
         menu.addMenuItem(this.headerItem);
-        menu.addMenuItem(this.errorItem);
-        menu.addMenuItem(this.statusItem);
+
         for (const item of this.usageItems) menu.addMenuItem(item);
         menu.addMenuItem(this.trendItem);
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         menu.addMenuItem(this.bankedResetsItem);
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         menu.addMenuItem(this.footerItem);
+
+        menu.addMenuItem(this.statusItem);
     }
 
     syncBars() {
@@ -79,7 +79,7 @@ export class CodexMeterPopupMenu {
         }
         while (this.usageItems.length < viewModels.length) {
             const item = this._createUsageItem("Usage");
-            this._menu?.addMenuItem(item, 3 + this.usageItems.length);
+            this._menu?.addMenuItem(item, 1 + this.usageItems.length);
             this.usageItems.push(item);
         }
         for (let index = 0; index < viewModels.length; index += 1) {
@@ -102,16 +102,18 @@ export class CodexMeterPopupMenu {
         });
     }
 
-    setError(message) {
-        const showError = Boolean(message);
-        this.errorItem.visible = showError;
-        this.errorItem.setDetails(message, true);
-    }
-
-    setStatus({ title, message, visible }) {
-        this.statusItem.visible = Boolean(visible);
-        this.statusItem.titleLabel.text = title ?? "";
-        this.statusItem.setDetails(message, false);
+    setStatus({ severity = "warning", title, message }) {
+        const item = this.statusItem;
+        const isError = severity === "error";
+        const color = isError ? "danger" : "warning";
+        item.visible = Boolean(title || message);
+        item.icon.icon_name = isError ? "dialog-error-symbolic" : "dialog-warning-symbolic";
+        item.icon.style_class = `popup-menu-icon cx-color-${color}`;
+        item.titleLabel.text = title ?? "";
+        item.titleLabel.style_class = `cx-error-title cx-color-${color}`;
+        item.messageLabel.style_class = `cx-error-message cx-error-message-${color}`;
+        item.setDetails(message, isError, severity !== this._statusSeverity);
+        this._statusSeverity = severity;
     }
 
     setRefreshLabel(label) {
@@ -341,25 +343,7 @@ export class CodexMeterPopupMenu {
         return item;
     }
 
-    _createErrorItem() {
-        return this._createBannerItem({
-            iconName: "dialog-error-symbolic",
-            title: "Unable to load usage",
-            colorStyleClass: "cx-color-danger",
-            messageStyleClass: "cx-error-message-danger",
-        });
-    }
-
-    _createStatusItem() {
-        return this._createBannerItem({
-            iconName: "dialog-warning-symbolic",
-            title: "",
-            colorStyleClass: "cx-color-warning",
-            messageStyleClass: "cx-error-message-warning",
-        });
-    }
-
-    _createBannerItem({ iconName, title, colorStyleClass, messageStyleClass }) {
+    _createBannerItem() {
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
@@ -376,15 +360,15 @@ export class CodexMeterPopupMenu {
             style_class: "cx-error-heading-row",
         });
         const icon = new St.Icon({
-            icon_name: iconName,
-            style_class: `popup-menu-icon ${colorStyleClass}`,
+            icon_name: "dialog-warning-symbolic",
+            style_class: "popup-menu-icon cx-color-warning",
             y_align: Clutter.ActorAlign.CENTER,
         });
         const titleLabel = new St.Label({
-            text: title,
+            text: "",
             x_expand: true,
             y_align: Clutter.ActorAlign.CENTER,
-            style_class: `cx-error-title ${colorStyleClass}`,
+            style_class: "cx-error-title cx-color-warning",
         });
         const expander = new St.Icon({
             icon_name: "pan-end-symbolic",
@@ -401,7 +385,7 @@ export class CodexMeterPopupMenu {
         const messageLabel = new St.Label({
             text: "",
             x_expand: true,
-            style_class: `cx-error-message ${messageStyleClass}`,
+            style_class: "cx-error-message cx-error-message-warning",
         });
         messageLabel.clutter_text.line_wrap = true;
         messageLabel.clutter_text.ellipsize = 0;
@@ -413,6 +397,8 @@ export class CodexMeterPopupMenu {
         item.add_child(box);
         item.visible = false;
         item.titleLabel = titleLabel;
+        item.icon = icon;
+        item.messageLabel = messageLabel;
 
         let isExpanded = false;
         const setExpanded = (value) => {
@@ -422,7 +408,7 @@ export class CodexMeterPopupMenu {
             headingButton.accessible_name = `${isExpanded ? "Hide" : "Show"} ${titleLabel.text.toLowerCase()} details`;
         };
         headingButton.connect("clicked", () => setExpanded(!isExpanded));
-        item.setDetails = (message, expandWhenChanged) => {
+        item.setDetails = (message, expandWhenChanged, resetExpansion = false) => {
             const nextMessage = message ?? "";
             const changed = messageLabel.text !== nextMessage;
             messageLabel.text = nextMessage;
@@ -430,7 +416,7 @@ export class CodexMeterPopupMenu {
             expander.visible = hasDetails;
             headingButton.reactive = hasDetails;
             headingButton.can_focus = hasDetails;
-            setExpanded(changed ? expandWhenChanged : isExpanded);
+            setExpanded(changed || resetExpansion ? expandWhenChanged : isExpanded);
         };
         item.setDetails("", false);
         return item;

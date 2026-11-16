@@ -337,7 +337,7 @@ test("menu sync passes the full usage collection and other view-model fields", (
     indicator._popupMenu = { headerItem: { planLabel: {} } };
     for (const method of [
         "setUsageItems",
-        "setError",
+
         "setStatus",
         "setTrend",
         "setBankedResets",
@@ -371,11 +371,25 @@ test("menu sync passes the full usage collection and other view-model fields", (
         indicator._syncMenu();
         assert.equal(calls.setUsageItems, usageItems);
     }
-    assert.equal(calls.setError, menu.errorMessage);
     assert.deepEqual(calls.setStatus, {
+        severity: "error",
+        title: "Unable to load usage",
+        message: menu.errorMessage,
+    });
+    menu.errorMessage = null;
+    indicator._syncMenu();
+    assert.deepEqual(calls.setStatus, {
+        severity: "warning",
         title: menu.statusTitle,
         message: menu.statusMessage,
-        visible: true,
+    });
+    menu.statusTitle = null;
+    menu.statusMessage = null;
+    indicator._syncMenu();
+    assert.deepEqual(calls.setStatus, {
+        severity: "warning",
+        title: null,
+        message: null,
     });
     assert.equal(calls.setTrend, menu.trend);
     assert.deepEqual(calls.setBankedResets, {

@@ -12,6 +12,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Added optional notifications for low and exhausted usage windows, with a configurable warning threshold.
 - Added About window in preferences with details, version, changelog, credits, license, and project links.
 
+### Changed
+
+- Changed popup warning and error messages to appear below the footer.
+
 ## v0.12.0 (2026-11-13)
 
 ### Added
