@@ -46,9 +46,8 @@ export class CodexMeterPopupMenu {
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         menu.addMenuItem(this.bankedResetsItem);
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        menu.addMenuItem(this.footerItem);
-
         menu.addMenuItem(this.statusItem);
+        menu.addMenuItem(this.footerItem);
     }
 
     syncBars() {

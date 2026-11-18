@@ -417,7 +417,7 @@ test("setStatus never writes view-model-owned usage or trend visibility", () => 
     }
 });
 
-test("noninteractive header precedes usage and activity, then banked resets, footer, and status banner", () => {
+test("noninteractive header precedes usage and activity, then banked resets, status banner, and footer", () => {
     const calls = [];
     const menu = new CodexMeterPopupMenu({
         onRefresh: () => calls.push("refresh"),
@@ -436,8 +436,8 @@ test("noninteractive header precedes usage and activity, then banked resets, foo
         items[2],
         menu.bankedResetsItem,
         items[4],
-        menu.footerItem,
         menu.statusItem,
+        menu.footerItem,
     ]);
     assert.equal(items[2].constructor.name, "PopupSeparatorMenuItem");
     assert.equal(items[4].constructor.name, "PopupSeparatorMenuItem");

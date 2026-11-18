@@ -14,7 +14,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
-- Changed popup warning and error messages to appear below the footer.
+- Changed popup warning and error messages to appear above the footer.
 
 ## v0.12.0 (2026-11-13)
 
