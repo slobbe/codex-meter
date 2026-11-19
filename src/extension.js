@@ -65,8 +65,9 @@ export default class CodexMeterExtension extends Extension {
         }
         const monitor = new CodexMonitor(
             settings,
-            (message) => {
-                if (this._monitor === monitor) this._notify(message);
+            (message, onDelivery = undefined) => {
+                if (this._monitor === monitor) this._notify(message, onDelivery);
+                else onDelivery?.(false);
             },
             credentialsPath,
             notificationStates,
@@ -91,13 +92,21 @@ export default class CodexMeterExtension extends Extension {
     _stopRuntime() {
         const monitor = this._monitor;
         this._monitor = null;
+        const source = this._notificationSource;
+        this._notificationSource = null;
+        // Drop queued alerts while the old monitor can still release its pending reservations.
+        source?.destroy(MessageTray.NotificationDestroyedReason.SOURCE_CLOSED);
         monitor?.stop();
-        this._notificationSource?.destroy(MessageTray.NotificationDestroyedReason.SOURCE_CLOSED);
         this._indicator?.destroy();
         this._indicator = null;
     }
 
-    _notify(body) {
+    /**
+     * @param {string} body
+     * @param {(shown: boolean) => void} [onDelivery] Called once: true on Shell acknowledgment,
+     * false if destroyed first. Acknowledgment can occur during submission.
+     */
+    _notify(body, onDelivery) {
         const title = "Codex Meter";
         const iconName = "dialog-information-symbolic";
         // Shell 45 uses positional constructors and showNotification().
@@ -106,21 +115,40 @@ export default class CodexMeterExtension extends Extension {
             const source = legacy
                 ? new MessageTray.Source(title, iconName)
                 : new MessageTray.Source({ title, iconName });
-            source.connect("destroy", () => {
-                this._notificationSource = null;
+            let destroyId = source.connect("destroy", () => {
+                if (this._notificationSource === source) this._notificationSource = null;
+                if (destroyId === null) return;
+                source.disconnect(destroyId);
+                destroyId = null;
             });
             this._notificationSource = source;
             Main.messageTray.add(source);
         }
         const source = this._notificationSource;
+        const notification = legacy
+            ? new MessageTray.Notification(source, title, body)
+            : new MessageTray.Notification({ source, title, body, isTransient: true });
+        if (onDelivery) {
+            let settled = false;
+            const settle = (shown) => {
+                if (settled) return;
+                settled = true;
+                notification.disconnect(acknowledgedId);
+                notification.disconnect(destroyId);
+                onDelivery(shown);
+            };
+            // Shell sets acknowledged when it begins showing the banner (or marks it read),
+            // not when it queues the notification. This property also exists on Shell 45.
+            const acknowledgedId = notification.connect("notify::acknowledged", () => {
+                if (this._notificationSource === source && notification.acknowledged) settle(true);
+            });
+            const destroyId = notification.connect("destroy", () => settle(false));
+        }
         if (legacy) {
-            const notification = new MessageTray.Notification(source, title, body);
             notification.setTransient(true);
             source.showNotification(notification);
         } else {
-            source.addNotification(
-                new MessageTray.Notification({ source, title, body, isTransient: true }),
-            );
+            source.addNotification(notification);
         }
     }
 }

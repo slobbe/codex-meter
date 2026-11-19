@@ -47,20 +47,50 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         sources: new Set(),
         add(source) { this.sources.add(source); }
     };
-    class TestSource {
-        notifications = [];
+    class SignalEmitter {
+        handlers = new Map();
+        nextId = 1;
         connect(signal, handler) {
-            if (signal !== 'destroy') throw new Error('Unexpected signal: ' + signal);
-            this.onDestroy = handler;
+            const id = this.nextId++;
+            this.handlers.set(id, { signal, handler });
+            return id;
+        }
+        disconnect(id) {
+            if (!this.handlers.delete(id)) throw new Error('Unknown handler: ' + id);
+        }
+        handlersFor(signal) {
+            return [...this.handlers.values()].filter(entry => entry.signal === signal)
+                .map(entry => entry.handler);
+        }
+        emit(signal) {
+            for (const handler of this.handlersFor(signal)) handler(this);
+        }
+    }
+    class TestNotification extends SignalEmitter {
+        acknowledged = false;
+        show() {
+            this.acknowledged = true;
+            this.emit('notify::acknowledged');
+        }
+        destroy() {
+            this.destroyed = true;
+            this.emit('destroy');
+            this.source.notifications.splice(this.source.notifications.indexOf(this), 1);
+        }
+    }
+    class TestSource extends SignalEmitter {
+        notifications = [];
+        submit(notification) {
+            this.notifications.push(notification);
+            messageTray.onSubmit?.(notification);
         }
         destroy(reason) {
             if (this.destroyed) throw new Error('Already destroyed');
             this.destroyed = true;
             this.reason = reason;
-            for (const notification of this.notifications) notification.destroyed = true;
-            this.notifications.length = 0;
+            for (const notification of [...this.notifications]) notification.destroy();
             messageTray.sources.delete(this);
-            this.onDestroy?.();
+            this.emit('destroy');
         }
     }
     export let Source;
@@ -68,16 +98,16 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export function useShellApi(legacy) {
         Source = legacy ? class extends TestSource {
             constructor(title, iconName) { super(); Object.assign(this, { title, iconName }); }
-            showNotification(notification) { this.notifications.push(notification); }
+            showNotification(notification) { this.submit(notification); }
         } : class extends TestSource {
             constructor(params) { super(); Object.assign(this, params); }
-            addNotification(notification) { this.notifications.push(notification); }
+            addNotification(notification) { this.submit(notification); }
         };
-        Notification = legacy ? class {
-            constructor(source, title, body) { Object.assign(this, { source, title, body }); }
+        Notification = legacy ? class extends TestNotification {
+            constructor(source, title, body) { super(); Object.assign(this, { source, title, body }); }
             setTransient(isTransient) { this.isTransient = isTransient; }
-        } : class {
-            constructor(params) { Object.assign(this, params); }
+        } : class extends TestNotification {
+            constructor(params) { super(); Object.assign(this, params); }
         };
     }
     export function notify(title, body) { sharedSource.notifications.push({ title, body }); }
@@ -121,6 +151,7 @@ function fixture(t, credentialsPath = "/accounts/first/auth.json") {
     const listeners = new Map();
     useShellApi(false);
     messageTray.sources.clear();
+    messageTray.onSubmit = null;
     sharedSource.notifications.length = 0;
     messageTray.add(sharedSource);
     const disconnected = [];
@@ -214,7 +245,87 @@ for (const legacy of [true, false]) {
         assert.deepEqual([...messageTray.sources], [sharedSource]);
         assert.deepEqual(sharedSource.notifications, [unrelated]);
     });
+
+    test(`A → B → A retries only unshown alerts and ignores stale signals (Shell ${legacy ? "45" : "46+"})`, (t) => {
+        const { settings, enable, disable } = fixture(t);
+        useShellApi(legacy);
+        enable();
+        const monitorA = runtime.monitors.at(-1);
+        const deliveries = [];
+        // Model the monitor contract: reserve while pending, deduplicate only after delivery.
+        function offer(monitor, message) {
+            const [, notify, , states] = monitor.args;
+            if (states.has(message)) return;
+            states.set(message, "pending");
+            notify(message, (shown) => {
+                deliveries.push([monitor.id, message, shown]);
+                if (shown) states.set(message, "shown");
+                else states.delete(message);
+            });
+        }
+        messageTray.onSubmit = (alert) => alert.show();
+        offer(monitorA, "A low");
+        messageTray.onSubmit = null;
+        offer(monitorA, "A exhausted");
+        const [, sourceA] = messageTray.sources;
+        const [shownA, queuedA] = sourceA.notifications;
+        const staleAcknowledged = queuedA.handlersFor("notify::acknowledged");
+        const staleDestroy = sourceA.handlersFor("destroy");
+        assert.deepEqual(deliveries, [[0, "A low", true]]);
+        assert.equal(shownA.handlers.size, 0);
+
+        settings.set_string(SETTINGS_CREDENTIALS_PATH, "/accounts/second/auth.json");
+        assert.ok(queuedA.destroyed);
+        assert.equal(queuedA.handlers.size, 0);
+        assert.deepEqual([...messageTray.sources], [sharedSource]);
+        const monitorB = runtime.monitors.at(-1);
+        offer(monitorB, "B low");
+        const [, sourceB] = messageTray.sources;
+        const [queuedB] = sourceB.notifications;
+        settings.set_string(SETTINGS_CREDENTIALS_PATH, "/accounts/first/./auth.json");
+        assert.ok(queuedB.destroyed);
+        const nextMonitorA = runtime.monitors.at(-1);
+        offer(nextMonitorA, "A low");
+        offer(nextMonitorA, "A exhausted");
+        const [, nextSourceA] = messageTray.sources;
+        assert.deepEqual(
+            nextSourceA.notifications.map((alert) => alert.body),
+            ["A exhausted"],
+        );
+
+        queuedA.acknowledged = true;
+        for (const handler of staleAcknowledged) handler(queuedA);
+        for (const handler of staleDestroy) handler(sourceA);
+        monitorA.args[1]("Old runtime A", (shown) => deliveries.push([0, "stale", shown]));
+        assert.deepEqual(deliveries, [
+            [0, "A low", true],
+            [0, "A exhausted", false],
+            [1, "B low", false],
+            [0, "stale", false],
+        ]);
+        const [retriedA] = nextSourceA.notifications;
+        disable();
+        assert.equal(deliveries.length, 5);
+        assert.deepEqual(deliveries.at(-1), [2, "A exhausted", false]);
+        assert.ok(retriedA.destroyed);
+        assert.equal(retriedA.handlers.size, 0);
+        assert.deepEqual([...messageTray.sources], [sharedSource]);
+    });
 }
+
+test("Shell can drop a pending alert without a credential switch", (t) => {
+    const { enable } = fixture(t);
+    enable();
+    const notify = runtime.monitors[0].args[1];
+    const deliveries = [];
+    notify("Dropped by Shell", (shown) => deliveries.push(shown));
+    const [, source] = messageTray.sources;
+    const [dropped] = source.notifications;
+    assert.deepEqual(deliveries, []);
+    dropped.destroy();
+    assert.deepEqual(deliveries, [false]);
+    assert.equal(dropped.handlers.size, 0);
+});
 
 test("A → B → A reuses only A's normalized-path dedup state until disable", (t) => {
     const { settings, enable, disable } = fixture(t, "~/first/auth.json");

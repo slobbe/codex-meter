@@ -93,6 +93,19 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
             this.destroyed = true;
         }
     }
+    function fileForPath(path) {
+        return {
+            get_path: () => path,
+            get_parent: () => fileForPath(path.slice(0, path.lastIndexOf("/"))),
+            equal: other => path === other.get_path(),
+            query_info_async: async () => ({}),
+            monitor_directory() {
+                const monitor = new FileMonitor();
+                fileMonitors.set(path, monitor);
+                return monitor;
+            },
+        };
+    }
     export default {
         PreferencesPage: Widget, PreferencesGroup: Widget, SwitchRow: Widget, ActionRow: Widget,
         ComboRow: Widget, SpinRow: Widget, Adjustment: Widget, Box: Widget, Label: Widget,
@@ -103,18 +116,8 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         },
         FileChooserAction: { OPEN: 0 }, ResponseType: { ACCEPT: -3, CANCEL: -6, DELETE_EVENT: -4 },
         Align: { CENTER: 3 },
-        File: {
-            new_for_path: path => ({
-                get_path: () => path,
-                get_parent: () => ({ query_info_async: async () => ({}) }),
-                monitor_file() {
-                    const monitor = new FileMonitor();
-                    fileMonitors.set(path, monitor);
-                    return monitor;
-                },
-            }),
-        },
-        FileMonitorFlags: { NONE: 0 }, FileQueryInfoFlags: { NONE: 0 },
+        File: { new_for_path: fileForPath },
+        FileMonitorFlags: { WATCH_MOVES: 8 }, FileQueryInfoFlags: { NONE: 0 },
         get_home_dir: () => "/home/test",
         build_filenamev: parts => parts.join("/"),
 
@@ -1141,17 +1144,22 @@ test("a new account's usage windows appear when its first cache snapshot is writ
     settings.set_string(SETTINGS_CREDENTIALS_PATH, path);
     await new Promise(setImmediate);
     assert.deepEqual(row.model, ["Any", "weekly (unavailable)"]);
-    const monitor = fileMonitors.get(`${path}.snapshot.json`);
+    const monitor = fileMonitors.get("/tmp");
     assert.ok(monitor);
+    const file = toolkit.File.new_for_path(`${path}.snapshot.json`);
+    const temporaryFile = toolkit.File.new_for_path("/tmp/cache-temp");
     snapshot = { quotas: [{ id: "weekly", label: "Weekly window" }] };
-    monitor.emit("changed");
+    monitor.emit("changed", temporaryFile);
+    await new Promise(setImmediate);
+    assert.deepEqual(row.model, ["Any", "weekly (unavailable)"]);
+    monitor.emit("changed", temporaryFile, file);
     await new Promise(setImmediate);
     assert.deepEqual(row.model, ["Any", "Weekly window"]);
     assert.equal(row.selected, 1);
     assert.deepEqual(settings.writes, [{ key: SETTINGS_CREDENTIALS_PATH, value: path }]);
+    window.close();
     assert.equal(monitor.cancelled, true);
     assert.deepEqual(monitor.signals, {});
-    window.close();
 });
 
 test("switching credentials again or closing the window cancels usage cache work", async (t) => {
@@ -1164,15 +1172,15 @@ test("switching credentials again or closing the window cancels usage cache work
     const window = windowFixture();
     const page = createPreferencesPage(settings, metadata, window, { quotas: [] });
     const row = page.children[2].children[2];
-    const paths = ["/tmp/first.json", "/tmp/current.json", "/tmp/closing.json"];
+    const paths = ["/tmp/first.json", "/tmp/current.json"];
     const switchTo = async (path) => {
         settings.set_string(SETTINGS_CREDENTIALS_PATH, path);
         assert.deepEqual(row.model, ["Any"]);
         await new Promise(setImmediate);
-        return fileMonitors.get(`${path}.snapshot.json`);
+        return fileMonitors.get("/tmp");
     };
     const firstMonitor = await switchTo(paths[0]);
-    await switchTo(paths[1]);
+    const currentMonitor = await switchTo(paths[1]);
     assert.equal(reads[0].cancellable.is_cancelled(), true);
     assert.equal(firstMonitor.cancelled, true);
     assert.deepEqual(firstMonitor.signals, {});
@@ -1184,22 +1192,23 @@ test("switching credentials again or closing the window cancels usage cache work
     await new Promise(setImmediate);
     assert.deepEqual(row.model, ["Any", "Current window"]);
 
-    const closingMonitor = await switchTo(paths[2]);
-    assert.deepEqual(row.model, ["Any"]);
+    currentMonitor.emit("changed", toolkit.File.new_for_path(`${paths[1]}.snapshot.json`));
     window.close();
     assert.equal(reads[2].cancellable.is_cancelled(), true);
-    assert.equal(closingMonitor.cancelled, true);
-    assert.deepEqual(closingMonitor.signals, {});
+    assert.equal(currentMonitor.cancelled, true);
+    assert.deepEqual(currentMonitor.signals, {});
     reads[2].resolve({ quotas: [{ id: "late", label: "Late window" }] });
     await new Promise(setImmediate);
-    assert.deepEqual(row.model, ["Any"]);
+    assert.deepEqual(row.model, ["Any", "Current window"]);
     assert.deepEqual(
         settings.writes,
         paths.map((value) => ({ key: SETTINGS_CREDENTIALS_PATH, value })),
     );
 
-    await switchTo(paths[0]);
+    settings.set_string(SETTINGS_CREDENTIALS_PATH, paths[0]);
+    await new Promise(setImmediate);
     assert.equal(reads.length, 3);
+    assert.deepEqual(row.model, ["Any", "Current window"]);
 });
 
 test("readSettings preserves the usage window quota ID", () => {

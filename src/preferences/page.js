@@ -201,20 +201,15 @@ function createBankedResetsGroup(settings, settingsSignalIds, snapshot) {
     const usageWindow = createUsageWindowRow(settings, settingsSignalIds, snapshot?.quotas ?? []);
     group.add(usageWindow.row);
     group.add(createUsageThresholdRow(settings, settingsSignalIds));
-    const cleanup = watchUsageWindowCache(
-        settings,
-        settingsSignalIds,
-        usageWindow.setQuotas,
-        snapshot === null,
-    );
+    const cleanup = watchUsageWindowCache(settings, settingsSignalIds, usageWindow.setQuotas);
     return { group, cleanup };
 }
 
-function watchUsageWindowCache(settings, settingsSignalIds, setQuotas, watchOnStartup) {
+function watchUsageWindowCache(settings, settingsSignalIds, setQuotas) {
     let stop = null;
-    const refresh = () => {
+    const refresh = (clearQuotas) => {
         stop?.();
-        setQuotas([]);
+        if (clearQuotas) setQuotas([]);
         const service = new UsageService(settings.get_string(SETTINGS_CREDENTIALS_PATH));
         const scope = new Gio.Cancellable();
         let pendingRead = null;
@@ -232,10 +227,7 @@ function watchUsageWindowCache(settings, settingsSignalIds, setQuotas, watchOnSt
             const snapshot = await service.readCachedSnapshot({ cancellable }).catch(() => null);
             if (scope.is_cancelled() || pendingRead !== cancellable) return;
             pendingRead = null;
-            if (!snapshot) return;
-            stop();
-            stop = null;
-            setQuotas(snapshot.quotas);
+            if (snapshot) setQuotas(snapshot.quotas);
         };
         const file = Gio.File.new_for_path(service.snapshotPath);
         const exists = (directory) =>
@@ -261,9 +253,8 @@ function watchUsageWindowCache(settings, settingsSignalIds, setQuotas, watchOnSt
             }
             if (scope.is_cancelled()) return;
             const atFile = child === file;
-            const monitor = atFile
-                ? file.monitor_file(Gio.FileMonitorFlags.NONE, scope)
-                : parent.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, scope);
+            // Watch the directory so atomic replacements of the snapshot are visible.
+            const monitor = parent.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, scope);
             const advance = () => {
                 if (scope.is_cancelled() || stopMonitoring !== disconnect) return;
                 disconnect();
@@ -271,8 +262,9 @@ function watchUsageWindowCache(settings, settingsSignalIds, setQuotas, watchOnSt
                 start();
             };
             const id = monitor.connect("changed", (_monitor, changed, other) => {
+                if (!child.equal(changed) && !(other && child.equal(other))) return;
                 if (atFile) void read();
-                else if (child.equal(changed) || (other && child.equal(other))) advance();
+                else advance();
             });
             const disconnect = () => {
                 monitor.disconnect(id);
@@ -286,9 +278,14 @@ function watchUsageWindowCache(settings, settingsSignalIds, setQuotas, watchOnSt
         const start = () => void arm().catch(read);
         start();
     };
-    settingsSignalIds.push(settings.connect(`changed::${SETTINGS_CREDENTIALS_PATH}`, refresh));
-    if (watchOnStartup) refresh();
-    return () => stop?.();
+    settingsSignalIds.push(
+        settings.connect(`changed::${SETTINGS_CREDENTIALS_PATH}`, () => refresh(true)),
+    );
+    refresh(false);
+    return () => {
+        stop?.();
+        stop = null;
+    };
 }
 
 function createUsageWindowRow(settings, settingsSignalIds, quotas) {

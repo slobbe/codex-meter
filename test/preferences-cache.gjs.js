@@ -33,6 +33,21 @@ function delay(ms) {
     });
 }
 
+function snapshot(label, id = "weekly") {
+    return {
+        fetchedAt: Date.now(),
+        planType: "test",
+        quotas: [{ id, label, usedPercent: 10 }],
+    };
+}
+
+async function waitForSelection(row, label) {
+    for (let i = 0; i < 80 && row.model.get_string(row.selected) !== label; i++) {
+        await delay(25);
+    }
+    assert(row.model.get_string(row.selected) === label, `Expected selected window: ${label}`);
+}
+
 assert(GLib.getenv("GSETTINGS_BACKEND") === "memory", "Set GSETTINGS_BACKEND=memory");
 assert(GLib.getenv("XDG_CACHE_HOME"), "Set XDG_CACHE_HOME to an empty temporary directory");
 Adw.init();
@@ -62,22 +77,8 @@ for (const startup of [false, true]) {
     assert(row.model.get_string(row.selected) === "weekly (unavailable)", "Selection was lost");
     await delay(150);
     assert(!parent.query_exists(null), "Preferences must not create cache directories");
-    await writeSnapshot(
-        {
-            fetchedAt: Date.now(),
-            planType: "test",
-            quotas: [{ id: "weekly", label: "First cache window", usedPercent: 10 }],
-        },
-        null,
-        service.snapshotPath,
-    );
-    for (let i = 0; i < 40 && row.model.get_string(row.selected) !== "First cache window"; i++) {
-        await delay(25);
-    }
-    assert(
-        row.model.get_string(row.selected) === "First cache window",
-        `First snapshot was not loaded at ${startup ? "startup" : "credentials switch"}`,
-    );
+    await writeSnapshot(snapshot("First cache window"), null, service.snapshotPath);
+    await waitForSelection(row, "First cache window");
     assert(
         settings.get_string(SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW) === "weekly",
         "Selection was written",
@@ -85,4 +86,40 @@ for (const startup of [false, true]) {
     window.emit("close-request");
     window.destroy();
     print(`ok - first cache loaded at ${startup ? "startup" : "credentials switch"}`);
+}
+
+for (const startup of [false, true]) {
+    const path = startup ? "/test/cached-startup/auth.json" : "/test/cached-switch/auth.json";
+    const service = new UsageService(path);
+    const stale = snapshot("Stale cache window");
+    await writeSnapshot(stale, null, service.snapshotPath);
+    if (startup) settings.set_string(SETTINGS_CREDENTIALS_PATH, path);
+    const window = new Adw.PreferencesWindow();
+    const page = createPreferencesPage(
+        settings,
+        { name: "Codex Meter", "version-name": "test" },
+        window,
+        startup ? stale : snapshot("Previous account window", "old"),
+    );
+    window.add(page);
+    const row = findUsageWindow(page);
+    assert(row !== null, "Usage Window row not found");
+    if (!startup) settings.set_string(SETTINGS_CREDENTIALS_PATH, path);
+    await waitForSelection(row, "Stale cache window");
+
+    // writeSnapshot replaces the cache atomically. Check more than one replacement.
+    await writeSnapshot(snapshot("Live daily window", "daily"), null, service.snapshotPath);
+    await waitForSelection(row, "weekly (unavailable)");
+    assert(row.model.get_n_items() === 3, "Stale options were not removed");
+    assert(row.model.get_string(1) === "Live daily window", "Live option was not added");
+    await writeSnapshot(snapshot("Live weekly window"), null, service.snapshotPath);
+    await waitForSelection(row, "Live weekly window");
+    assert(row.model.get_n_items() === 2, "Daily option was not removed");
+    assert(
+        settings.get_string(SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW) === "weekly",
+        "Selection was written",
+    );
+    window.emit("close-request");
+    window.destroy();
+    print(`ok - stale cache refreshed at ${startup ? "startup" : "credentials switch"}`);
 }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import test from "node:test";
+import { toUsageSnapshot } from "../src/codex/usage/response.js";
 
 const monitorUrl = new URL("../src/background/monitor.js", import.meta.url).href;
 const stubUrl = `data:text/javascript,${encodeURIComponent(`
@@ -65,7 +66,7 @@ function deferred() {
     return { promise, resolve, reject };
 }
 
-function fixture() {
+function fixture(deliver = (_message, settle) => settle?.(true)) {
     const notifications = [];
     const changes = [];
     const callbacks = new Map();
@@ -80,7 +81,10 @@ function fixture() {
         get_boolean: () => false,
         get_uint: () => 5,
     };
-    const monitor = new CodexMonitor(settings, (message) => notifications.push(message));
+    const monitor = new CodexMonitor(settings, (message, settle) => {
+        notifications.push(message);
+        deliver(message, settle);
+    });
     monitor.onChange = (state) => changes.push(state);
     monitor.refreshUsage = async () => {};
     return { monitor, notifications, changes, settings, callbacks };
@@ -135,7 +139,10 @@ test("same-cycle alerts do not repeat when replacing monitors A → B → A", as
     async function refresh(path, states) {
         const monitor = new CodexMonitor(
             settings,
-            (message) => notifications.push([path, message]),
+            (message, settle) => {
+                notifications.push([path, message]);
+                settle?.(true);
+            },
             path,
             states,
         );
@@ -150,12 +157,65 @@ test("same-cycle alerts do not repeat when replacing monitors A → B → A", as
     await refresh("/a/auth.json", stateA);
     quotas.set("/a/auth.json", notificationQuota(91, { resetAt: 10_000_000_000 }));
     await refresh("/a/auth.json", stateA);
+    api.usage = () => accountLimitSnapshot(true, 20, 60);
+    await refresh("/a/auth.json", stateA);
+    await refresh("/b/auth.json", stateB);
+    await refresh("/a/auth.json", stateA);
     assert.deepEqual(notifications, [
         ["/a/auth.json", "5 hours usage window is running low: 10% left."],
         ["/b/auth.json", "5 hours usage window is running low: 10% left."],
         ["/a/auth.json", "5 hours usage window exhausted."],
         ["/a/auth.json", "5 hours usage window is running low: 9% left."],
+        ["/a/auth.json", "Codex account usage limit reached."],
+        ["/b/auth.json", "Codex account usage limit reached."],
     ]);
+});
+
+test("dropped alerts retry on return to the same credentials, but queued and shown alerts do not repeat", () => {
+    for (const snapshot of [
+        { quotas: [notificationQuota(91)] },
+        accountLimitSnapshot(true, 100, 60),
+        accountLimitSnapshot(true, 99, 60),
+    ]) {
+        const states = new Map();
+        const deliveries = [];
+        const createMonitor = (path, pathStates) => {
+            const monitor = new CodexMonitor(
+                { connect() {}, disconnect() {}, get_boolean: () => true, get_uint: () => 10 },
+                (message, settle) => deliveries.push({ path, message, settle }),
+                path,
+                pathStates,
+            );
+            return monitor;
+        };
+        const first = createMonitor("/a/auth.json", states);
+        first._notifyUsage(snapshot);
+        first._notifyUsage(snapshot);
+        assert.equal(deliveries.length, 1);
+        deliveries[0].settle(false);
+        first.stop();
+
+        const other = createMonitor("/b/auth.json", new Map());
+        other._notifyUsage(snapshot);
+        deliveries[1].settle(true);
+        other.stop();
+
+        const returning = createMonitor("/a/auth.json", states);
+        returning._notifyUsage(snapshot);
+        deliveries[0].settle(true); // A stale callback must not change the new reservation.
+        deliveries[2].settle(true);
+        returning._notifyUsage(snapshot);
+        returning.stop();
+
+        const afterDelivery = createMonitor("/a/auth.json", states);
+        afterDelivery._notifyUsage(snapshot);
+        afterDelivery.stop();
+        assert.deepEqual(
+            deliveries.map(({ path }) => path),
+            ["/a/auth.json", "/b/auth.json", "/a/auth.json"],
+        );
+        assert.equal(deliveries[0].message, deliveries[2].message);
+    }
 });
 
 test("jumping straight to exhausted skips the warning", () => {
@@ -168,15 +228,68 @@ test("jumping straight to exhausted skips the warning", () => {
     }
 });
 
-test("account-wide limitReached does not report unexhausted windows as exhausted", () => {
+function accountLimitSnapshot(limitReached, sessionPercent, weeklyPercent, sessionResetAt) {
+    return toUsageSnapshot({
+        plan_type: "plus",
+        rate_limit: {
+            limit_reached: limitReached,
+            primary_window: {
+                limit_window_seconds: 18_000,
+                used_percent: sessionPercent,
+                reset_at: sessionResetAt ?? 9_999_999_999,
+                reset_after_seconds: 18_000,
+            },
+            secondary_window: {
+                limit_window_seconds: 604_800,
+                used_percent: weeklyPercent,
+                reset_at: 9_999_999_999,
+                reset_after_seconds: 604_800,
+            },
+        },
+    });
+}
+
+test("unattributed account exhaustion alerts once until a live refresh clears the limit", async (t) => {
+    const notifications = [];
+    const settings = {
+        connect() {},
+        disconnect() {},
+        get_boolean: () => true,
+        get_uint: () => 10,
+    };
+    const monitor = new CodexMonitor(settings, (message, settle) => {
+        notifications.push(message);
+        settle?.(true);
+    });
+    t.after(() => {
+        monitor.stop();
+        delete api.usage;
+    });
+    api.usage = () => accountLimitSnapshot(true, 100, 95, 1);
+    await monitor.refreshUsage();
+    api.usage = () => accountLimitSnapshot(true, 93, 96);
+    await monitor.refreshUsage();
+    assert.deepEqual(notifications, ["Codex account usage limit reached."]);
+
+    api.usage = () => accountLimitSnapshot(false, 20, 60);
+    await monitor.refreshUsage();
+    api.usage = () => accountLimitSnapshot(true, 70, 95);
+    await monitor.refreshUsage();
+    api.usage = () => accountLimitSnapshot(true, 100, 60);
+    await monitor.refreshUsage();
+    assert.deepEqual(notifications, [
+        "Codex account usage limit reached.",
+        "Codex account usage limit reached.",
+        "5 hours usage window exhausted.",
+    ]);
+});
+
+test("identified windows take precedence and prevent a later fallback for the same limit", () => {
     const { monitor, notifications } = fixture();
     enableNotifications(monitor);
-    monitor._notifyUsage({
-        quotas: [
-            notificationQuota(100, { limitReached: true }),
-            notificationQuota(50, { id: "weekly", label: "Weekly", limitReached: true }),
-        ],
-    });
+    monitor._notifyUsage(accountLimitSnapshot(true, 100, 50));
+    monitor._notifyUsage(accountLimitSnapshot(true, 100, 50));
+    monitor._notifyUsage(accountLimitSnapshot(true, 99, 50));
     assert.deepEqual(notifications, ["5 hours usage window exhausted."]);
 });
 
@@ -237,7 +350,7 @@ test("notification settings take effect on the next refresh and disconnect on st
 test("only successful live refreshes send usage notifications, never cached or failed usage", async () => {
     const { monitor, notifications } = fixture();
     enableNotifications(monitor);
-    const snapshot = { quotas: [notificationQuota(100)] };
+    const snapshot = accountLimitSnapshot(true, 50, 60);
     monitor._usageService = {
         readCachedSnapshot: async () => snapshot,
         readHistory: async () => [],
@@ -252,7 +365,7 @@ test("only successful live refreshes send usage notifications, never cached or f
     monitor._usageService.refresh = async () => snapshot;
     await monitor._refreshUsageOnce();
     await monitor._refreshUsageOnce();
-    assert.deepEqual(notifications, ["5 hours usage window exhausted."]);
+    assert.deepEqual(notifications, ["Codex account usage limit reached."]);
 });
 
 test("stop during a usage refresh prevents late usage notifications", async () => {
@@ -262,7 +375,7 @@ test("stop during a usage refresh prevents late usage notifications", async () =
     monitor._usageService = { refresh: () => response.promise };
     const pending = monitor._refreshUsageOnce();
     monitor.stop();
-    response.resolve({ quotas: [notificationQuota(100)] });
+    response.resolve(accountLimitSnapshot(true, 50, 60));
     await pending;
     assert.deepEqual(notifications, []);
 });

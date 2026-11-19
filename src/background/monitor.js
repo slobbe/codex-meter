@@ -24,6 +24,24 @@ import { formatRefreshFailure } from "./refresh-error-message.js";
 const BANKED_RESET_BACKGROUND_REFRESH_SECONDS = 20 * 60;
 
 const AUTO_APPLY_BANKED_RESET_WINDOW_MS = 60 * 60 * 1000;
+const ACCOUNT_EXHAUSTION = Symbol("account exhaustion");
+
+function queueUsageAlert(notify, state, level, message, onShown) {
+    // A reservation prevents duplicate banners while Shell queues the first one.
+    const pending = Symbol(level);
+    state[level] = pending;
+    const settle = (shown) => {
+        if (state[level] !== pending) return;
+        state[level] = shown;
+        if (shown) onShown?.();
+    };
+    try {
+        notify(message, settle);
+    } catch (error) {
+        settle(false);
+        throw error;
+    }
+}
 
 export class CodexMonitor {
     onChange = null;
@@ -458,12 +476,23 @@ export class CodexMonitor {
     _notifyUsage(snapshot) {
         if (!this._usageNotifications || this._lifecycleCancellable.is_cancelled()) return;
         const now = Date.now() / 1000;
-        for (const quota of snapshot.quotas) {
-            if ((quota.resetAt ?? Infinity) <= now) continue;
+        const activeQuotas = snapshot.quotas.filter((quota) => (quota.resetAt ?? Infinity) > now);
+        // The API repeats its account-wide flag on every window, even an expired one.
+        const accountExhausted = snapshot.quotas.some((quota) => quota.limitReached);
+        const needsAccountAlert =
+            accountExhausted && !activeQuotas.some((quota) => quota.usedPercent >= 100);
+        const states = this._usageNotificationStates;
+        if (accountExhausted && !states.has(ACCOUNT_EXHAUSTION)) {
+            states.set(ACCOUNT_EXHAUSTION, { exhausted: false });
+        } else if (!accountExhausted) {
+            states.delete(ACCOUNT_EXHAUSTION);
+        }
+        const accountState = states.get(ACCOUNT_EXHAUSTION);
+
+        for (const quota of activeQuotas) {
             const remaining = Math.max(0, 100 - quota.usedPercent);
-            // limitReached is account-wide, not specific to this usage window.
             const exhausted = remaining === 0;
-            let state = this._usageNotificationStates.get(quota.id);
+            let state = states.get(quota.id);
             // A new reset deadline or a redeemed reset starts a fresh notification cycle.
             if (
                 !state ||
@@ -472,19 +501,46 @@ export class CodexMonitor {
                 (quota.usedPercent === 0 && state.usedPercent > 0)
             ) {
                 state = { resetAt: quota.resetAt ?? null, warned: false, exhausted: false };
-                this._usageNotificationStates.set(quota.id, state);
+                states.set(quota.id, state);
             }
             state.usedPercent = quota.usedPercent;
-            if (exhausted && !state.exhausted) {
-                state.warned = true;
-                state.exhausted = true;
-                this._notify(`${quota.label} usage window exhausted.`);
-            } else if (!state.warned && remaining <= this._usageNotificationThreshold) {
-                state.warned = true;
-                this._notify(
+            if (exhausted) {
+                // A displayed window alert also explains this account-wide episode.
+                const markAccountExplained = () => {
+                    if (accountState && states.get(quota.id) === state)
+                        accountState.exhausted = true;
+                };
+                if (state.exhausted === true) {
+                    markAccountExplained();
+                } else if (!state.exhausted) {
+                    queueUsageAlert(
+                        this._notify,
+                        state,
+                        "exhausted",
+                        `${quota.label} usage window exhausted.`,
+                        markAccountExplained,
+                    );
+                }
+            } else if (
+                !needsAccountAlert &&
+                !state.warned &&
+                remaining <= this._usageNotificationThreshold
+            ) {
+                queueUsageAlert(
+                    this._notify,
+                    state,
+                    "warned",
                     `${quota.label} usage window is running low: ${Number(remaining.toFixed(1))}% left.`,
                 );
             }
+        }
+        if (needsAccountAlert && !accountState.exhausted) {
+            queueUsageAlert(
+                this._notify,
+                accountState,
+                "exhausted",
+                "Codex account usage limit reached.",
+            );
         }
     }
 
