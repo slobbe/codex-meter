@@ -28,14 +28,19 @@ const AUTO_APPLY_BANKED_RESET_WINDOW_MS = 60 * 60 * 1000;
 export class CodexMonitor {
     onChange = null;
 
-    constructor(settings, notify, credentialsPath = undefined) {
+    constructor(
+        settings,
+        notify,
+        credentialsPath = undefined,
+        usageNotificationStates = new Map(),
+    ) {
         this._settings = settings;
         this._credentialsPath = credentialsPath;
         this._notify = notify;
         const values = readSettings(settings);
         this._usageNotifications = values.usageNotifications;
         this._usageNotificationThreshold = values.usageNotificationThreshold;
-        this._usageNotificationStates = new Map();
+        this._usageNotificationStates = usageNotificationStates;
         this._autoApplyBankedReset = values.autoApplyBankedReset;
         this._autoApplyBankedResetOnUsage = values.autoApplyBankedResetOnUsage;
         this._autoApplyBankedResetUsageThreshold = values.autoApplyBankedResetUsageThreshold;
@@ -124,7 +129,8 @@ export class CodexMonitor {
         this._settings.disconnect(this._refreshIntervalChangedId);
         this._settings.disconnect(this._usageNotificationsChangedId);
         this._settings.disconnect(this._usageNotificationThresholdChangedId);
-        this._usageNotificationStates.clear();
+        // The extension retains this path's state across monitor replacements.
+        this._usageNotificationStates = null;
         this.onChange = null;
     }
 

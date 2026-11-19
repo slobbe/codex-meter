@@ -5,6 +5,7 @@ import Gtk from "gi://Gtk";
 import { getCodexCredentials } from "../codex/auth/auth.js";
 import { isCodexError } from "../codex/error.js";
 import { getUsageWindowMetadata, sortUsageQuotas } from "../codex/usage/model.js";
+import { UsageService } from "../codex/usage/service.js";
 import { formatDescription } from "./about-content.js";
 import {
     DEFAULT_CREDENTIALS_PATH,
@@ -38,13 +39,15 @@ export function createPreferencesPage(
     });
     page.add(createAppearanceGroup(settings, settingsSignalIds));
     page.add(createNotificationsGroup(settings, settingsSignalIds));
-    page.add(createBankedResetsGroup(settings, settingsSignalIds, snapshot?.quotas ?? []));
+    const bankedResets = createBankedResetsGroup(settings, settingsSignalIds, snapshot);
+    page.add(bankedResets.group);
     page.add(createBackgroundRefreshGroup(settings, settingsSignalIds));
     const credentials = createCredentialsGroup(settings, settingsSignalIds, window);
     page.add(credentials.group);
     page.add(createFooterGroup(metadata, window, releaseNotes));
     window.connect("close-request", () => {
         credentials.cleanup();
+        bankedResets.cleanup();
         for (const id of settingsSignalIds.splice(0)) {
             settings.disconnect(id);
         }
@@ -177,7 +180,7 @@ function createCredentialsGroup(settings, settingsSignalIds, window) {
     };
 }
 
-function createBankedResetsGroup(settings, settingsSignalIds, quotas) {
+function createBankedResetsGroup(settings, settingsSignalIds, snapshot) {
     const group = new Adw.PreferencesGroup({ title: "Banked resets" });
     group.add(
         createBoundSwitchRow({
@@ -195,23 +198,101 @@ function createBankedResetsGroup(settings, settingsSignalIds, quotas) {
             subtitle: "Redeem a reset if remaining usage falls below threshold",
         }),
     );
-    group.add(createUsageWindowRow(settings, settingsSignalIds, quotas));
+    const usageWindow = createUsageWindowRow(settings, settingsSignalIds, snapshot?.quotas ?? []);
+    group.add(usageWindow.row);
     group.add(createUsageThresholdRow(settings, settingsSignalIds));
+    const cleanup = watchUsageWindowCache(
+        settings,
+        settingsSignalIds,
+        usageWindow.setQuotas,
+        snapshot === null,
+    );
+    return { group, cleanup };
+}
 
-    return group;
+function watchUsageWindowCache(settings, settingsSignalIds, setQuotas, watchOnStartup) {
+    let stop = null;
+    const refresh = () => {
+        stop?.();
+        setQuotas([]);
+        const service = new UsageService(settings.get_string(SETTINGS_CREDENTIALS_PATH));
+        const scope = new Gio.Cancellable();
+        let pendingRead = null;
+        let stopMonitoring = null;
+        stop = () => {
+            scope.cancel();
+            pendingRead?.cancel();
+            stopMonitoring?.();
+        };
+        const read = async () => {
+            if (scope.is_cancelled()) return;
+            pendingRead?.cancel();
+            const cancellable = new Gio.Cancellable();
+            pendingRead = cancellable;
+            const snapshot = await service.readCachedSnapshot({ cancellable }).catch(() => null);
+            if (scope.is_cancelled() || pendingRead !== cancellable) return;
+            pendingRead = null;
+            if (!snapshot) return;
+            stop();
+            stop = null;
+            setQuotas(snapshot.quotas);
+        };
+        const file = Gio.File.new_for_path(service.snapshotPath);
+        const exists = (directory) =>
+            directory
+                .query_info_async(
+                    "standard::type",
+                    Gio.FileQueryInfoFlags.NONE,
+                    GLib.PRIORITY_DEFAULT,
+                    scope,
+                )
+                .then(() => true)
+                .catch((error) => {
+                    if (error.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)) return false;
+                    throw error;
+                });
+        const arm = async () => {
+            let child = file;
+            let parent = file.get_parent();
+            // Gio can miss the first write when the file's containing directory is absent.
+            while (!(await exists(parent))) {
+                child = parent;
+                parent = parent.get_parent();
+            }
+            if (scope.is_cancelled()) return;
+            const atFile = child === file;
+            const monitor = atFile
+                ? file.monitor_file(Gio.FileMonitorFlags.NONE, scope)
+                : parent.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, scope);
+            const advance = () => {
+                if (scope.is_cancelled() || stopMonitoring !== disconnect) return;
+                disconnect();
+                stopMonitoring = null;
+                start();
+            };
+            const id = monitor.connect("changed", (_monitor, changed, other) => {
+                if (atFile) void read();
+                else if (child.equal(changed) || (other && child.equal(other))) advance();
+            });
+            const disconnect = () => {
+                monitor.disconnect(id);
+                monitor.cancel();
+            };
+            stopMonitoring = disconnect;
+            // Check again after connecting so creation during monitor setup is not missed.
+            if (atFile) await read();
+            else if (await exists(child)) advance();
+        };
+        const start = () => void arm().catch(read);
+        start();
+    };
+    settingsSignalIds.push(settings.connect(`changed::${SETTINGS_CREDENTIALS_PATH}`, refresh));
+    if (watchOnStartup) refresh();
+    return () => stop?.();
 }
 
 function createUsageWindowRow(settings, settingsSignalIds, quotas) {
     const key = SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW;
-    const options = [
-        ["Any", "any"],
-        ...sortUsageQuotas(quotas).map((quota) => [
-            quota.limitWindowSeconds != null
-                ? getUsageWindowMetadata(quota.limitWindowSeconds).label
-                : quota.label,
-            quota.id,
-        ]),
-    ];
     const row = new Adw.ComboRow({
         title: "Usage Window",
         subtitle: "Apply auto-redemption only to selected usage window",
@@ -221,7 +302,15 @@ function createUsageWindowRow(settings, settingsSignalIds, quotas) {
     const update = () => {
         updating = true;
         const value = settings.get_string(key);
-        currentOptions = [...options];
+        currentOptions = [
+            ["Any", "any"],
+            ...sortUsageQuotas(quotas).map((quota) => [
+                quota.limitWindowSeconds != null
+                    ? getUsageWindowMetadata(quota.limitWindowSeconds).label
+                    : quota.label,
+                quota.id,
+            ]),
+        ];
         if (!currentOptions.some(([, id]) => id === value)) {
             currentOptions.push([`${value} (unavailable)`, value]);
         }
@@ -242,7 +331,13 @@ function createUsageWindowRow(settings, settingsSignalIds, quotas) {
         "sensitive",
         Gio.SettingsBindFlags.GET,
     );
-    return row;
+    return {
+        row,
+        setQuotas(newQuotas) {
+            quotas = newQuotas;
+            update();
+        },
+    };
 }
 
 function createUsageThresholdRow(settings, settingsSignalIds) {

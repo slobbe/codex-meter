@@ -15,9 +15,18 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     class GLibError extends Error { matches() { return true; } }
     export const isCancellationError = error => error instanceof GLibError;
     export default { Cancellable, Error: GLibError, IOErrorEnum: { CANCELLED: 1 } };
-    export class UsageService {}
+    export class UsageService {
+        constructor(path) { this.path = path; }
+        async refresh() { return api.usage(this.path); }
+        async readHistory() { return []; }
+        async predict() { return null; }
+    }
     export class PeriodicTask { start() {} stop() {} }
-    export const readSettings = () => ({ autoApplyBankedReset: false });
+    export const readSettings = settings => ({
+        autoApplyBankedReset: false,
+        usageNotifications: settings.get_boolean(),
+        usageNotificationThreshold: settings.get_uint(),
+    });
     export const SETTINGS_USAGE_NOTIFICATIONS = "usage-notifications";
     export const SETTINGS_USAGE_NOTIFICATION_THRESHOLD = "usage-notification-threshold";
     export const SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW = "usage-window";
@@ -69,7 +78,7 @@ function fixture() {
             callbacks.delete(signal);
         },
         get_boolean: () => false,
-        get_uint: () => 10,
+        get_uint: () => 5,
     };
     const monitor = new CodexMonitor(settings, (message) => notifications.push(message));
     monitor.onChange = (state) => changes.push(state);
@@ -105,6 +114,48 @@ test("usage notifications are opt-in, inclusive at threshold, and deduplicated p
     notify(100);
     assert.equal(notifications.length, 2);
     assert.equal(notifications[1], "5 hours usage window exhausted.");
+});
+
+test("same-cycle alerts do not repeat when replacing monitors A → B → A", async (t) => {
+    const notifications = [];
+    const stateA = new Map();
+    const stateB = new Map();
+    const quotas = new Map([
+        ["/a/auth.json", notificationQuota(90)],
+        ["/b/auth.json", notificationQuota(90)],
+    ]);
+    api.usage = (path) => ({ quotas: [quotas.get(path)] });
+    t.after(() => delete api.usage);
+    const settings = {
+        connect() {},
+        disconnect() {},
+        get_boolean: () => true,
+        get_uint: () => 10,
+    };
+    async function refresh(path, states) {
+        const monitor = new CodexMonitor(
+            settings,
+            (message) => notifications.push([path, message]),
+            path,
+            states,
+        );
+        await monitor.refreshUsage();
+        monitor.stop();
+    }
+    await refresh("/a/auth.json", stateA);
+    await refresh("/b/auth.json", stateB);
+    await refresh("/a/auth.json", stateA);
+    quotas.set("/a/auth.json", notificationQuota(100));
+    await refresh("/a/auth.json", stateA);
+    await refresh("/a/auth.json", stateA);
+    quotas.set("/a/auth.json", notificationQuota(91, { resetAt: 10_000_000_000 }));
+    await refresh("/a/auth.json", stateA);
+    assert.deepEqual(notifications, [
+        ["/a/auth.json", "5 hours usage window is running low: 10% left."],
+        ["/b/auth.json", "5 hours usage window is running low: 10% left."],
+        ["/a/auth.json", "5 hours usage window exhausted."],
+        ["/a/auth.json", "5 hours usage window is running low: 9% left."],
+    ]);
 });
 
 test("jumping straight to exhausted skips the warning", () => {

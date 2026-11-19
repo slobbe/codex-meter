@@ -29,7 +29,10 @@ const snapshotStubUrl = `data:text/javascript,${encodeURIComponent(`
     };
     export const readFile = (path, cancellable) => cache.readChangelog(path, cancellable);
     export class UsageService {
-        constructor(credentialsPath) { this.credentialsPath = credentialsPath; }
+        constructor(credentialsPath) {
+            this.credentialsPath = credentialsPath;
+            this.snapshotPath = credentialsPath + ".snapshot.json";
+        }
         readCachedSnapshot({ cancellable }) { return cache.read(cancellable, this.credentialsPath); }
     }
 `)}`;
@@ -68,6 +71,10 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     }
     export const dialogs = [];
     export const aboutWindows = [];
+    export const fileMonitors = new Map();
+    class FileMonitor extends Widget {
+        cancel() { this.cancelled = true; }
+    }
     class AboutWindow extends Widget {
         constructor(options) { super(options); aboutWindows.push(this); }
         add_link(title, url) { (this.links ??= []).push({ title, url }); }
@@ -96,7 +103,18 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         },
         FileChooserAction: { OPEN: 0 }, ResponseType: { ACCEPT: -3, CANCEL: -6, DELETE_EVENT: -4 },
         Align: { CENTER: 3 },
-        File: { new_for_path: path => ({ get_path: () => path }) },
+        File: {
+            new_for_path: path => ({
+                get_path: () => path,
+                get_parent: () => ({ query_info_async: async () => ({}) }),
+                monitor_file() {
+                    const monitor = new FileMonitor();
+                    fileMonitors.set(path, monitor);
+                    return monitor;
+                },
+            }),
+        },
+        FileMonitorFlags: { NONE: 0 }, FileQueryInfoFlags: { NONE: 0 },
         get_home_dir: () => "/home/test",
         build_filenamev: parts => parts.join("/"),
 
@@ -110,11 +128,14 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     };
     export class ExtensionPreferences {}
 `)}`;
-const { default: toolkit, dialogs, aboutWindows } = await import(stubUrl);
+const { default: toolkit, dialogs, aboutWindows, fileMonitors } = await import(stubUrl);
 const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
         if (context.parentURL === pageUrl && specifier === "../codex/auth/auth.js") {
             return { url: authStubUrl, shortCircuit: true };
+        }
+        if (context.parentURL === pageUrl && specifier === "../codex/usage/service.js") {
+            return { url: snapshotStubUrl, shortCircuit: true };
         }
         if (
             context.parentURL === prefsUrl &&
@@ -1057,6 +1078,130 @@ test("usage window preserves unavailable selections without writing a fallback",
     assert.deepEqual(defaults.writes, []);
 });
 
+test("selecting and resetting credentials replaces usage windows without writing the selection", async (t) => {
+    const workPath = "/tmp/work.json";
+    const defaultSnapshot = { quotas: [{ id: "default-id", label: "Default window" }] };
+    const workSnapshot = { quotas: [{ id: "work-id", label: "Work window" }] };
+    const reads = new Map();
+    cache.read = (cancellable, path) =>
+        new Promise((resolve) => reads.set(path, { cancellable, resolve }));
+    t.after(() => {
+        cache.read = async () => null;
+    });
+    const settings = settingsFixture({
+        [SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW]: "default-id",
+    });
+    const window = windowFixture();
+    const page = createPreferencesPage(settings, metadata, window, defaultSnapshot);
+    const row = page.children[2].children[2];
+    const [browse, reset] = page.children[4].children[0].children;
+    const selectWork = async () => {
+        browse.emit("clicked");
+        const dialog = dialogs.at(-1);
+        dialog.file = toolkit.File.new_for_path(workPath);
+        dialog.emit("response", toolkit.ResponseType.ACCEPT);
+        await new Promise(setImmediate);
+    };
+
+    assert.deepEqual(row.model, ["Any", "Default window"]);
+    await selectWork();
+    assert.equal(settings.get_string(SETTINGS_CREDENTIALS_PATH), workPath);
+    assert.deepEqual(row.model, ["Any", "default-id (unavailable)"]);
+    assert.equal(row.selected, 1);
+    reads.get(workPath).resolve(workSnapshot);
+    await new Promise(setImmediate);
+    assert.deepEqual(row.model, ["Any", "Work window", "default-id (unavailable)"]);
+    assert.equal(row.selected, 2);
+
+    reset.emit("clicked");
+    assert.deepEqual(row.model, ["Any", "default-id (unavailable)"]);
+    await new Promise(setImmediate);
+    reads.get(DEFAULT_CREDENTIALS_PATH).resolve(defaultSnapshot);
+    await new Promise(setImmediate);
+    assert.deepEqual(row.model, ["Any", "Default window"]);
+    assert.equal(row.selected, 1);
+    assert.deepEqual(settings.writes, [{ key: SETTINGS_CREDENTIALS_PATH, value: workPath }]);
+    window.close();
+});
+
+test("a new account's usage windows appear when its first cache snapshot is written", async (t) => {
+    const path = "/tmp/new-account.json";
+    let snapshot = null;
+    cache.read = async () => snapshot;
+    t.after(() => {
+        cache.read = async () => null;
+    });
+    const settings = settingsFixture({
+        [SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW]: "weekly",
+    });
+    const window = windowFixture();
+    const page = createPreferencesPage(settings, metadata, window);
+    const row = page.children[2].children[2];
+
+    settings.set_string(SETTINGS_CREDENTIALS_PATH, path);
+    await new Promise(setImmediate);
+    assert.deepEqual(row.model, ["Any", "weekly (unavailable)"]);
+    const monitor = fileMonitors.get(`${path}.snapshot.json`);
+    assert.ok(monitor);
+    snapshot = { quotas: [{ id: "weekly", label: "Weekly window" }] };
+    monitor.emit("changed");
+    await new Promise(setImmediate);
+    assert.deepEqual(row.model, ["Any", "Weekly window"]);
+    assert.equal(row.selected, 1);
+    assert.deepEqual(settings.writes, [{ key: SETTINGS_CREDENTIALS_PATH, value: path }]);
+    assert.equal(monitor.cancelled, true);
+    assert.deepEqual(monitor.signals, {});
+    window.close();
+});
+
+test("switching credentials again or closing the window cancels usage cache work", async (t) => {
+    const reads = [];
+    cache.read = (cancellable) => new Promise((resolve) => reads.push({ cancellable, resolve }));
+    t.after(() => {
+        cache.read = async () => null;
+    });
+    const settings = settingsFixture();
+    const window = windowFixture();
+    const page = createPreferencesPage(settings, metadata, window, { quotas: [] });
+    const row = page.children[2].children[2];
+    const paths = ["/tmp/first.json", "/tmp/current.json", "/tmp/closing.json"];
+    const switchTo = async (path) => {
+        settings.set_string(SETTINGS_CREDENTIALS_PATH, path);
+        assert.deepEqual(row.model, ["Any"]);
+        await new Promise(setImmediate);
+        return fileMonitors.get(`${path}.snapshot.json`);
+    };
+    const firstMonitor = await switchTo(paths[0]);
+    await switchTo(paths[1]);
+    assert.equal(reads[0].cancellable.is_cancelled(), true);
+    assert.equal(firstMonitor.cancelled, true);
+    assert.deepEqual(firstMonitor.signals, {});
+
+    reads[1].resolve({ quotas: [{ id: "current", label: "Current window" }] });
+    await new Promise(setImmediate);
+    assert.deepEqual(row.model, ["Any", "Current window"]);
+    reads[0].resolve({ quotas: [{ id: "stale", label: "Stale window" }] });
+    await new Promise(setImmediate);
+    assert.deepEqual(row.model, ["Any", "Current window"]);
+
+    const closingMonitor = await switchTo(paths[2]);
+    assert.deepEqual(row.model, ["Any"]);
+    window.close();
+    assert.equal(reads[2].cancellable.is_cancelled(), true);
+    assert.equal(closingMonitor.cancelled, true);
+    assert.deepEqual(closingMonitor.signals, {});
+    reads[2].resolve({ quotas: [{ id: "late", label: "Late window" }] });
+    await new Promise(setImmediate);
+    assert.deepEqual(row.model, ["Any"]);
+    assert.deepEqual(
+        settings.writes,
+        paths.map((value) => ({ key: SETTINGS_CREDENTIALS_PATH, value })),
+    );
+
+    await switchTo(paths[0]);
+    assert.equal(reads.length, 3);
+});
+
 test("readSettings preserves the usage window quota ID", () => {
     for (const id of ["any", "short-id", "absent-id"]) {
         const settings = settingsFixture({ [SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW]: id });
@@ -1092,7 +1237,7 @@ test("preferences entry point reads cached usage without loading inventory", asy
         about.release_notes,
         "<p><em>Added</em></p>\n<ul>\n<li>Latest feature.</li>\n</ul>",
     );
-    assert.equal(settings.signals.size, 8);
+    assert.equal(settings.signals.size, 9);
     assert.equal(window.close(), false);
     assert.equal(cancellable.is_cancelled(), true);
     assert.equal(settings.signals.size, 0);
@@ -1187,7 +1332,7 @@ test("closing preferences disconnects every settings callback without preventing
     const [percent, icon, display] = page.children[0].children;
     const [refresh] = page.children[3].children;
     const signalIds = [...settings.signals.keys()];
-    assert.equal(signalIds.length, 8);
+    assert.equal(signalIds.length, 9);
 
     settings.set_string(SETTINGS_PERCENT_DISPLAY_MODE, "used");
     settings.set_string(SETTINGS_TOP_PANEL_INDICATOR_ICON, "openai");
@@ -1230,13 +1375,13 @@ test("closing one window preserves other windows and reopening does not leak han
         const window = windowFixture();
         const page = createPreferencesPage(settings, metadata, window);
         const icon = page.children[0].children[1];
-        assert.equal(settings.signals.size, 16);
+        assert.equal(settings.signals.size, 18);
         settings.set_string(SETTINGS_TOP_PANEL_INDICATOR_ICON, "openai");
         assert.equal(firstIcon.selected, 1);
         assert.equal(icon.selected, 1);
 
         assert.equal(window.close(), false);
-        assert.equal(settings.signals.size, 8);
+        assert.equal(settings.signals.size, 9);
         settings.set_string(SETTINGS_TOP_PANEL_INDICATOR_ICON, "text");
         assert.equal(firstIcon.selected, 2);
         assert.equal(icon.selected, 1);
@@ -1244,5 +1389,5 @@ test("closing one window preserves other windows and reopening does not leak han
 
     assert.equal(firstWindow.close(), false);
     assert.equal(settings.signals.size, 0);
-    assert.equal(settings.disconnected.length, 32);
+    assert.equal(settings.disconnected.length, 36);
 });

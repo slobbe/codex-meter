@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
+
 import test from "node:test";
 import {
     SETTINGS_CREDENTIALS_PATH,
     SETTINGS_TOP_PANEL_DISPLAY_MODE,
     SETTINGS_TOP_PANEL_INDICATOR_ICON,
+    SETTINGS_USAGE_NOTIFICATIONS,
 } from "../src/preferences/settings.js";
 
 const extensionUrl = new URL("../src/extension.js", import.meta.url).href;
@@ -37,9 +39,55 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export const panel = {
         addToStatusArea(uuid, indicator) { runtime.panel.push([uuid, indicator]); }
     };
-    export const notify = () => {};
+    export const canonicalize_filename = path => resolve(path);
+    export default { canonicalize_filename };
+    export const resolveCredentialsPath = path => path.replace(/^~\\//, '/accounts/');
+    export const NotificationDestroyedReason = { SOURCE_CLOSED: 3 };
+    export const messageTray = {
+        sources: new Set(),
+        add(source) { this.sources.add(source); }
+    };
+    class TestSource {
+        notifications = [];
+        connect(signal, handler) {
+            if (signal !== 'destroy') throw new Error('Unexpected signal: ' + signal);
+            this.onDestroy = handler;
+        }
+        destroy(reason) {
+            if (this.destroyed) throw new Error('Already destroyed');
+            this.destroyed = true;
+            this.reason = reason;
+            for (const notification of this.notifications) notification.destroyed = true;
+            this.notifications.length = 0;
+            messageTray.sources.delete(this);
+            this.onDestroy?.();
+        }
+    }
+    export let Source;
+    export let Notification;
+    export function useShellApi(legacy) {
+        Source = legacy ? class extends TestSource {
+            constructor(title, iconName) { super(); Object.assign(this, { title, iconName }); }
+            showNotification(notification) { this.notifications.push(notification); }
+        } : class extends TestSource {
+            constructor(params) { super(); Object.assign(this, params); }
+            addNotification(notification) { this.notifications.push(notification); }
+        };
+        Notification = legacy ? class {
+            constructor(source, title, body) { Object.assign(this, { source, title, body }); }
+            setTransient(isTransient) { this.isTransient = isTransient; }
+        } : class {
+            constructor(params) { Object.assign(this, params); }
+        };
+    }
+    export function notify(title, body) { sharedSource.notifications.push({ title, body }); }
+    export const sharedSource = new TestSource();
+    export function resolve(path) { return new URL(path, 'file:///work/').pathname; }
 `)}`;
 const dependencies = new Set([
+    "gi://GLib",
+    "./codex/auth/auth.js",
+    "resource:///org/gnome/shell/ui/messageTray.js",
     "resource:///org/gnome/shell/ui/main.js",
     "resource:///org/gnome/shell/extensions/extension.js",
     "./background/monitor.js",
@@ -54,10 +102,10 @@ const hooks = registerHooks({
     },
 });
 let CodexMeterExtension;
-let runtime;
+let runtime, messageTray, sharedSource, useShellApi;
 try {
     ({ default: CodexMeterExtension } = await import(extensionUrl));
-    ({ runtime } = await import(stubUrl));
+    ({ runtime, messageTray, sharedSource, useShellApi } = await import(stubUrl));
 } finally {
     hooks.deregister();
 }
@@ -66,10 +114,15 @@ function fixture(t, credentialsPath = "/accounts/first/auth.json") {
     for (const entries of Object.values(runtime)) entries.length = 0;
     const values = new Map([
         [SETTINGS_CREDENTIALS_PATH, credentialsPath],
+        [SETTINGS_USAGE_NOTIFICATIONS, false],
         [SETTINGS_TOP_PANEL_DISPLAY_MODE, "bars"],
         [SETTINGS_TOP_PANEL_INDICATOR_ICON, "codex-ring"],
     ]);
     const listeners = new Map();
+    useShellApi(false);
+    messageTray.sources.clear();
+    sharedSource.notifications.length = 0;
+    messageTray.add(sharedSource);
     const disconnected = [];
     const reads = [];
     let nextId = 1;
@@ -79,12 +132,8 @@ function fixture(t, credentialsPath = "/accounts/first/auth.json") {
             reads.push(key);
             return values.get(key);
         },
-        set_string(key, value) {
-            values.set(key, value);
-            for (const { signal, callback } of [...listeners.values()]) {
-                if (signal === `changed::${key}`) callback(settings, key);
-            }
-        },
+        set_string: setValue,
+        set_boolean: setValue,
         connect(signal, callback) {
             const id = nextId++;
             listeners.set(id, { signal, callback });
@@ -95,6 +144,12 @@ function fixture(t, credentialsPath = "/accounts/first/auth.json") {
             disconnected.push(id);
         },
     };
+    function setValue(key, value) {
+        values.set(key, value);
+        for (const { signal, callback } of [...listeners.values()]) {
+            if (signal === `changed::${key}`) callback(settings, key);
+        }
+    }
     const extension = new CodexMeterExtension();
     extension.uuid = "codex-meter@test";
     extension.settings = settings;
@@ -113,6 +168,85 @@ function fixture(t, credentialsPath = "/accounts/first/auth.json") {
     return { extension, settings, listeners, disconnected, reads, values, enable, disable };
 }
 
+for (const legacy of [true, false]) {
+    test(`credential switch and disable remove only Codex Meter alerts (Shell ${legacy ? "45" : "46+"})`, (t) => {
+        const { settings, enable, disable } = fixture(t);
+        useShellApi(legacy);
+        const unrelated = { title: "Unrelated notification" };
+        sharedSource.notifications.push(unrelated);
+        assert.deepEqual([...messageTray.sources], [sharedSource]);
+        enable();
+        assert.deepEqual([...messageTray.sources], [sharedSource]);
+
+        const notifyA = runtime.monitors[0].args[1];
+        notifyA("A low");
+        notifyA("A exhausted");
+        const [, sourceA] = messageTray.sources;
+        assert.ok(sourceA, "Expected a separate Codex Meter source");
+        const alertsA = [...sourceA.notifications];
+        assert.equal(sourceA.title, "Codex Meter");
+        assert.deepEqual(
+            alertsA.map(({ title, body, isTransient }) => [title, body, isTransient]),
+            [
+                ["Codex Meter", "A low", true],
+                ["Codex Meter", "A exhausted", true],
+            ],
+        );
+
+        settings.set_string(SETTINGS_CREDENTIALS_PATH, "/accounts/second/auth.json");
+        assert.equal(sourceA.reason, 3);
+        assert.ok(alertsA.every((alert) => alert.destroyed));
+        notifyA("Late A alert");
+        assert.deepEqual([...messageTray.sources], [sharedSource]);
+
+        const notifyB = runtime.monitors[1].args[1];
+        notifyB("B low");
+        const [, expiredSource] = messageTray.sources;
+        expiredSource.destroy(); // Shell can destroy the source when its last transient alert expires.
+        notifyB("B exhausted");
+        const [, sourceB] = messageTray.sources;
+        assert.notEqual(sourceB, expiredSource);
+        const [alertB] = sourceB.notifications;
+        disable();
+        assert.equal(sourceB.reason, 3);
+        assert.ok(alertB.destroyed);
+        notifyB("Late B alert");
+        assert.deepEqual([...messageTray.sources], [sharedSource]);
+        assert.deepEqual(sharedSource.notifications, [unrelated]);
+    });
+}
+
+test("A → B → A reuses only A's normalized-path dedup state until disable", (t) => {
+    const { settings, enable, disable } = fixture(t, "~/first/auth.json");
+    enable();
+    const stateA = runtime.monitors[0].args[3];
+    assert.ok(stateA instanceof Map);
+    stateA.set("session", { warned: true });
+
+    settings.set_string(SETTINGS_CREDENTIALS_PATH, "/accounts/second/auth.json");
+    const stateB = runtime.monitors[1].args[3];
+    assert.notEqual(stateB, stateA);
+    assert.equal(stateB.size, 0);
+    stateB.set("session", { exhausted: true });
+
+    settings.set_string(SETTINGS_CREDENTIALS_PATH, "/accounts/first/./auth.json");
+    assert.equal(runtime.monitors[2].args[3], stateA);
+    assert.deepEqual(stateA.get("session"), { warned: true });
+
+    settings.set_boolean(SETTINGS_USAGE_NOTIFICATIONS, true);
+    assert.equal(stateA.size, 0);
+    assert.equal(stateB.size, 0);
+    stateA.set("session", { warned: true });
+    settings.set_string(SETTINGS_CREDENTIALS_PATH, "/accounts/second/auth.json");
+    assert.equal(runtime.monitors[3].args[3], stateB);
+    assert.equal(stateB.size, 0);
+    stateB.set("session", { warned: true });
+    disable();
+    enable();
+    assert.notEqual(runtime.monitors[4].args[3], stateB);
+    assert.equal(runtime.monitors[4].args[3].size, 0);
+});
+
 test("enable reads credentials-path and starts the monitor and its panel indicator", (t) => {
     const { extension, settings, listeners, reads, values, enable } = fixture(
         t,
@@ -125,7 +259,7 @@ test("enable reads credentials-path and starts the monitor and its panel indicat
     assert.equal(values.get(SETTINGS_TOP_PANEL_INDICATOR_ICON), "codex");
     assert.equal(runtime.monitors.length, 1);
     const [monitor] = runtime.monitors;
-    assert.equal(monitor.args.length, 3);
+    assert.equal(monitor.args.length, 4);
     assert.equal(monitor.args[0], settings);
     assert.equal(typeof monitor.args[1], "function");
     assert.equal(monitor.args[2], "~/custom account/auth.json");
@@ -142,7 +276,7 @@ test("enable reads credentials-path and starts the monitor and its panel indicat
     ]);
     assert.deepEqual(
         [...listeners.values()].map(({ signal }) => signal),
-        ["changed::credentials-path"],
+        ["changed::usage-notifications", "changed::credentials-path"],
     );
 });
 
@@ -168,13 +302,13 @@ test("credentials-path changes stop and destroy the old runtime before starting 
         "start indicator 1",
         "start monitor 1",
     ]);
-    assert.equal(listeners.size, 1);
+    assert.equal(listeners.size, 2);
 });
 
-test("repeated path switches retain one listener, disconnect on disable, and reconnect once on enable", (t) => {
+test("path switches retain the extension listeners, which disconnect on disable", (t) => {
     const { settings, listeners, disconnected, enable, disable } = fixture(t);
     enable();
-    const [listenerId] = listeners.keys();
+    const listenerIds = [...listeners.keys()];
     for (const [index, path] of [
         "/accounts/second/auth.json",
         "/accounts/third/auth.json",
@@ -184,12 +318,12 @@ test("repeated path switches retain one listener, disconnect on disable, and rec
         assert.equal(runtime.monitors.length, index + 2);
         assert.equal(runtime.indicators.length, index + 2);
         assert.equal(runtime.monitors.at(-1).args[2], path);
-        assert.deepEqual([...listeners.keys()], [listenerId]);
+        assert.deepEqual([...listeners.keys()], listenerIds);
     }
 
     disable();
     assert.equal(listeners.size, 0);
-    assert.deepEqual(disconnected, [listenerId]);
+    assert.deepEqual([...disconnected].sort(), listenerIds);
     for (let id = 0; id < 4; id++) {
         assert.equal(runtime.events.filter((event) => event === `stop monitor ${id}`).length, 1);
         assert.equal(
@@ -205,14 +339,14 @@ test("repeated path switches retain one listener, disconnect on disable, and rec
     assert.equal(runtime.panel.length, 4);
 
     enable();
-    assert.equal(listeners.size, 1);
+    assert.equal(listeners.size, 2);
     assert.equal(runtime.monitors.at(-1).args[2], "/accounts/disabled/auth.json");
     settings.set_string(SETTINGS_CREDENTIALS_PATH, "/accounts/reenabled/auth.json");
     assert.equal(runtime.monitors.length, 6);
     assert.equal(runtime.indicators.length, 6);
     assert.equal(runtime.monitors.at(-1).args[2], "/accounts/reenabled/auth.json");
-    assert.equal(listeners.size, 1);
+    assert.equal(listeners.size, 2);
     disable();
     assert.equal(listeners.size, 0);
-    assert.equal(disconnected.length, 2);
+    assert.equal(disconnected.length, 4);
 });

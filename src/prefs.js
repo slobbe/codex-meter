@@ -23,6 +23,7 @@ export default class CodexMeterPreferences extends ExtensionPreferences {
         });
         let snapshot;
         let credentialsPath;
+        let changelog;
         do {
             credentialsPath = settings.get_string(SETTINGS_CREDENTIALS_PATH);
             snapshot = await new UsageService(credentialsPath)
@@ -32,14 +33,9 @@ export default class CodexMeterPreferences extends ExtensionPreferences {
                     return null;
                 });
             if (cancellable.is_cancelled()) return;
+            changelog ??= await readFile(`${this.path}/CHANGELOG.md`, cancellable).catch(() => "");
+            if (cancellable.is_cancelled()) return;
         } while (credentialsPath !== settings.get_string(SETTINGS_CREDENTIALS_PATH));
-        const changelog = await readFile(`${this.path}/CHANGELOG.md`, cancellable).catch(
-            (error) => {
-                if (!cancellable.is_cancelled()) throw error;
-                return "";
-            },
-        );
-        if (cancellable.is_cancelled()) return;
         const releaseNotes = parseReleaseNotes(changelog);
         window.add(createPreferencesPage(settings, this.metadata, window, snapshot, releaseNotes));
     }
