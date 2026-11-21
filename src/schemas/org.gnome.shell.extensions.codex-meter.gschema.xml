@@ -40,13 +40,13 @@
     <key name="background-refresh-interval-minutes" type="u">
       <default>5</default>
       <summary>Background refresh interval (minutes)</summary>
-      <description>Set to 0 to refresh manually</description>
+      <description>Set to 0 to refresh manually.</description>
       <range min="0" max="30"/>
     </key>
     <key name="auto-apply-banked-reset" type="b">
       <default>false</default>
       <summary>Auto-redeem expiring resets</summary>
-      <description>Redeem a banked reset automatically within 1 hour of expiry</description>
+      <description>Redeem a banked reset automatically within 1 hour of expiry.</description>
     </key>
     <key name="auto-apply-banked-reset-on-usage" type="b">
       <default>false</default>
@@ -63,12 +63,12 @@
     <key name="usage-notifications" type="b">
       <default>false</default>
       <summary>Usage notifications</summary>
-      <description>Notify after successful usage refreshes when remaining usage is low or exhausted, once per notification level per quota cycle while enabled</description>
+      <description>Notify after successful usage refreshes when remaining usage is low or exhausted, once per notification level per quota cycle while enabled.</description>
     </key>
     <key name="usage-notification-threshold" type="u">
       <default>10</default>
       <summary>Warning threshold (% left)</summary>
-      <description>Percentage remaining at or below which to warn when usage notifications are enabled</description>
+      <description>Percentage remaining at or below which to warn when usage notifications are enabled.</description>
       <range min="1" max="100"/>
     </key>
   </schema>

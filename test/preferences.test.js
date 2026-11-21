@@ -346,16 +346,16 @@ test("preferences groups appearance and background refresh with descriptive labe
     assert.deepEqual(
         page.children[0].children.map((row) => row.subtitle),
         [
-            "Show remaining or used capacity",
-            "Icon shown in the top panel",
-            "How usage appears in the top panel",
+            "Show remaining or used capacity.",
+            "Icon shown in the top panel.",
+            "How usage appears in the top panel.",
         ],
     );
     assert.deepEqual(
         page.children[3].children.map((row) => row.title),
         ["Interval (minutes)"],
     );
-    assert.equal(page.children[3].children[0].subtitle, "Set to 0 to refresh manually");
+    assert.equal(page.children[3].children[0].subtitle, "Set to 0 to refresh manually.");
 });
 
 test("credentials group follows background refresh and tracks the configured file", () => {
@@ -801,13 +801,13 @@ test("preferences banked resets group keeps expiry and usage toggles separate", 
 
     assert.equal(
         group.children[0].subtitle,
-        "Redeem a banked reset automatically within 1 hour of expiry",
+        "Redeem a banked reset automatically within 1 hour of expiry.",
     );
     assert.equal(settings.bindings.length, 5);
     assert.equal(settings.bindings[2].key, SETTINGS_AUTO_APPLY_BANKED_RESET);
     assert.equal(
         group.children[1].subtitle,
-        "Redeem below 2% remaining unless the window resets soon",
+        "Redeem below 2% remaining unless the window resets soon.",
     );
     assert.deepEqual(settings.bindings[3], {
         key: SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
@@ -964,7 +964,7 @@ test("skip inputs display minutes and persist independent window overrides", () 
     const page = createPreferencesPage(settings, metadata, window, { quotas });
     const skipPeriods = page.children[2].children[2];
     const [session, weekly] = skipPeriods.children;
-    assert.equal(skipPeriods.subtitle, "Keep banked reset if scheduled reset comes soon");
+    assert.equal(skipPeriods.subtitle, "Keep banked reset if scheduled reset comes soon.");
     assert.equal(skipPeriods.expanded, true);
     assert.deepEqual(
         [session.title, weekly.title],

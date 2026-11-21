@@ -66,7 +66,7 @@ function createCredentialsGroup(settings, settingsSignalIds, window) {
     const browse = new Gtk.Button({ label: "Browse…", valign: Gtk.Align.CENTER });
     const reset = new Gtk.Button({
         icon_name: "edit-undo-symbolic",
-        tooltip_text: "Reset to default credentials file",
+        tooltip_text: "Reset to default credentials file.",
         valign: Gtk.Align.CENTER,
     });
     row.add_suffix(browse);
@@ -187,7 +187,7 @@ function createBankedResetsGroup(settings, settingsSignalIds, snapshot) {
             settings,
             key: SETTINGS_AUTO_APPLY_BANKED_RESET,
             title: "Auto-redeem expiring resets",
-            subtitle: "Redeem a banked reset automatically within 1 hour of expiry",
+            subtitle: "Redeem a banked reset automatically within 1 hour of expiry.",
         }),
     );
     group.add(
@@ -195,7 +195,7 @@ function createBankedResetsGroup(settings, settingsSignalIds, snapshot) {
             settings,
             key: SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
             title: "Auto-redeem on low remaining usage",
-            subtitle: "Redeem below 2% remaining unless the window resets soon",
+            subtitle: "Redeem below 2% remaining unless the window resets soon.",
         }),
     );
     const skipPeriods = createSkipPeriodsRow(settings, settingsSignalIds);
@@ -338,8 +338,8 @@ function createSkipPeriodsRow(settings, settingsSignalIds) {
             row.enable_expansion = windows.length > 0;
             if (openByDefault) row.expanded = true;
             row.subtitle = windows.length
-                ? "Keep banked reset if scheduled reset comes soon"
-                : "Refresh usage to see your windows";
+                ? "Keep banked reset if scheduled reset comes soon."
+                : "Refresh usage to see your windows.";
 
             const overrides = readBankedResetSkipMinutes(settings);
             for (const quota of windows) {
@@ -399,13 +399,13 @@ function createNotificationsGroup(settings, settingsSignalIds) {
             settings,
             key: SETTINGS_USAGE_NOTIFICATIONS,
             title: "Usage notifications",
-            subtitle: "Notify when remaining usage is low or exhausted",
+            subtitle: "Notify when remaining usage is low or exhausted.",
         }),
     );
     const key = SETTINGS_USAGE_NOTIFICATION_THRESHOLD;
     const row = new Adw.SpinRow({
         title: "Warning threshold (% left)",
-        subtitle: "Warn when remaining usage reaches this threshold",
+        subtitle: "Warn when remaining usage reaches this threshold.",
         adjustment: new Gtk.Adjustment({
             lower: 1,
             upper: 100,
@@ -439,7 +439,7 @@ function createAppearanceGroup(settings, settingsSignalIds) {
             settingsSignalIds,
             key: SETTINGS_PERCENT_DISPLAY_MODE,
             title: "Percentage meaning",
-            subtitle: "Show remaining or used capacity",
+            subtitle: "Show remaining or used capacity.",
             options: [
                 ["% left", "left"],
                 ["% used", "used"],
@@ -452,7 +452,7 @@ function createAppearanceGroup(settings, settingsSignalIds) {
             settingsSignalIds,
             key: SETTINGS_TOP_PANEL_INDICATOR_ICON,
             title: "Indicator icon",
-            subtitle: "Icon shown in the top panel",
+            subtitle: "Icon shown in the top panel.",
             options: [
                 ["Codex", "codex"],
                 ["OpenAI", "openai"],
@@ -466,7 +466,7 @@ function createAppearanceGroup(settings, settingsSignalIds) {
             settingsSignalIds,
             key: SETTINGS_TOP_PANEL_DISPLAY_MODE,
             title: "Indicator progress style",
-            subtitle: "How usage appears in the top panel",
+            subtitle: "How usage appears in the top panel.",
             options: [
                 ["Bar", "bars"],
                 ["Circle", "circular-bars"],
@@ -522,7 +522,7 @@ function createBoundSwitchRow({ settings, key, title, subtitle }) {
 function createRefreshIntervalRow(settings, settingsSignalIds) {
     const row = new Adw.SpinRow({
         title: "Interval (minutes)",
-        subtitle: "Set to 0 to refresh manually",
+        subtitle: "Set to 0 to refresh manually.",
         adjustment: new Gtk.Adjustment({
             lower: MIN_REFRESH_INTERVAL_MINUTES,
             upper: 60,
