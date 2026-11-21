@@ -7,7 +7,7 @@ import { UsageService } from "../src/codex/usage/service.js";
 import { writeSnapshot } from "../src/codex/usage/snapshot.js";
 import { createPreferencesPage } from "../src/preferences/page.js";
 import {
-    SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW,
+    readBankedResetSkipMinutes,
     SETTINGS_CREDENTIALS_PATH,
 } from "../src/preferences/settings.js";
 
@@ -15,13 +15,26 @@ function assert(condition, message) {
     if (!condition) throw new Error(message);
 }
 
-function findUsageWindow(widget) {
-    if (widget instanceof Adw.ComboRow && widget.title === "Usage Window") return widget;
+function findSkipPeriods(widget) {
+    if (widget instanceof Adw.ExpanderRow && widget.title === "Wait for scheduled reset") {
+        return widget;
+    }
     for (let child = widget.get_first_child(); child; child = child.get_next_sibling()) {
-        const row = findUsageWindow(child);
+        const row = findSkipPeriods(child);
         if (row) return row;
     }
     return null;
+}
+
+function skipControlTitles(widget) {
+    if (widget instanceof Adw.SpinRow && widget.title?.endsWith(" (minutes)")) {
+        return [widget.title];
+    }
+    const titles = [];
+    for (let child = widget.get_first_child(); child; child = child.get_next_sibling()) {
+        titles.push(...skipControlTitles(child));
+    }
+    return titles;
 }
 
 function delay(ms) {
@@ -41,18 +54,20 @@ function snapshot(label, id = "weekly") {
     };
 }
 
-async function waitForSelection(row, label) {
-    for (let i = 0; i < 80 && row.model.get_string(row.selected) !== label; i++) {
+async function waitForSkipControl(row, label) {
+    const expected = JSON.stringify([`${label} (minutes)`]);
+    const matches = () => JSON.stringify(skipControlTitles(row)) === expected;
+    for (let i = 0; i < 80 && !matches(); i++) {
         await delay(25);
     }
-    assert(row.model.get_string(row.selected) === label, `Expected selected window: ${label}`);
+    assert(matches(), `Expected one skip control: ${label}`);
 }
 
 assert(GLib.getenv("GSETTINGS_BACKEND") === "memory", "Set GSETTINGS_BACKEND=memory");
 assert(GLib.getenv("XDG_CACHE_HOME"), "Set XDG_CACHE_HOME to an empty temporary directory");
 Adw.init();
 const settings = new Gio.Settings({ schema_id: "org.gnome.shell.extensions.codex-meter" });
-settings.set_string(SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW, "weekly");
+
 for (const startup of [false, true]) {
     const path = startup ? "/test/startup/auth.json" : "/test/switch/auth.json";
     const service = new UsageService(path);
@@ -71,17 +86,16 @@ for (const startup of [false, true]) {
     );
     window.add(page);
     if (!startup) settings.set_string(SETTINGS_CREDENTIALS_PATH, path);
-    const row = findUsageWindow(page);
-    assert(row !== null, "Usage Window row not found");
-    assert(row.model.get_n_items() === 2, "Old options were not cleared");
-    assert(row.model.get_string(row.selected) === "weekly (unavailable)", "Selection was lost");
+    const row = findSkipPeriods(page);
+    assert(row !== null, "Skip periods row not found");
+    assert(skipControlTitles(row).length === 0, "Old controls were not cleared");
     await delay(150);
     assert(!parent.query_exists(null), "Preferences must not create cache directories");
     await writeSnapshot(snapshot("First cache window"), null, service.snapshotPath);
-    await waitForSelection(row, "First cache window");
+    await waitForSkipControl(row, "First cache window");
     assert(
-        settings.get_string(SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW) === "weekly",
-        "Selection was written",
+        Object.keys(readBankedResetSkipMinutes(settings)).length === 0,
+        "Skip periods were written",
     );
     window.emit("close-request");
     window.destroy();
@@ -102,22 +116,19 @@ for (const startup of [false, true]) {
         startup ? stale : snapshot("Previous account window", "old"),
     );
     window.add(page);
-    const row = findUsageWindow(page);
-    assert(row !== null, "Usage Window row not found");
+    const row = findSkipPeriods(page);
+    assert(row !== null, "Skip periods row not found");
     if (!startup) settings.set_string(SETTINGS_CREDENTIALS_PATH, path);
-    await waitForSelection(row, "Stale cache window");
+    await waitForSkipControl(row, "Stale cache window");
 
     // writeSnapshot replaces the cache atomically. Check more than one replacement.
     await writeSnapshot(snapshot("Live daily window", "daily"), null, service.snapshotPath);
-    await waitForSelection(row, "weekly (unavailable)");
-    assert(row.model.get_n_items() === 3, "Stale options were not removed");
-    assert(row.model.get_string(1) === "Live daily window", "Live option was not added");
+    await waitForSkipControl(row, "Live daily window");
     await writeSnapshot(snapshot("Live weekly window"), null, service.snapshotPath);
-    await waitForSelection(row, "Live weekly window");
-    assert(row.model.get_n_items() === 2, "Daily option was not removed");
+    await waitForSkipControl(row, "Live weekly window");
     assert(
-        settings.get_string(SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW) === "weekly",
-        "Selection was written",
+        Object.keys(readBankedResetSkipMinutes(settings)).length === 0,
+        "Skip periods were written",
     );
     window.emit("close-request");
     window.destroy();

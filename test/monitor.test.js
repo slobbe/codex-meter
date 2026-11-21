@@ -28,11 +28,13 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         usageNotifications: settings.get_boolean(),
         usageNotificationThreshold: settings.get_uint(),
     });
+    export const readBankedResetSkipMinutes = settings => settings.bankedResetSkipMinutes ?? {};
+    export const SETTINGS_BANKED_RESET_SKIP_MINUTES = "banked-reset-skip-minutes";
     export const SETTINGS_USAGE_NOTIFICATIONS = "usage-notifications";
     export const SETTINGS_USAGE_NOTIFICATION_THRESHOLD = "usage-notification-threshold";
-    export const SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW = "usage-window";
+
     export const SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE = "auto-usage";
-    export const SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD = "usage-threshold";
+
     export const getBackgroundRefreshIntervalSeconds = () => 0;
     export const SETTINGS_AUTO_APPLY_BANKED_RESET = 'auto-apply';
     export const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES = 'refresh';
@@ -41,7 +43,10 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
 `)}`;
 const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
-        if (context.parentURL === monitorUrl && !specifier.endsWith("/response.js")) {
+        if (
+            context.parentURL === monitorUrl &&
+            !["../codex/banked-resets/response.js", "../codex/usage/model.js"].includes(specifier)
+        ) {
             return { url: stubUrl, shortCircuit: true };
         }
         return nextResolve(specifier, context);
@@ -380,23 +385,22 @@ test("stop during a usage refresh prevents late usage notifications", async () =
     assert.deepEqual(notifications, []);
 });
 
-function enableUsageAutoApply(monitor, usedPercent = 96, resetAt = null) {
+function enableUsageAutoApply(monitor, usedPercent = 99, resetAt = null) {
     monitor._autoApplyBankedResetOnUsage = true;
-    monitor._autoApplyBankedResetUsageThreshold = 5;
-    monitor._autoApplyBankedResetUsageWindow = "any";
+
     monitor._snapshot = { quotas: [{ usedPercent, resetAt }] };
     return monitor._snapshot;
 }
 
 for (const [usedPercent, resetAt, expected] of [
-    [94.9, null, false],
-    [95, null, false],
-    [95.1, null, true],
+    [97.9, null, false],
+    [98, null, false],
+    [98.1, null, true],
     [100, null, true],
     [99, 1, false],
-    [96, 9_999_999_999, true],
+    [99, 9_999_999_999, true],
 ]) {
-    test(`usage auto-apply below 5% left: ${100 - usedPercent}% left with reset ${resetAt}`, () => {
+    test(`usage auto-apply below 2% left: ${usedPercent}% used with reset ${resetAt}`, () => {
         const { monitor } = fixture();
         const snapshot = enableUsageAutoApply(monitor, usedPercent, resetAt);
         assert.equal(monitor._usageNeedsBankedReset(snapshot), expected);
@@ -405,41 +409,61 @@ for (const [usedPercent, resetAt, expected] of [
     });
 }
 
-test("usage auto-apply checks every quota and rejects replaced snapshots", () => {
+test("usage auto-apply does not let an imminent reset block another eligible window", (t) => {
     const { monitor } = fixture();
-    const snapshot = enableUsageAutoApply(monitor, 10);
-    snapshot.quotas.push({ usedPercent: 96 });
+    t.mock.method(Date, "now", () => 1_800_000_000_000);
+    const snapshot = enableUsageAutoApply(monitor, 99, Date.now() / 1000 + 60);
+    snapshot.quotas[0].limitWindowSeconds = 18_000;
+    assert.equal(monitor._usageNeedsBankedReset(snapshot), false);
+    snapshot.quotas.push({
+        usedPercent: 99,
+        limitWindowSeconds: 604_800,
+        resetAt: Date.now() / 1000 + 13 * 3600,
+    });
     assert.equal(monitor._usageNeedsBankedReset(snapshot), true);
     monitor._snapshot = { quotas: [] };
     assert.equal(monitor._usageNeedsBankedReset(snapshot), false);
 });
 
-for (const [window, sessionUsed, weeklyUsed, expected] of [
-    ["any", 99, 10, true],
-    ["weekly", 99, 10, false],
-    ["weekly", 10, 99, true],
-    ["session", 10, 99, false],
-    ["session", 99, 10, true],
-    ["weekly", 99, 95, false],
-    ["window-3600", 99, 99, false],
+for (const [windowSeconds, graceSeconds] of [
+    [5 * 3600, 30 * 60],
+    [7 * 24 * 3600, 12 * 3600],
 ]) {
-    test(`selected window ${window}: session ${sessionUsed}, weekly ${weeklyUsed}`, () => {
+    test(`usage auto-apply skips a ${windowSeconds}-second window within ${graceSeconds} seconds of reset`, (t) => {
         const { monitor } = fixture();
-        const snapshot = enableUsageAutoApply(monitor);
-        monitor._autoApplyBankedResetUsageWindow = window;
-        snapshot.quotas = [
-            { id: "session", usedPercent: sessionUsed, resetAt: null },
-            { id: "weekly", usedPercent: weeklyUsed, resetAt: null },
-        ];
-        assert.equal(monitor._usageNeedsBankedReset(snapshot), expected);
-        snapshot.quotas.reverse();
-        assert.equal(
-            monitor._usageNeedsBankedReset(snapshot),
-            expected,
-            "selection uses ID, not order",
-        );
+        t.mock.method(Date, "now", () => 1_800_000_000_000);
+        const now = Date.now() / 1000;
+        const snapshot = enableUsageAutoApply(monitor, 99, now + graceSeconds + 1);
+        const [quota] = snapshot.quotas;
+        quota.limitWindowSeconds = windowSeconds;
+        assert.equal(monitor._usageNeedsBankedReset(snapshot), true);
+        quota.resetAt = now + graceSeconds;
+        assert.equal(monitor._usageNeedsBankedReset(snapshot), false);
     });
 }
+
+test("a full-window skip disables only that window even without a reset time", () => {
+    const { monitor, callbacks, settings } = fixture();
+    const snapshot = enableUsageAutoApply(monitor);
+    snapshot.quotas = [
+        { id: "session", usedPercent: 99, limitWindowSeconds: 18_000, resetAt: null },
+        { id: "weekly", usedPercent: 90, limitWindowSeconds: 604_800, resetAt: null },
+    ];
+    const update = callbacks.get("changed::banked-reset-skip-minutes");
+
+    settings.bankedResetSkipMinutes = { session: 299 };
+    update();
+    assert.equal(monitor._usageNeedsBankedReset(snapshot), true);
+    settings.bankedResetSkipMinutes = { session: 300 };
+    update();
+    assert.equal(monitor._usageNeedsBankedReset(snapshot), false);
+
+    snapshot.quotas[1].usedPercent = 99;
+    assert.equal(monitor._usageNeedsBankedReset(snapshot), true);
+    settings.bankedResetSkipMinutes = { session: 300, weekly: 10_080 };
+    update();
+    assert.equal(monitor._usageNeedsBankedReset(snapshot), false);
+});
 
 test("usage auto-apply selects earliest unexpired credit and shares redemption refreshes", async () => {
     const { monitor, notifications } = fixture();
@@ -458,10 +482,21 @@ test("usage auto-apply selects earliest unexpired credit and shares redemption r
     assert.match(notifications[0], /near a usage limit/);
 });
 
-for (const blockedBy of ["manual", "disabled", "replaced", "stopped", "window changed"]) {
-    test(`usage auto-apply rechecks ${blockedBy} after inventory fetch`, async () => {
-        const { monitor, notifications } = fixture();
-        const snapshot = enableUsageAutoApply(monitor);
+for (const blockedBy of [
+    "manual",
+    "disabled",
+    "replaced",
+    "stopped",
+
+    "imminent reset",
+    "skip period changed",
+]) {
+    test(`usage auto-apply rechecks ${blockedBy} after inventory fetch`, async (t) => {
+        const { monitor, notifications, callbacks, settings } = fixture();
+        let now = 1_800_000_000_000;
+        t.mock.method(Date, "now", () => now);
+        const snapshot = enableUsageAutoApply(monitor, 99, now / 1000 + 31 * 60);
+        Object.assign(snapshot.quotas[0], { id: "session", limitWindowSeconds: 18_000 });
         const response = deferred();
         api.list = () => response.promise;
         const ids = [];
@@ -471,7 +506,12 @@ for (const blockedBy of ["manual", "disabled", "replaced", "stopped", "window ch
         if (blockedBy === "disabled") monitor._autoApplyBankedResetOnUsage = false;
         if (blockedBy === "replaced") monitor._snapshot = { quotas: [] };
         if (blockedBy === "stopped") monitor.stop();
-        if (blockedBy === "window changed") monitor._autoApplyBankedResetUsageWindow = "weekly";
+
+        if (blockedBy === "imminent reset") now += 60_000;
+        if (blockedBy === "skip period changed") {
+            settings.bankedResetSkipMinutes = { session: 45 };
+            callbacks.get("changed::banked-reset-skip-minutes")();
+        }
         response.resolve(inventory);
         await pending;
         assert.deepEqual(ids, []);
@@ -499,18 +539,31 @@ test("overlapping automatic triggers redeem at most one credit", async () => {
     assert.equal(calls, 2, "one pre-redemption and one post-redemption inventory fetch");
 });
 
-test("live refresh auto-redeems once without deadlocking or consuming another credit", async () => {
+test("live refresh saves the credit near reset and only redeems once when quota runs low again", async (t) => {
     const { monitor } = fixture();
     enableUsageAutoApply(monitor);
+    let now = 1_800_000_000_000;
+    t.mock.method(Date, "now", () => now);
+    const quota = { usedPercent: 99, limitWindowSeconds: 18_000, resetAt: now / 1000 + 60 };
+    let snapshot = { quotas: [quota] };
     monitor.refreshUsage = CodexMonitor.prototype.refreshUsage;
     monitor._usageService = {
-        refresh: async () => ({ quotas: [{ usedPercent: 99, resetAt: null }] }),
+        refresh: async () => snapshot,
         readHistory: async () => [],
         predict: async () => null,
     };
     api.list = async () => inventory;
     const ids = [];
     api.redeem = async (id) => ids.push(id);
+    await monitor.refreshUsage();
+    assert.deepEqual(ids, []);
+
+    now += 60_000;
+    snapshot = { quotas: [{ ...quota, usedPercent: 0, resetAt: now / 1000 + 18_000 }] };
+    await monitor.refreshUsage();
+    assert.deepEqual(ids, []);
+
+    snapshot = { quotas: [{ ...snapshot.quotas[0], usedPercent: 99 }] };
     await monitor.refreshUsage();
     assert.deepEqual(ids, [earlier.id]);
     assert.equal(monitor._refreshPromise, null);

@@ -14,6 +14,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Changed low-usage auto-redemption to use a fixed threshold of less than 2% quota remaining.
+- Replaced the window selector with a skip period in minutes for each window.
+- Manual redemption shows the time left when a scheduled reset is close.
 - Changed popup warning and error messages to appear above the footer.
 
 ## v0.12.0 (2026-11-13)

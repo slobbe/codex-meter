@@ -1,8 +1,13 @@
 import Clutter from "gi://Clutter";
 import St from "gi://St";
 import * as ModalDialog from "resource:///org/gnome/shell/ui/modalDialog.js";
+import { getBankedResetSkipMinutes, getImminentResetSeconds } from "../codex/usage/model.js";
+import { formatDuration } from "./view-model.js";
 
-export function showBankedResetConfirmation(credit, { onConfirm, onCancel }) {
+export function showBankedResetConfirmation(
+    credit,
+    { quotas = [], skipMinutesByWindow, onConfirm, onCancel },
+) {
     const dialog = new ModalDialog.ModalDialog({ destroyOnClose: true });
     const content = new St.BoxLayout({
         style_class: "cx-reset-dialog-content",
@@ -22,6 +27,22 @@ export function showBankedResetConfirmation(credit, { onConfirm, onCancel }) {
     addDetail(details, "Expires", formatDate(credit.expires_at));
     if (details.get_n_children() > 0) content.add_child(details);
 
+    const nowSeconds = Date.now() / 1000;
+    let resetsSoon = false;
+    for (const quota of quotas) {
+        const skipMinutes = getBankedResetSkipMinutes(quota, skipMinutesByWindow);
+        const secondsLeft = getImminentResetSeconds(quota, nowSeconds, skipMinutes);
+        if (secondsLeft === null) continue;
+        resetsSoon = true;
+        const countdown = secondsLeft < 60 ? "less than 1 minute" : formatDuration(secondsLeft);
+        content.add_child(
+            createWrappingLabel(
+                `${quota.label} window: resets in ${countdown}.`,
+                "cx-reset-dialog-message",
+            ),
+        );
+    }
+
     const resetType = credit.reset_type?.replaceAll("_", " ") || "banked";
     content.add_child(
         createWrappingLabel(
@@ -39,14 +60,15 @@ export function showBankedResetConfirmation(credit, { onConfirm, onCancel }) {
                 onCancel();
             },
             key: Clutter.KEY_Escape,
+            default: resetsSoon,
         },
         {
-            label: "Redeem",
+            label: resetsSoon ? "Redeem anyway" : "Redeem",
             action: () => {
                 dialog.close();
                 onConfirm();
             },
-            default: true,
+            default: !resetsSoon,
         },
     ]);
     if (!dialog.open()) {

@@ -51,18 +51,14 @@
     <key name="auto-apply-banked-reset-on-usage" type="b">
       <default>false</default>
       <summary>Auto-redeem when remaining usage is low</summary>
-      <description>Redeem the banked reset nearest to expiry when any active limit falls below the percentage remaining threshold. Check only after successful usage refreshes at the normal cadence, never from cached usage.</description>
+      <description>Redeem the banked reset nearest to expiry when an eligible window has less than 2% quota remaining. Skip windows that reset soon. Check only after a successful usage refresh.</description>
     </key>
-    <key name="auto-apply-banked-reset-usage-window" type="s">
-      <default>'any'</default>
-      <summary>Window</summary>
-      <description>Usage window ID to check for automatic banked reset redemption, or any to check all active windows</description>
-    </key>
-    <key name="auto-apply-banked-reset-usage-threshold" type="u">
-      <default>2</default>
-      <summary>Remaining threshold (% left)</summary>
-      <description>Percentage remaining below which any active limit triggers automatic banked reset redemption when enabled</description>
-      <range min="1" max="100"/>
+
+
+    <key name="banked-reset-skip-minutes" type="a{su}">
+      <default>{}</default>
+      <summary>Skip periods for banked resets</summary>
+      <description>Minutes before a scheduled reset to skip low-quota auto-redemption, by usage window ID. Set a window to 0 to turn off its skip period. Set the full window length to disable low-quota auto-redemption for that window.</description>
     </key>
     <key name="usage-notifications" type="b">
       <default>false</default>

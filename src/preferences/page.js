@@ -4,18 +4,18 @@ import GLib from "gi://GLib";
 import Gtk from "gi://Gtk";
 import { getCodexCredentials } from "../codex/auth/auth.js";
 import { isCodexError } from "../codex/error.js";
-import { getUsageWindowMetadata, sortUsageQuotas } from "../codex/usage/model.js";
+import { getBankedResetSkipMinutes, sortUsageQuotas } from "../codex/usage/model.js";
 import { UsageService } from "../codex/usage/service.js";
 import { formatDescription } from "./about-content.js";
 import {
     DEFAULT_CREDENTIALS_PATH,
     migrateSettings,
     MIN_REFRESH_INTERVAL_MINUTES,
+    readBankedResetSkipMinutes,
     SETTINGS_AUTO_APPLY_BANKED_RESET,
     SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
-    SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD,
-    SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW,
     SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES,
+    SETTINGS_BANKED_RESET_SKIP_MINUTES,
     SETTINGS_CREDENTIALS_PATH,
     SETTINGS_PERCENT_DISPLAY_MODE,
     SETTINGS_TOP_PANEL_DISPLAY_MODE,
@@ -195,14 +195,21 @@ function createBankedResetsGroup(settings, settingsSignalIds, snapshot) {
             settings,
             key: SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
             title: "Auto-redeem on low remaining usage",
-            subtitle: "Redeem a reset if remaining usage falls below threshold",
+            subtitle: "Redeem below 2% remaining unless the window resets soon",
         }),
     );
-    const usageWindow = createUsageWindowRow(settings, settingsSignalIds, snapshot?.quotas ?? []);
-    group.add(usageWindow.row);
-    group.add(createUsageThresholdRow(settings, settingsSignalIds));
-    const cleanup = watchUsageWindowCache(settings, settingsSignalIds, usageWindow.setQuotas);
-    return { group, cleanup };
+    const skipPeriods = createSkipPeriodsRow(settings, settingsSignalIds);
+    skipPeriods.setQuotas(snapshot?.quotas ?? []);
+    group.add(skipPeriods.row);
+
+    const stopWatching = watchUsageWindowCache(settings, settingsSignalIds, skipPeriods.setQuotas);
+    return {
+        group,
+        cleanup() {
+            stopWatching();
+            skipPeriods.clearRows();
+        },
+    };
 }
 
 function watchUsageWindowCache(settings, settingsSignalIds, setQuotas) {
@@ -288,85 +295,101 @@ function watchUsageWindowCache(settings, settingsSignalIds, setQuotas) {
     };
 }
 
-function createUsageWindowRow(settings, settingsSignalIds, quotas) {
-    const key = SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW;
-    const row = new Adw.ComboRow({
-        title: "Usage Window",
-        subtitle: "Apply auto-redemption only to selected usage window",
+function createSkipPeriodsRow(settings, settingsSignalIds) {
+    const key = SETTINGS_BANKED_RESET_SKIP_MINUTES;
+    const row = new Adw.ExpanderRow({
+        title: "Wait for scheduled reset",
+        enable_expansion: false,
     });
-    let currentOptions;
-    let updating = false;
-    const update = () => {
-        updating = true;
-        const value = settings.get_string(key);
-        currentOptions = [
-            ["Any", "any"],
-            ...sortUsageQuotas(quotas).map((quota) => [
-                quota.limitWindowSeconds != null
-                    ? getUsageWindowMetadata(quota.limitWindowSeconds).label
-                    : quota.label,
-                quota.id,
-            ]),
-        ];
-        if (!currentOptions.some(([, id]) => id === value)) {
-            currentOptions.push([`${value} (unavailable)`, value]);
-        }
-        row.model = Gtk.StringList.new(currentOptions.map(([label]) => label));
-        row.selected = currentOptions.findIndex(([, id]) => id === value);
-        updating = false;
-    };
-    update();
-    row.connect("notify::selected", () => {
-        if (!updating && currentOptions[row.selected]) {
-            settings.set_string(key, currentOptions[row.selected][1]);
-        }
-    });
-    settingsSignalIds.push(settings.connect(`changed::${key}`, update));
     settings.bind(
         SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
         row,
         "sensitive",
         Gio.SettingsBindFlags.GET,
+    );
+    const windowRows = [];
+    let windowSignature;
+    const clearRows = () => {
+        for (const { control, signal } of windowRows.splice(0)) {
+            control.disconnect(signal);
+            row.remove(control);
+        }
+    };
+    settingsSignalIds.push(
+        settings.connect(`changed::${key}`, () => {
+            const overrides = readBankedResetSkipMinutes(settings);
+            for (const { control, quota } of windowRows) {
+                control.value = getBankedResetSkipMinutes(quota, overrides);
+            }
+        }),
     );
     return {
         row,
-        setQuotas(newQuotas) {
-            quotas = newQuotas;
-            update();
+        clearRows,
+        setQuotas(quotas) {
+            const windows = sortUsageQuotas(quotas);
+            const signature = JSON.stringify(
+                windows.map(({ id, label, limitWindowSeconds }) => [id, label, limitWindowSeconds]),
+            );
+            if (windowSignature === signature) return;
+            windowSignature = signature;
+            clearRows();
+            const openByDefault = windows.length > 0 && !row.enable_expansion;
+            row.enable_expansion = windows.length > 0;
+            if (openByDefault) row.expanded = true;
+            row.subtitle = windows.length
+                ? "Keep banked reset if scheduled reset comes soon"
+                : "Refresh usage to see your windows";
+
+            const overrides = readBankedResetSkipMinutes(settings);
+            for (const quota of windows) {
+                const duplicateLabel = windows.some(
+                    (other) => other.id !== quota.id && other.label === quota.label,
+                );
+                const label = quota.limitWindowSeconds === 18_000 ? "5 hour" : quota.label;
+                const windowLabel = /\bwindow$/i.test(label) ? label : `${label} window`;
+                const title = duplicateLabel ? `${windowLabel} (${quota.id})` : windowLabel;
+                const maxMinutes = Math.ceil((quota.limitWindowSeconds ?? 604_800) / 60);
+                const subtitle =
+                    quota.limitWindowSeconds > 0
+                        ? `Set to 0 to never skip. Set to ${maxMinutes.toLocaleString()} to disable auto-redeem.`
+                        : "Set to 0 to never skip.";
+                const control = new Adw.SpinRow({
+                    title: `${title} (minutes)`,
+                    subtitle,
+                    use_markup: false,
+                    adjustment: new Gtk.Adjustment({
+                        lower: 0,
+                        upper: maxMinutes,
+                        step_increment: 1,
+                        page_increment: 15,
+                        value: getBankedResetSkipMinutes(quota, overrides),
+                    }),
+                    climb_rate: 1,
+                    digits: 0,
+                    snap_to_ticks: true,
+                });
+                const signal = control.connect("notify::value", () => {
+                    const overrides = readBankedResetSkipMinutes(settings);
+                    const minutes = Math.round(control.value);
+                    if (
+                        minutes ===
+                        Math.min(getBankedResetSkipMinutes(quota, overrides), maxMinutes)
+                    )
+                        return;
+                    settings.set_value(
+                        key,
+                        new GLib.Variant("a{su}", {
+                            ...overrides,
+                            [quota.id]: minutes,
+                        }),
+                    );
+                });
+                windowRows.push({ control, quota, signal });
+                row.add_row(control);
+            }
         },
     };
-}
-
-function createUsageThresholdRow(settings, settingsSignalIds) {
-    const key = SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD;
-    const row = new Adw.SpinRow({
-        title: "Threshold (% left)",
-        subtitle: "Threshold below which to redeem reset",
-        adjustment: new Gtk.Adjustment({
-            lower: 1,
-            upper: 100,
-            step_increment: 1,
-            page_increment: 5,
-            value: settings.get_uint(key),
-        }),
-        climb_rate: 1,
-        digits: 0,
-    });
-    row.connect("notify::value", () => {
-        settings.set_uint(key, Math.min(100, Math.max(1, Math.round(row.value))));
-    });
-    settingsSignalIds.push(
-        settings.connect(`changed::${key}`, () => {
-            row.value = settings.get_uint(key);
-        }),
-    );
-    settings.bind(
-        SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
-        row,
-        "sensitive",
-        Gio.SettingsBindFlags.GET,
-    );
-    return row;
 }
 
 function createNotificationsGroup(settings, settingsSignalIds) {

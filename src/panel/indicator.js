@@ -170,7 +170,10 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         const clearDialog = () => {
             if (this._resetConfirmationDialog === dialog) this._resetConfirmationDialog = null;
         };
+        const { snapshot, bankedResetSkipMinutes } = monitor.state;
         dialog = showBankedResetConfirmation(credit, {
+            quotas: snapshot?.quotas,
+            skipMinutesByWindow: bankedResetSkipMinutes,
             onConfirm: () => {
                 if (cancellable.is_cancelled() || this._resetConfirmationDialog !== dialog) return;
                 void this._redeemBankedReset(credit.id);

@@ -9,9 +9,8 @@ import {
     readSettings,
     SETTINGS_AUTO_APPLY_BANKED_RESET,
     SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
-    SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD,
-    SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW,
     SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES,
+    SETTINGS_BANKED_RESET_SKIP_MINUTES,
     SETTINGS_CREDENTIALS_PATH,
     SETTINGS_PERCENT_DISPLAY_MODE,
     SETTINGS_TOP_PANEL_DISPLAY_MODE,
@@ -50,6 +49,8 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
             this.children = [];
         }
         add(child) { this.children.push(child); }
+        add_row(child) { this.add(child); }
+        remove(child) { this.children.splice(this.children.indexOf(child), 1); }
         append(child) { this.add(child); }
         connect(signal, callback) {
             (this.signals ??= {})[signal] = callback;
@@ -69,6 +70,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
             this.signals?.["notify::selected"]?.();
         }
     }
+
     export const dialogs = [];
     export const aboutWindows = [];
     export const fileMonitors = new Map();
@@ -108,7 +110,12 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     }
     export default {
         PreferencesPage: Widget, PreferencesGroup: Widget, SwitchRow: Widget, ActionRow: Widget,
-        ComboRow: Widget, SpinRow: Widget, Adjustment: Widget, Box: Widget, Label: Widget,
+        ComboRow: Widget, ExpanderRow: Widget, SpinRow: Widget, Adjustment: Widget, Box: Widget, Label: Widget,
+
+        Variant: class {
+            constructor(type, value) { this.type = type; this.value = value; }
+            deep_unpack() { return this.value; }
+        },
         Button: Widget, Image: Widget, FileChooserNative, AboutWindow,
         License: { GPL_3_0: 9 },
         FileFilter: class extends Widget {
@@ -172,7 +179,7 @@ function settingsFixture(values = {}) {
         "top-panel-indicator-icon": "codex",
         "top-panel-display-mode": "bars",
         "percent-display-mode": "left",
-        [SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW]: "any",
+
         [SETTINGS_CREDENTIALS_PATH]: DEFAULT_CREDENTIALS_PATH,
         ...values,
     };
@@ -180,7 +187,7 @@ function settingsFixture(values = {}) {
     let nextSignalId = 1;
     const uints = {
         [SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES]: 5,
-        [SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD]: 2,
+
         [SETTINGS_USAGE_NOTIFICATION_THRESHOLD]: 10,
         ...values,
     };
@@ -190,6 +197,7 @@ function settingsFixture(values = {}) {
         [SETTINGS_USAGE_NOTIFICATIONS]: false,
         ...values,
     };
+    let skipMinutes = new toolkit.Variant("a{su}", {});
     const bindings = [];
     function emit(signal) {
         for (const { key, row, property } of bindings) {
@@ -211,6 +219,17 @@ function settingsFixture(values = {}) {
             assert.equal(key, SETTINGS_CREDENTIALS_PATH);
             this.resets.push(key);
             strings[key] = DEFAULT_CREDENTIALS_PATH;
+            emit(`changed::${key}`);
+        },
+        get_value(key) {
+            assert.equal(key, SETTINGS_BANKED_RESET_SKIP_MINUTES);
+            return skipMinutes;
+        },
+        set_value(key, value) {
+            assert.equal(key, SETTINGS_BANKED_RESET_SKIP_MINUTES);
+            assert.equal(value.type, "a{su}");
+            this.writes.push({ key, value: value.deep_unpack() });
+            skipMinutes = value;
             emit(`changed::${key}`);
         },
         get_string: (key) => strings[key],
@@ -694,8 +713,7 @@ test("migration preserves defaults and all non-ring icon/display selections", ()
         backgroundRefreshIntervalSeconds: 300,
         autoApplyBankedReset: false,
         autoApplyBankedResetOnUsage: false,
-        autoApplyBankedResetUsageThreshold: 2,
-        autoApplyBankedResetUsageWindow: "any",
+
         usageNotifications: false,
         usageNotificationThreshold: 10,
     });
@@ -772,22 +790,24 @@ test("preferences banked resets group keeps expiry and usage toggles separate", 
     const settings = settingsFixture();
     const page = createPreferencesPage(settings, metadata, windowFixture());
     const group = page.children.find((child) => child.title === "Banked resets");
-    assert.equal(group.children.length, 4);
     assert.deepEqual(
-        group.children.slice(1).map((row) => row.title),
-        ["Auto-redeem on low remaining usage", "Usage Window", "Threshold (% left)"],
+        group.children.map((row) => row.title),
+        [
+            "Auto-redeem expiring resets",
+            "Auto-redeem on low remaining usage",
+            "Wait for scheduled reset",
+        ],
     );
-    assert.equal(group.children[0].title, "Auto-redeem expiring resets");
+
     assert.equal(
         group.children[0].subtitle,
         "Redeem a banked reset automatically within 1 hour of expiry",
     );
-    assert.equal(settings.bindings.length, 6);
+    assert.equal(settings.bindings.length, 5);
     assert.equal(settings.bindings[2].key, SETTINGS_AUTO_APPLY_BANKED_RESET);
-    assert.equal(group.children[1].title, "Auto-redeem on low remaining usage");
     assert.equal(
         group.children[1].subtitle,
-        "Redeem a reset if remaining usage falls below threshold",
+        "Redeem below 2% remaining unless the window resets soon",
     );
     assert.deepEqual(settings.bindings[3], {
         key: SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
@@ -795,20 +815,18 @@ test("preferences banked resets group keeps expiry and usage toggles separate", 
         property: "active",
         flags: 0,
     });
-    assert.deepEqual(settings.bindings[4], {
-        key: SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
-        row: group.children[2],
-        property: "sensitive",
-        flags: 1,
-    });
-    assert.deepEqual(settings.bindings[5], {
-        key: SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
-        row: group.children[3],
-        property: "sensitive",
-        flags: 1,
-    });
+
     assert.equal(settings.bindings[2].row, group.children[0]);
     assert.equal(settings.bindings[2].property, "active");
+
+    const skipPeriods = group.children[2];
+    assert.equal(skipPeriods.sensitive, false);
+    settings.set_boolean(SETTINGS_AUTO_APPLY_BANKED_RESET, true);
+    assert.equal(skipPeriods.sensitive, false);
+    settings.set_boolean(SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE, true);
+    assert.equal(skipPeriods.sensitive, true);
+    settings.set_boolean(SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE, false);
+    assert.equal(skipPeriods.sensitive, false);
 });
 
 test("readSettings preserves opt-in usage notification settings and thresholds", () => {
@@ -896,7 +914,7 @@ test("notification preferences roundtrip threshold, track sensitivity, and clean
             assert.equal(settings.get_uint(SETTINGS_USAGE_NOTIFICATION_THRESHOLD), expected);
             assert.equal(threshold.value, expected);
         }
-        assert.equal(settings.get_uint(SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD), 2);
+
         const signalIds = [...settings.signals.keys()];
         assert.equal(window.close(), false);
         assert.equal(settings.signals.size, 0);
@@ -908,24 +926,20 @@ test("notification preferences roundtrip threshold, track sensitivity, and clean
     }
 });
 
-test("usage auto-redemption settings preserve independent toggles and thresholds", () => {
-    for (const threshold of [1, 5, 100]) {
-        for (const enabled of [false, true]) {
-            const settings = settingsFixture({
-                [SETTINGS_AUTO_APPLY_BANKED_RESET]: !enabled,
-                [SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE]: enabled,
-                [SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD]: threshold,
-            });
-            const result = readSettings(settings);
-            assert.equal(result.autoApplyBankedReset, !enabled);
-            assert.equal(result.autoApplyBankedResetOnUsage, enabled);
-            assert.equal(result.autoApplyBankedResetUsageThreshold, threshold);
-            assert.deepEqual(settings.writes, []);
-        }
+test("usage auto-redemption settings preserve independent toggles", () => {
+    for (const enabled of [false, true]) {
+        const settings = settingsFixture({
+            [SETTINGS_AUTO_APPLY_BANKED_RESET]: !enabled,
+            [SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE]: enabled,
+        });
+        const result = readSettings(settings);
+        assert.equal(result.autoApplyBankedReset, !enabled);
+        assert.equal(result.autoApplyBankedResetOnUsage, enabled);
+        assert.deepEqual(settings.writes, []);
     }
 });
 
-test("usage auto-redemption schema is opt-in with a 1–100 threshold defaulting to 2", () => {
+test("usage auto-redemption schema is opt-in and has no threshold setting", () => {
     const schema = readFileSync(
         new URL(
             "../src/schemas/org.gnome.shell.extensions.codex-meter.gschema.xml",
@@ -937,151 +951,56 @@ test("usage auto-redemption schema is opt-in with a 1–100 threshold defaulting
         /<key name="auto-apply-banked-reset-on-usage" type="b">([\s\S]*?)<\/key>/,
     )[1];
     assert.match(toggle, /<default>false<\/default>/);
-    const threshold = schema.match(
-        /<key name="auto-apply-banked-reset-usage-threshold" type="u">([\s\S]*?)<\/key>/,
-    )[1];
-    assert.match(threshold, /<default>2<\/default>/);
-    assert.match(threshold, /<range min="1" max="100"\/>/);
+    assert.doesNotMatch(schema, /<key name="auto-apply-banked-reset-usage-threshold"/);
 });
 
-test("usage threshold reads, writes, tracks settings, and is sensitive only when enabled", () => {
-    for (const enabled of [false, true]) {
-        const settings = settingsFixture({ [SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE]: enabled });
-        const window = windowFixture();
-        const page = createPreferencesPage(settings, metadata, window);
-        const [expiry, usage, , threshold] = page.children[2].children;
-        assert.equal(threshold.title, "Threshold (% left)");
-        assert.equal(threshold.subtitle, "Threshold below which to redeem reset");
-        assert.equal(threshold.value, 2);
-        assert.equal(threshold.adjustment.lower, 1);
-        assert.equal(threshold.adjustment.upper, 100);
-        assert.equal(threshold.adjustment.step_increment, 1);
-        assert.equal(threshold.digits, 0);
-        assert.equal(threshold.sensitive, enabled);
-        settings.set_boolean(SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE, !enabled);
-        assert.equal(usage.active, !enabled);
-        assert.equal(threshold.sensitive, !enabled);
-        assert.equal(expiry.active, false);
-        settings.set_boolean(SETTINGS_AUTO_APPLY_BANKED_RESET, true);
-        assert.equal(threshold.sensitive, !enabled);
-
-        for (const value of [1, 80, 100]) {
-            settings.set_uint(SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD, value);
-            assert.equal(threshold.value, value);
-        }
-        for (const [value, expected] of [
-            [4.6, 5],
-            [0, 1],
-            [101, 100],
-        ]) {
-            threshold.value = value;
-            threshold.emit("notify::value");
-            assert.equal(
-                settings.get_uint(SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD),
-                expected,
-            );
-            assert.equal(threshold.value, expected);
-        }
-        assert.equal(settings.get_uint(SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES), 5);
-        window.close();
-        assert.equal(settings.signals.size, 0);
-        settings.set_uint(SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD, 50);
-        assert.equal(threshold.value, 100);
-    }
-});
-
-test("usage window lists cached quotas in panel order and stores quota IDs", () => {
-    const quotas = [
-        { id: "weekly-id", label: "Ignored weekly label", limitWindowSeconds: 604800 },
-        { id: "legacy-id", label: "Legacy window" },
-        { id: "short-id", label: "Ignored short label", limitWindowSeconds: 18000 },
-        { id: "other-short-id", label: "Same duration", limitWindowSeconds: 18000 },
-        { id: "null-id", label: "Custom window", limitWindowSeconds: null },
-    ];
-    const settings = settingsFixture({
-        [SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW]: "weekly-id",
-    });
+test("skip inputs display minutes and persist independent window overrides", () => {
+    const settings = settingsFixture({ [SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE]: true });
     const window = windowFixture();
+    const quotas = [
+        { id: "weekly", label: "Weekly", limitWindowSeconds: 604_800 },
+        { id: "session", label: "5 hours", limitWindowSeconds: 18_000 },
+    ];
     const page = createPreferencesPage(settings, metadata, window, { quotas });
-    const [expiry, usage, row, threshold] = page.children[2].children;
-    assert.equal(row.title, "Usage Window");
-    assert.equal(row.subtitle, "Apply auto-redemption only to selected usage window");
-    assert.deepEqual(row.model, [
-        "Any",
-        "5 hours",
-        "5 hours",
-        "Weekly",
-        "Legacy window",
-        "Custom window",
-    ]);
-    assert.equal(row.selected, 3);
+    const skipPeriods = page.children[2].children[2];
+    const [session, weekly] = skipPeriods.children;
+    assert.equal(skipPeriods.subtitle, "Keep banked reset if scheduled reset comes soon");
+    assert.equal(skipPeriods.expanded, true);
+    assert.deepEqual(
+        [session.title, weekly.title],
+        ["5 hour window (minutes)", "Weekly window (minutes)"],
+    );
+    assert.deepEqual([session.value, weekly.value], [30, 720]);
+    assert.deepEqual([session.adjustment.upper, weekly.adjustment.upper], [300, 10_080]);
+    assert.deepEqual([session.adjustment.step_increment, weekly.adjustment.step_increment], [1, 1]);
     assert.deepEqual(settings.writes, []);
-    assert.equal(row.sensitive, false);
-    settings.set_boolean(SETTINGS_AUTO_APPLY_BANKED_RESET, true);
-    assert.equal(row.sensitive, false);
-    settings.set_boolean(SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE, true);
-    assert.equal(row.sensitive, true);
-    assert.equal(threshold.sensitive, true);
-    assert.equal(usage.active, true);
-    assert.equal(expiry.active, true);
 
-    for (const [index, id] of [
-        [0, "any"],
-        [1, "short-id"],
-        [2, "other-short-id"],
-        [3, "weekly-id"],
-        [4, "legacy-id"],
-        [5, "null-id"],
-    ]) {
-        row.selected = index;
-        row.emit("notify::selected");
-        assert.equal(settings.get_string(SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW), id);
-        assert.equal(row.selected, index);
-    }
-    settings.set_string(SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW, "short-id");
-    assert.equal(row.selected, 1);
+    const setValue = (control, value) => {
+        control.value = value;
+        control.emit("notify::value");
+    };
+    setValue(session, 75);
+    setValue(weekly, 510);
+    const key = SETTINGS_BANKED_RESET_SKIP_MINUTES;
+    assert.deepEqual(settings.get_value(key).deep_unpack(), { session: 75, weekly: 510 });
+
+    setValue(session, 300);
+    setValue(weekly, 0);
+    assert.deepEqual(settings.get_value(key).deep_unpack(), { session: 300, weekly: 0 });
+
+    const writes = settings.writes.length;
+    settings.set_value(key, new toolkit.Variant("a{su}", { weekly: 90 }));
+    assert.deepEqual([session.value, weekly.value], [30, 90]);
+    session.emit("notify::value");
+    weekly.emit("notify::value");
+    assert.equal(settings.writes.length, writes + 1);
+
     window.close();
-    settings.set_string(SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW, "weekly-id");
-    assert.equal(row.selected, 1);
+    assert.deepEqual(skipPeriods.children, []);
+    assert.equal(settings.signals.size, 0);
 });
 
-test("usage window preserves unavailable selections without writing a fallback", () => {
-    for (const snapshot of [null, { quotas: [] }, { quotas: [{ id: "known", label: "Known" }] }]) {
-        const settings = settingsFixture({
-            [SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW]: "absent-id",
-        });
-        const page = createPreferencesPage(settings, metadata, windowFixture(), snapshot);
-        const row = page.children[2].children[2];
-        assert.equal(row.model[row.selected], "absent-id (unavailable)");
-        assert.equal(
-            settings.get_string(SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW),
-            "absent-id",
-        );
-        assert.deepEqual(settings.writes, []);
-
-        settings.set_string(SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW, "another-id");
-        assert.equal(row.model[row.selected], "another-id (unavailable)");
-        assert.ok(!row.model.includes("absent-id (unavailable)"));
-        assert.deepEqual(settings.writes, [
-            {
-                key: SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW,
-                value: "another-id",
-            },
-        ]);
-        row.selected = 0;
-        row.emit("notify::selected");
-        assert.equal(settings.get_string(SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW), "any");
-        assert.equal(row.selected, 0);
-        assert.ok(!row.model.includes("another-id (unavailable)"));
-    }
-    const defaults = settingsFixture();
-    const page = createPreferencesPage(defaults, metadata, windowFixture());
-    assert.deepEqual(page.children[2].children[2].model, ["Any"]);
-    assert.equal(page.children[2].children[2].selected, 0);
-    assert.deepEqual(defaults.writes, []);
-});
-
-test("selecting and resetting credentials replaces usage windows without writing the selection", async (t) => {
+test("selecting and resetting credentials replaces skip controls without writing skip periods", async (t) => {
     const workPath = "/tmp/work.json";
     const defaultSnapshot = { quotas: [{ id: "default-id", label: "Default window" }] };
     const workSnapshot = { quotas: [{ id: "work-id", label: "Work window" }] };
@@ -1091,9 +1010,7 @@ test("selecting and resetting credentials replaces usage windows without writing
     t.after(() => {
         cache.read = async () => null;
     });
-    const settings = settingsFixture({
-        [SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW]: "default-id",
-    });
+    const settings = settingsFixture();
     const window = windowFixture();
     const page = createPreferencesPage(settings, metadata, window, defaultSnapshot);
     const row = page.children[2].children[2];
@@ -1106,23 +1023,21 @@ test("selecting and resetting credentials replaces usage windows without writing
         await new Promise(setImmediate);
     };
 
-    assert.deepEqual(row.model, ["Any", "Default window"]);
+    const titles = () => row.children.map(({ title }) => title);
+    assert.deepEqual(titles(), ["Default window (minutes)"]);
     await selectWork();
     assert.equal(settings.get_string(SETTINGS_CREDENTIALS_PATH), workPath);
-    assert.deepEqual(row.model, ["Any", "default-id (unavailable)"]);
-    assert.equal(row.selected, 1);
+    assert.deepEqual(titles(), []);
     reads.get(workPath).resolve(workSnapshot);
     await new Promise(setImmediate);
-    assert.deepEqual(row.model, ["Any", "Work window", "default-id (unavailable)"]);
-    assert.equal(row.selected, 2);
+    assert.deepEqual(titles(), ["Work window (minutes)"]);
 
     reset.emit("clicked");
-    assert.deepEqual(row.model, ["Any", "default-id (unavailable)"]);
+    assert.deepEqual(titles(), []);
     await new Promise(setImmediate);
     reads.get(DEFAULT_CREDENTIALS_PATH).resolve(defaultSnapshot);
     await new Promise(setImmediate);
-    assert.deepEqual(row.model, ["Any", "Default window"]);
-    assert.equal(row.selected, 1);
+    assert.deepEqual(titles(), ["Default window (minutes)"]);
     assert.deepEqual(settings.writes, [{ key: SETTINGS_CREDENTIALS_PATH, value: workPath }]);
     window.close();
 });
@@ -1134,16 +1049,14 @@ test("a new account's usage windows appear when its first cache snapshot is writ
     t.after(() => {
         cache.read = async () => null;
     });
-    const settings = settingsFixture({
-        [SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW]: "weekly",
-    });
+    const settings = settingsFixture();
     const window = windowFixture();
     const page = createPreferencesPage(settings, metadata, window);
     const row = page.children[2].children[2];
 
     settings.set_string(SETTINGS_CREDENTIALS_PATH, path);
     await new Promise(setImmediate);
-    assert.deepEqual(row.model, ["Any", "weekly (unavailable)"]);
+    assert.deepEqual(row.children, []);
     const monitor = fileMonitors.get("/tmp");
     assert.ok(monitor);
     const file = toolkit.File.new_for_path(`${path}.snapshot.json`);
@@ -1151,11 +1064,14 @@ test("a new account's usage windows appear when its first cache snapshot is writ
     snapshot = { quotas: [{ id: "weekly", label: "Weekly window" }] };
     monitor.emit("changed", temporaryFile);
     await new Promise(setImmediate);
-    assert.deepEqual(row.model, ["Any", "weekly (unavailable)"]);
+    assert.deepEqual(row.children, []);
     monitor.emit("changed", temporaryFile, file);
     await new Promise(setImmediate);
-    assert.deepEqual(row.model, ["Any", "Weekly window"]);
-    assert.equal(row.selected, 1);
+    assert.deepEqual(
+        row.children.map(({ title }) => title),
+        ["Weekly window (minutes)"],
+    );
+    assert.equal(row.expanded, true);
     assert.deepEqual(settings.writes, [{ key: SETTINGS_CREDENTIALS_PATH, value: path }]);
     window.close();
     assert.equal(monitor.cancelled, true);
@@ -1175,7 +1091,7 @@ test("switching credentials again or closing the window cancels usage cache work
     const paths = ["/tmp/first.json", "/tmp/current.json"];
     const switchTo = async (path) => {
         settings.set_string(SETTINGS_CREDENTIALS_PATH, path);
-        assert.deepEqual(row.model, ["Any"]);
+        assert.deepEqual(row.children, []);
         await new Promise(setImmediate);
         return fileMonitors.get("/tmp");
     };
@@ -1187,10 +1103,16 @@ test("switching credentials again or closing the window cancels usage cache work
 
     reads[1].resolve({ quotas: [{ id: "current", label: "Current window" }] });
     await new Promise(setImmediate);
-    assert.deepEqual(row.model, ["Any", "Current window"]);
+    assert.deepEqual(
+        row.children.map(({ title }) => title),
+        ["Current window (minutes)"],
+    );
     reads[0].resolve({ quotas: [{ id: "stale", label: "Stale window" }] });
     await new Promise(setImmediate);
-    assert.deepEqual(row.model, ["Any", "Current window"]);
+    assert.deepEqual(
+        row.children.map(({ title }) => title),
+        ["Current window (minutes)"],
+    );
 
     currentMonitor.emit("changed", toolkit.File.new_for_path(`${paths[1]}.snapshot.json`));
     window.close();
@@ -1199,7 +1121,7 @@ test("switching credentials again or closing the window cancels usage cache work
     assert.deepEqual(currentMonitor.signals, {});
     reads[2].resolve({ quotas: [{ id: "late", label: "Late window" }] });
     await new Promise(setImmediate);
-    assert.deepEqual(row.model, ["Any", "Current window"]);
+    assert.deepEqual(row.children, []);
     assert.deepEqual(
         settings.writes,
         paths.map((value) => ({ key: SETTINGS_CREDENTIALS_PATH, value })),
@@ -1208,15 +1130,7 @@ test("switching credentials again or closing the window cancels usage cache work
     settings.set_string(SETTINGS_CREDENTIALS_PATH, paths[0]);
     await new Promise(setImmediate);
     assert.equal(reads.length, 3);
-    assert.deepEqual(row.model, ["Any", "Current window"]);
-});
-
-test("readSettings preserves the usage window quota ID", () => {
-    for (const id of ["any", "short-id", "absent-id"]) {
-        const settings = settingsFixture({ [SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW]: id });
-        assert.equal(readSettings(settings).autoApplyBankedResetUsageWindow, id);
-        assert.deepEqual(settings.writes, []);
-    }
+    assert.deepEqual(row.children, []);
 });
 
 test("preferences entry point reads cached usage without loading inventory", async (t) => {
@@ -1236,7 +1150,10 @@ test("preferences entry point reads cached usage without loading inventory", asy
     await prefs.fillPreferencesWindow(window);
     const [page] = window.children;
     assert.equal(page.title, "Codex Meter");
-    assert.deepEqual(page.children[2].children[2].model, ["Any", "Cached window"]);
+    assert.deepEqual(
+        page.children[2].children[2].children.map(({ title }) => title),
+        ["Cached window (minutes)"],
+    );
     assert.equal(cancellable.is_cancelled(), false);
     assert.equal(page.children[5].children[0].children[0].label, "Codex Meter test");
     page.children[5].children[0].children[1].signals["activate-link"]();
@@ -1246,7 +1163,7 @@ test("preferences entry point reads cached usage without loading inventory", asy
         about.release_notes,
         "<p><em>Added</em></p>\n<ul>\n<li>Latest feature.</li>\n</ul>",
     );
-    assert.equal(settings.signals.size, 9);
+    assert.equal(settings.signals.size, 8);
     assert.equal(window.close(), false);
     assert.equal(cancellable.is_cancelled(), true);
     assert.equal(settings.signals.size, 0);
@@ -1282,16 +1199,14 @@ test("closing preferences during a changelog read prevents late page creation", 
 
 test("preferences entry point tolerates an empty usage cache", async () => {
     const prefs = new CodexMeterPreferences();
-    const settings = settingsFixture({
-        [SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW]: "absent-id",
-    });
+    const settings = settingsFixture();
     prefs.getSettings = () => settings;
     prefs.metadata = metadata;
     const window = windowFixture();
     await prefs.fillPreferencesWindow(window);
     const row = window.children[0].children[2].children[2];
-    assert.deepEqual(row.model, ["Any", "absent-id (unavailable)"]);
-    assert.equal(row.selected, 1);
+    assert.deepEqual(row.children, []);
+    assert.equal(row.enable_expansion, false);
     assert.deepEqual(settings.writes, []);
     assert.equal(window.close(), false);
     assert.equal(settings.signals.size, 0);
@@ -1341,7 +1256,7 @@ test("closing preferences disconnects every settings callback without preventing
     const [percent, icon, display] = page.children[0].children;
     const [refresh] = page.children[3].children;
     const signalIds = [...settings.signals.keys()];
-    assert.equal(signalIds.length, 9);
+    assert.equal(signalIds.length, 8);
 
     settings.set_string(SETTINGS_PERCENT_DISPLAY_MODE, "used");
     settings.set_string(SETTINGS_TOP_PANEL_INDICATOR_ICON, "openai");
@@ -1384,13 +1299,13 @@ test("closing one window preserves other windows and reopening does not leak han
         const window = windowFixture();
         const page = createPreferencesPage(settings, metadata, window);
         const icon = page.children[0].children[1];
-        assert.equal(settings.signals.size, 18);
+        assert.equal(settings.signals.size, 16);
         settings.set_string(SETTINGS_TOP_PANEL_INDICATOR_ICON, "openai");
         assert.equal(firstIcon.selected, 1);
         assert.equal(icon.selected, 1);
 
         assert.equal(window.close(), false);
-        assert.equal(settings.signals.size, 9);
+        assert.equal(settings.signals.size, 8);
         settings.set_string(SETTINGS_TOP_PANEL_INDICATOR_ICON, "text");
         assert.equal(firstIcon.selected, 2);
         assert.equal(icon.selected, 1);
@@ -1398,5 +1313,5 @@ test("closing one window preserves other windows and reopening does not leak han
 
     assert.equal(firstWindow.close(), false);
     assert.equal(settings.signals.size, 0);
-    assert.equal(settings.disconnected.length, 36);
+    assert.equal(settings.disconnected.length, 32);
 });

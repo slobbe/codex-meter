@@ -1,15 +1,16 @@
 import Gio from "gi://Gio";
 import {
     getBackgroundRefreshIntervalSeconds,
+    readBankedResetSkipMinutes,
     readSettings,
     SETTINGS_AUTO_APPLY_BANKED_RESET,
     SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
-    SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD,
-    SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW,
     SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES,
+    SETTINGS_BANKED_RESET_SKIP_MINUTES,
     SETTINGS_USAGE_NOTIFICATIONS,
     SETTINGS_USAGE_NOTIFICATION_THRESHOLD,
 } from "../preferences/settings.js";
+import { getBankedResetSkipMinutes, getImminentResetSeconds } from "../codex/usage/model.js";
 import { UsageService } from "../codex/usage/service.js";
 import { isCodexError } from "../codex/error.js";
 import { isCancellationError } from "../io/files.js";
@@ -61,8 +62,8 @@ export class CodexMonitor {
         this._usageNotificationStates = usageNotificationStates;
         this._autoApplyBankedReset = values.autoApplyBankedReset;
         this._autoApplyBankedResetOnUsage = values.autoApplyBankedResetOnUsage;
-        this._autoApplyBankedResetUsageThreshold = values.autoApplyBankedResetUsageThreshold;
-        this._autoApplyBankedResetUsageWindow = values.autoApplyBankedResetUsageWindow;
+
+        this._bankedResetSkipMinutes = readBankedResetSkipMinutes(settings);
         this._usageService = new UsageService(credentialsPath);
         this._usageRefreshTask = new PeriodicTask(values.backgroundRefreshIntervalSeconds, () =>
             this.refreshUsage(),
@@ -112,6 +113,7 @@ export class CodexMonitor {
                 ? (this._bankedResetPreparation?.creditId ?? null)
                 : null,
             redeemingBankedReset: this._redeemingBankedReset,
+            bankedResetSkipMinutes: this._bankedResetSkipMinutes,
         };
     }
 
@@ -142,8 +144,8 @@ export class CodexMonitor {
         this._redeemBankedResetCancellable = null;
         this._settings.disconnect(this._autoApplyChangedId);
         this._settings.disconnect(this._autoApplyUsageChangedId);
-        this._settings.disconnect(this._autoApplyThresholdChangedId);
-        this._settings.disconnect(this._autoApplyWindowChangedId);
+
+        this._settings.disconnect(this._bankedResetSkipMinutesChangedId);
         this._settings.disconnect(this._refreshIntervalChangedId);
         this._settings.disconnect(this._usageNotificationsChangedId);
         this._settings.disconnect(this._usageNotificationThresholdChangedId);
@@ -340,29 +342,20 @@ export class CodexMonitor {
                 }
             },
         );
-        const updateUsageAutoApply = () => {
-            this._autoApplyBankedResetOnUsage = this._settings.get_boolean(
-                SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
-            );
-            this._autoApplyBankedResetUsageThreshold = this._settings.get_uint(
-                SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD,
-            );
-            this._autoApplyBankedResetUsageWindow = this._settings.get_string(
-                SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW,
-            );
-            this._autoApplyBankedResetCancellable?.cancel();
-        };
         this._autoApplyUsageChangedId = this._settings.connect(
             `changed::${SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE}`,
-            updateUsageAutoApply,
+            () => {
+                this._autoApplyBankedResetOnUsage = this._settings.get_boolean(
+                    SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
+                );
+                this._autoApplyBankedResetCancellable?.cancel();
+            },
         );
-        this._autoApplyThresholdChangedId = this._settings.connect(
-            `changed::${SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD}`,
-            updateUsageAutoApply,
-        );
-        this._autoApplyWindowChangedId = this._settings.connect(
-            `changed::${SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW}`,
-            updateUsageAutoApply,
+        this._bankedResetSkipMinutesChangedId = this._settings.connect(
+            `changed::${SETTINGS_BANKED_RESET_SKIP_MINUTES}`,
+            () => {
+                this._bankedResetSkipMinutes = readBankedResetSkipMinutes(this._settings);
+            },
         );
         this._refreshIntervalChangedId = this._settings.connect(
             `changed::${SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES}`,
@@ -547,13 +540,13 @@ export class CodexMonitor {
     _usageNeedsBankedReset(snapshot) {
         if (!this._autoApplyBankedResetOnUsage || this._snapshot !== snapshot) return false;
         const now = Date.now() / 1000;
-        return snapshot.quotas.some(
-            (quota) =>
-                (this._autoApplyBankedResetUsageWindow === "any" ||
-                    quota.id === this._autoApplyBankedResetUsageWindow) &&
-                100 - quota.usedPercent < this._autoApplyBankedResetUsageThreshold &&
-                (quota.resetAt ?? Infinity) > now,
-        );
+        return snapshot.quotas.some((quota) => {
+            if (!(100 - quota.usedPercent < 2 && (quota.resetAt ?? Infinity) > now)) return false;
+            const skipMinutes = getBankedResetSkipMinutes(quota, this._bankedResetSkipMinutes);
+            const duration = quota.limitWindowSeconds;
+            if (duration > 0 && skipMinutes * 60 >= duration) return false;
+            return getImminentResetSeconds(quota, now, skipMinutes) === null;
+        });
     }
 
     async _refreshBankedResetsForAutoApply(usageSnapshot = null) {

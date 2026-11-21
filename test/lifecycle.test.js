@@ -35,11 +35,13 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export const predict = () => ({});
     export class PeriodicTask { start() { io.start?.(); } stop() {} }
     export const readSettings = () => ({ autoApplyBankedReset: false });
+    export const readBankedResetSkipMinutes = () => ({});
+    export const SETTINGS_BANKED_RESET_SKIP_MINUTES = "banked-reset-skip-minutes";
     export const SETTINGS_USAGE_NOTIFICATIONS = "usage-notifications";
     export const SETTINGS_USAGE_NOTIFICATION_THRESHOLD = "usage-notification-threshold";
-    export const SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_WINDOW = "usage-window";
+
     export const SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE = "auto-usage";
-    export const SETTINGS_AUTO_APPLY_BANKED_RESET_USAGE_THRESHOLD = "usage-threshold";
+
     export const getBackgroundRefreshIntervalSeconds = () => 0;
     export const SETTINGS_AUTO_APPLY_BANKED_RESET = 'auto-apply';
     export const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES = 'refresh';
@@ -54,7 +56,8 @@ const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
         if (
             context.parentURL === serviceUrl ||
-            (context.parentURL === monitorUrl && specifier !== "../codex/usage/service.js")
+            (context.parentURL === monitorUrl &&
+                !["../codex/usage/service.js", "../codex/usage/model.js"].includes(specifier))
         ) {
             return { url: stubUrl, shortCircuit: true };
         }

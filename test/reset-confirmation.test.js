@@ -53,7 +53,10 @@ const hooks = registerHooks({
         if (context.parentURL === indicatorUrl && specifier === "./reset-confirmation.js") {
             return nextResolve(specifier, context);
         }
-        if (context.parentURL === indicatorUrl || context.parentURL === confirmationUrl) {
+        if (
+            context.parentURL === indicatorUrl ||
+            (context.parentURL === confirmationUrl && specifier.includes("://"))
+        ) {
             return { url: stubUrl, shortCircuit: true };
         }
         return nextResolve(specifier, context);
@@ -168,6 +171,52 @@ test("confirmation keeps a single available date and uses the selected reset typ
             "This will consume this weekly reset. This action cannot be undone",
         );
     }
+});
+
+test("manual redemption warns about imminent scheduled resets but allows an override", async (t) => {
+    modalState.canGrab = true;
+    t.mock.method(Date, "now", () => 1_800_000_000_000);
+    const now = Date.now() / 1000;
+    const indicator = Object.create(CodexMeterIndicator.prototype);
+    indicator._uiCancellable = { is_cancelled: () => false };
+    indicator.menu = { close() {} };
+    indicator._monitor = {
+        state: {
+            bankedResetSkipMinutes: { session: 45, weekly: 0 },
+            snapshot: {
+                quotas: [
+                    {
+                        id: "session",
+                        label: "5 hours",
+                        limitWindowSeconds: 18_000,
+                        resetAt: now + 40 * 60,
+                    },
+                    {
+                        id: "weekly",
+                        label: "Weekly",
+                        limitWindowSeconds: 604_800,
+                        resetAt: now + 8 * 3600,
+                    },
+                ],
+            },
+        },
+        async prepareBankedReset(id) {
+            return { id };
+        },
+    };
+    const redeemed = [];
+    indicator._redeemBankedReset = (id) => redeemed.push(id);
+    await indicator._confirmBankedReset("selected");
+
+    const dialog = indicator._resetConfirmationDialog;
+    const content = dialog.contentLayout.children[0];
+    const countdowns = content.children
+        .map(({ text }) => text)
+        .filter((text) => text.includes("resets in"));
+    assert.deepEqual(countdowns, ["5 hours window: resets in 40m."]);
+    assert.equal(dialog.buttons.find((button) => button.default).label, "Cancel");
+    dialog.buttons.find((button) => button.label === "Redeem anyway").action();
+    assert.deepEqual(redeemed, ["selected"]);
 });
 
 for (const [index, action] of ["Cancel", "Redeem"].entries()) {

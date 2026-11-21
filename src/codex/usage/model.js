@@ -31,6 +31,29 @@ export function getUsageWindowMetadata(limitWindowSeconds) {
     return { type: "unknown", label: `${limitWindowSeconds} seconds` };
 }
 
+/**
+ * @param {UsageQuota} quota
+ * @param {Record<string, number>} overrides Skip periods in minutes, by window ID
+ */
+export function getBankedResetSkipMinutes({ id, limitWindowSeconds }, overrides = {}) {
+    if (Object.hasOwn(overrides, id)) return overrides[id];
+    if (limitWindowSeconds === 18_000) return 30;
+    if (limitWindowSeconds === 604_800) return 12 * 60;
+    return 0;
+}
+
+/**
+ * @param {UsageQuota} quota
+ * @param {number} nowSeconds UNIX timestamp in seconds
+ * @param {number} skipMinutes
+ * @returns {number | null} Seconds until reset, if within the skip period.
+ */
+export function getImminentResetSeconds(quota, nowSeconds, skipMinutes) {
+    if (quota.resetAt == null) return null;
+    const secondsLeft = quota.resetAt - nowSeconds;
+    return secondsLeft > 0 && secondsLeft <= skipMinutes * 60 ? secondsLeft : null;
+}
+
 /** @param {UsageQuota[]} quotas */
 export function sortUsageQuotas(quotas) {
     /** @param {UsageQuota} quota */
