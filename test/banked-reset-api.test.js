@@ -341,12 +341,13 @@ function useAccount(accountId, signature = "one", sub = "test-user") {
     io.auth = { tokens: { access_token: `mock.${claims}.${signature}` } };
 }
 
-function usageMonitor(t, notify = () => {}, settings = { connect() {} }) {
-    const monitor = new CodexMonitor(settings, notify, credentialsPath);
+function usageMonitor(t, notify = () => {}, settings = { connect() {} }, options = {}) {
+    const { path = credentialsPath, bankedResetConsumes } = options;
+    const monitor = new CodexMonitor(settings, notify, path, undefined, { bankedResetConsumes });
     monitor._autoApplyBankedReset = false;
     monitor._autoApplyBankedResetOnUsage = true;
     monitor._usageService = {
-        refresh: (options) => refreshCodexUsage({ ...options, credentialsPath }),
+        refresh: (options) => refreshCodexUsage({ ...options, credentialsPath: path }),
         readHistory: async () => [],
         predict: async () => null,
         readCachedSnapshot: async () => null,
@@ -414,6 +415,58 @@ for (const phase of ["usage", "list", "consume"]) {
         );
         assert.equal(monitor.state.snapshot, null, "old account usage is not shown");
         assert.equal(monitor.state.bankedResetSnapshot, null, "old account inventory is not shown");
+    });
+}
+
+for (const change of [
+    "skip period",
+    "imminent reset",
+    "new snapshot",
+    "usage credit expired",
+    "expiry credit expired",
+    "expiry opt-out",
+]) {
+    test(`automatic consume silently rechecks ${change} after reading credentials`, async (t) => {
+        useAccount("account-a");
+        let now = 1_800_000_000_000;
+        t.mock.method(Date, "now", () => now);
+        const messages = [];
+        const monitor = usageMonitor(t, (message) => messages.push(message));
+        monitor._autoApplyBankedReset = change.startsWith("expiry");
+        if (change === "imminent reset") monitor._bankedResetSkipMinutes = { "window-3600": 5 };
+        const expiresAt =
+            now + (change.endsWith("expired") || monitor._autoApplyBankedReset ? 2000 : 7200_000);
+        io.response = {
+            available_count: 1,
+            credits: [{ ...expiringCredit(), expires_at: new Date(expiresAt).toISOString() }],
+        };
+        const preflight = Promise.withResolvers();
+        const release = Promise.withResolvers();
+        monitor.onChange = ({ redeemingBankedReset }) => {
+            if (!redeemingBankedReset) return;
+            io.afterAuth = () => {
+                io.afterAuth = null;
+                preflight.resolve();
+                return release.promise;
+            };
+        };
+        const refresh = monitor.refreshUsage();
+        await preflight.promise;
+        if (change === "skip period") monitor._bankedResetSkipMinutes = { "window-3600": 60 };
+        if (change === "imminent reset") now += 3500_000;
+        if (change === "new snapshot") monitor._snapshot = { ...monitor.state.snapshot };
+        if (change.endsWith("expired")) now = expiresAt;
+        if (change === "expiry opt-out") monitor._autoApplyBankedReset = false;
+        release.resolve();
+        await refresh;
+
+        assert.equal(
+            io.requests.some(({ options }) => options.method === "POST"),
+            false,
+        );
+        assert.equal(console.warn.mock.callCount(), 0, "ineligibility is not an account error");
+        assert.deepEqual(messages, []);
+        assert.equal(monitor.state.redeemingBankedReset, false);
     });
 }
 
@@ -532,6 +585,77 @@ for (const failure of ["lost response", "unknown reply"]) {
         assert.equal(attempts, 2, "a later decision can use both refreshed observations");
     });
 }
+
+test("path replacements keep an ambiguous consume scoped to its verified account", async (t) => {
+    const bankedResetConsumes = new Map();
+    const messages = [];
+    const createMonitor = (path) =>
+        usageMonitor(
+            t,
+            (message) => messages.push(message),
+            { connect() {}, disconnect() {} },
+            {
+                bankedResetConsumes,
+                path,
+            },
+        );
+    useAccount("account-a");
+    const first = createMonitor("/first/auth.json");
+    const dispatched = Promise.withResolvers();
+    const release = Promise.withResolvers();
+    io.afterFetch = (url, options) => {
+        if (!url.endsWith("/consume")) return;
+        if (options.headers["ChatGPT-Account-ID"] !== "account-a") return;
+        dispatched.resolve(options.cancellable);
+        return release.promise;
+    };
+    const initial = first.refreshUsage();
+    const transport = await dispatched.promise;
+    first.stop({ replacing: true });
+    assert.equal(transport.is_cancelled(), false);
+
+    useAccount("account-b");
+    const other = createMonitor("/second/auth.json");
+    await other.refreshUsage();
+    other.stop({ replacing: true });
+    useAccount("account-a", "rotated");
+    const replacement = createMonitor("/first/auth.json");
+    const posts = () => io.requests.filter(({ options }) => options.method === "POST");
+    await replacement.refreshUsage();
+    assert.deepEqual(
+        posts().map(({ options }) => options.headers["ChatGPT-Account-ID"]),
+        ["account-a", "account-b"],
+    );
+
+    const oldRespond = io.respond;
+    io.respond = (url, options) => {
+        if (url.endsWith("/consume")) throw new Error("Response lost");
+        return oldRespond(url, options);
+    };
+    release.resolve();
+    await initial;
+    assert.equal(messages.length, 1, "only the other account reports a reset");
+    io.afterFetch = null;
+    replacement._autoApplyBankedReset = true;
+    io.response = { available_count: 1, credits: [expiringCredit()] };
+    io.respond = (url, options) => {
+        if (url.endsWith("/usage")) throw new Error("Usage unavailable");
+        return oldRespond(url, options);
+    };
+    await replacement._refreshBankedResetsForAutoApply();
+    assert.equal(posts().length, 2, "pre-settlement usage cannot authorize another consume");
+
+    io.respond = oldRespond;
+    const before = io.requests.length;
+    await replacement._refreshBankedResetsForAutoApply();
+    assert.deepEqual(
+        io.requests.slice(before, before + 3).map(({ url }) => url.split("/").at(-1)),
+        ["rate-limit-reset-credits", "usage", "consume"],
+    );
+    assert.equal(posts().length, 3);
+    assert.equal(bankedResetConsumes.size, 0, "confirmed refreshes clear the marker");
+    replacement.stop();
+});
 
 test("a popup inventory request cannot swallow a new account's low-quota trigger", async (t) => {
     useAccount("account-a");

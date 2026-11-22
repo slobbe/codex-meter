@@ -68,7 +68,7 @@ function createFixture(workflow) {
     const monitor = Object.assign(Object.create(CodexMonitor.prototype), {
         _lifecycleCancellable: new Gio.Cancellable(),
         _accountCredentials: credentials,
-        _bankedResetRechecks: [],
+        _unverifiedBankedResetConsumes: new Map(),
         async _readAccount(cancellable) {
             cancellable?.set_error_if_cancelled();
             return credentials;
@@ -211,6 +211,27 @@ async function testStoppedDuringLoading(workflow, stage) {
     assertDeepEqual(fixture.monitor.state.prediction, { quotas: {} }, "stop preserves prediction");
     assertDeepEqual(fixture.notifications, [], "stop sends no notifications");
 }
+
+function testAccountReplacementWithdrawsAlertsBeforePublishing() {
+    const { monitor, snapshot } = createFixture(workflows[0]);
+    const first = { accessToken: "old", accountFingerprint: "account-a" };
+    monitor._accountCredentials = first;
+    monitor._snapshot = snapshot;
+    monitor._usageNotificationStates = new Map();
+    const events = [];
+    monitor._withdrawUsageAlerts = () => events.push("withdraw alerts");
+    monitor.onChange = (state) => {
+        assertEqual(state.snapshot, null, "replaced account usage is no longer visible");
+        events.push("change");
+    };
+
+    monitor._setAccount({ ...first, accessToken: "rotated" });
+    assertDeepEqual(events, [], "token rotation does not withdraw alerts");
+    monitor._setAccount({ accessToken: "new", accountFingerprint: "account-b" });
+    assertDeepEqual(events, ["withdraw alerts", "change"], "withdraw before publishing");
+}
+
+testAccountReplacementWithdrawsAlertsBeforePublishing();
 
 for (const workflow of workflows) {
     await testPredictionWorkflow(workflow, false);

@@ -56,6 +56,8 @@ export async function redeemCodexBankedReset(creditId, options = {}) {
         redeem_request_id: GLib.uuid_string_random(),
     };
     consumeCancellable?.set_error_if_cancelled();
+    // Eligibility can change during the credentials read without an account change.
+    if (options.isEligible?.() === false) return;
     if (options.onDispatch?.() === false) {
         throw new CodexError(
             "credentials-changed",

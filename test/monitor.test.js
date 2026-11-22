@@ -13,7 +13,11 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     }
     export const hasSameCodexAccount = (left, right) => !!left && left === right;
     export const listCodexBankedResets = options => api.list(options);
-    export const redeemCodexBankedReset = (id, options) => api.redeem(id, options);
+    export async function redeemCodexBankedReset(id, options) {
+        if (options.isEligible?.() === false) return;
+        if (options.onDispatch?.() === false) throw new Error('Account changed');
+        return api.redeem(id, options);
+    }
     export class Cancellable {
         cancel() { this.cancelled = true; }
         is_cancelled() { return !!this.cancelled; }

@@ -23,7 +23,10 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
             runtime.events.push('construct monitor ' + this.id);
         }
         start() { runtime.events.push('start monitor ' + this.id); }
-        stop() { runtime.events.push('stop monitor ' + this.id); }
+        stop(options) {
+            this.stopOptions = options;
+            runtime.events.push('stop monitor ' + this.id);
+        }
     }
     export class CodexMeterIndicator {
         constructor(extension, monitor) {
@@ -339,6 +342,47 @@ test("turning off usage alerts removes queued usage alerts but not reset results
     assert.deepEqual(source.notifications, [shown, reset]);
 });
 
+test("same-path account replacement withdraws only pending usage alerts", (t) => {
+    const { enable } = fixture(t);
+    enable();
+    const { args } = runtime.monitors[0];
+    const notify = args[1];
+    const { withdrawUsageAlerts } = args[4];
+    const deliveries = [];
+    messageTray.onSubmit = (alert) => alert.show();
+    notify("Shown usage alert", (shown) => deliveries.push(shown));
+    messageTray.onSubmit = null;
+    notify("Queued usage alert", (shown) => deliveries.push(shown));
+    notify("Reset redeemed");
+    const [, source] = messageTray.sources;
+
+    withdrawUsageAlerts();
+
+    assert.deepEqual(deliveries, [true, false]);
+    assert.deepEqual(
+        source.notifications.map(({ body }) => body),
+        ["Shown usage alert", "Reset redeemed"],
+    );
+});
+
+test("disable cancels consumes detached by path replacement", (t) => {
+    const { enable, disable, settings } = fixture(t);
+    enable();
+    const [first] = runtime.monitors;
+    const { bankedResetConsumes } = first.args[4];
+    const detached = { cancel: t.mock.fn() };
+    bankedResetConsumes.set("verified-account", { pending: new Set([detached]) });
+
+    settings.set_string(SETTINGS_CREDENTIALS_PATH, "/accounts/second/auth.json");
+    assert.equal(first.stopOptions.replacing, true);
+    assert.equal(runtime.monitors[1].args[4].bankedResetConsumes, bankedResetConsumes);
+    assert.equal(detached.cancel.mock.callCount(), 0);
+
+    disable();
+    assert.equal(detached.cancel.mock.callCount(), 1);
+    assert.equal(bankedResetConsumes.size, 0);
+});
+
 test("Shell can drop a pending alert without a credential switch", (t) => {
     const { enable } = fixture(t);
     enable();
@@ -396,7 +440,7 @@ test("enable reads credentials-path and starts the monitor and its panel indicat
     assert.equal(values.get(SETTINGS_TOP_PANEL_INDICATOR_ICON), "codex");
     assert.equal(runtime.monitors.length, 1);
     const [monitor] = runtime.monitors;
-    assert.equal(monitor.args.length, 4);
+    assert.equal(monitor.args.length, 5);
     assert.equal(monitor.args[0], settings);
     assert.equal(typeof monitor.args[1], "function");
     assert.equal(monitor.args[2], "~/custom account/auth.json");

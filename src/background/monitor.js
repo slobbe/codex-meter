@@ -54,10 +54,12 @@ export class CodexMonitor {
         notify,
         credentialsPath = undefined,
         usageNotificationStates = new Map(),
+        { bankedResetConsumes = new Map(), withdrawUsageAlerts = () => {} } = {},
     ) {
         this._settings = settings;
         this._credentialsPath = credentialsPath;
         this._notify = notify;
+        this._withdrawUsageAlerts = withdrawUsageAlerts;
         const values = readSettings(settings);
         this._usageNotifications = values.usageNotifications;
         this._usageNotificationThreshold = values.usageNotificationThreshold;
@@ -89,7 +91,8 @@ export class CodexMonitor {
         this._errorMessage = null;
         this._cachedFailureMessage = null;
         this._bankedResetRefresh = null;
-        this._bankedResetRechecks = [];
+        this._bankedResetConsumes = bankedResetConsumes;
+        this._unverifiedBankedResetConsumes = new Map();
         this._bankedResetRefreshAttemptAt = null;
         this._autoApplyBankedResetCancellable = null;
         this._pendingUsageReset = null;
@@ -102,6 +105,7 @@ export class CodexMonitor {
         this._bankedResetPreparation = null;
         this._redeemingBankedReset = false;
         this._redeemBankedResetCancellable = null;
+        this._dispatchedVerifiedConsume = false;
         this._lifecycleCancellable = new Gio.Cancellable();
         this._connectSettings();
     }
@@ -151,7 +155,7 @@ export class CodexMonitor {
         });
     }
 
-    stop() {
+    stop({ replacing = false } = {}) {
         if (this._lifecycleCancellable.is_cancelled()) return;
         this._lifecycleCancellable.cancel();
         if (this._credentialsMonitor) {
@@ -172,9 +176,11 @@ export class CodexMonitor {
         this._refreshCancellable?.cancel();
         this._refreshCancellable = null;
         this._bankedResetRefresh?.cancellable.cancel();
-        this._bankedResetRechecks = [];
+        this._unverifiedBankedResetConsumes.clear();
 
-        this._redeemBankedResetCancellable?.cancel();
+        // A replacement must not mistake local cancellation for a settled server request.
+        if (!replacing || !this._dispatchedVerifiedConsume)
+            this._redeemBankedResetCancellable?.cancel();
         this._redeemBankedResetCancellable = null;
         this._settings.disconnect(this._autoApplyChangedId);
         this._settings.disconnect(this._autoApplyUsageChangedId);
@@ -377,7 +383,7 @@ export class CodexMonitor {
         await this._redeemBankedReset(creditId, preparation.credentials);
     }
 
-    async _redeemBankedReset(creditId, credentials, eligibility = null, automaticMessage = null) {
+    async _redeemBankedReset(creditId, credentials, automatic = null) {
         if (this._lifecycleCancellable.is_cancelled() || this._redeemingBankedReset) return;
         const consumeCancellable = new Gio.Cancellable();
         const preparation = this._bankedResetPreparation;
@@ -385,12 +391,14 @@ export class CodexMonitor {
         this._redeemBankedResetCancellable = consumeCancellable;
         this._emitChange();
         try {
-            let dispatched = false;
+            const [consumes, key] = this._bankedResetConsumeKey(credentials);
+            let consume = null;
             let failure = null;
             // A settings change can stop preflight, but not a consume already sent.
             try {
                 await redeemCodexBankedReset(creditId, {
-                    cancellable: eligibility ?? consumeCancellable,
+                    cancellable: automatic?.cancellable ?? consumeCancellable,
+                    isEligible: automatic?.isEligible,
                     consumeCancellable,
                     credentials,
                     credentialsPath: this._credentialsPath,
@@ -400,35 +408,40 @@ export class CodexMonitor {
                             !hasSameCodexAccount(credentials, this._accountCredentials)
                         )
                             return false;
-                        dispatched = true;
+                        consume = consumes.get(key) ?? { pending: new Set(), recheck: null };
+                        if (consume.recheck) consume.recheck = emptyBankedResetRecheck();
+                        consume.pending.add(consumeCancellable);
+                        consumes.set(key, consume);
+                        this._dispatchedVerifiedConsume = Boolean(credentials.accountFingerprint);
                     },
                 });
             } catch (error) {
                 failure = error;
             }
-            if (consumeCancellable.is_cancelled() || (!dispatched && eligibility?.is_cancelled()))
-                return;
             const ambiguous =
-                dispatched && failure && !(failure instanceof BankedResetRedemptionError);
-            const recheck =
-                dispatched && (!failure || ambiguous)
-                    ? { credentials, inventoryFresh: false, usageFresh: false }
-                    : null;
-            if (recheck) {
-                this._bankedResetRechecks = this._bankedResetRechecks.filter(
-                    (item) => !hasSameCodexAccount(item.credentials, credentials),
-                );
-                this._bankedResetRechecks.push(recheck);
+                consume && failure && !(failure instanceof BankedResetRedemptionError);
+            const recheck = consume && (!failure || ambiguous) ? emptyBankedResetRecheck() : null;
+            if (consume) {
+                consume.pending.delete(consumeCancellable);
+                if (recheck) consume.recheck = recheck;
+                if (!consume.pending.size && !consume.recheck) consumes.delete(key);
+                this._dispatchedVerifiedConsume = false;
             }
+            if (
+                this._lifecycleCancellable.is_cancelled() ||
+                consumeCancellable.is_cancelled() ||
+                (!consume && (!failure || automatic?.cancellable.is_cancelled()))
+            )
+                return;
             const current = await this._readAccount(consumeCancellable).catch(() => null);
             if (consumeCancellable.is_cancelled()) return;
             const sameAccount =
                 hasSameCodexAccount(current, credentials) &&
                 hasSameCodexAccount(this._accountCredentials, credentials);
             if (failure) {
-                if (dispatched && !sameAccount) return;
+                if (consume && !sameAccount) return;
                 if (!isCancellationError(failure)) {
-                    if (automaticMessage)
+                    if (automatic)
                         console.warn("Unable to auto-redeem Codex banked reset", failure);
                     else this._notify(formatBankedResetFailure(failure));
                 }
@@ -454,7 +467,7 @@ export class CodexMonitor {
             for (const state of this._usageNotificationStates.values()) {
                 state.observedExhausted = false;
             }
-            this._notify(automaticMessage ?? "Banked Codex reset redeemed.");
+            this._notify(automatic?.message ?? "Banked Codex reset redeemed.");
             // Older requests must finish before the post-redemption refreshes start.
             await Promise.all([this._refreshPromise, this._bankedResetRefresh?.promise]);
             if (
@@ -466,11 +479,7 @@ export class CodexMonitor {
                 this.refreshUsage({ expectedCredentials: credentials }),
                 this.refreshBankedResets({ expectedCredentials: credentials }),
             ]);
-            if (recheck?.inventoryFresh && recheck.usageFresh) {
-                this._bankedResetRechecks = this._bankedResetRechecks.filter(
-                    (item) => item !== recheck,
-                );
-            }
+            this._clearBankedResetRecheck(credentials, recheck);
         } finally {
             if (this._redeemBankedResetCancellable === consumeCancellable) {
                 this._redeemBankedResetCancellable = null;
@@ -487,10 +496,32 @@ export class CodexMonitor {
         }
     }
 
+    _bankedResetConsumeKey(credentials) {
+        // Only the verified fingerprint can carry a recheck across monitors.
+        return credentials.accountFingerprint
+            ? [this._bankedResetConsumes, credentials.accountFingerprint]
+            : [
+                  this._unverifiedBankedResetConsumes,
+                  JSON.stringify([credentials.accountId, credentials.accessToken]),
+              ];
+    }
+
+    _bankedResetConsumeFor(credentials) {
+        const [consumes, key] = this._bankedResetConsumeKey(credentials);
+        return consumes.get(key);
+    }
+
     _bankedResetRecheckFor(credentials) {
-        return this._bankedResetRechecks.find((item) =>
-            hasSameCodexAccount(item.credentials, credentials),
-        );
+        const consume = this._bankedResetConsumeFor(credentials);
+        // Only requests started after the last consume settled can count as fresh.
+        if (!consume?.pending.size) return consume?.recheck;
+    }
+
+    _clearBankedResetRecheck(credentials, recheck) {
+        if (!recheck?.inventoryFresh || !recheck.usageFresh) return false;
+        if (this._bankedResetRecheckFor(credentials) !== recheck) return false;
+        const [consumes, key] = this._bankedResetConsumeKey(credentials);
+        return consumes.delete(key);
     }
 
     _invalidateBankedResetInventory() {
@@ -537,6 +568,7 @@ export class CodexMonitor {
         this._bankedResetError = null;
         if (this._bankedResetPreparation) this._bankedResetPreparation.accountChanged = true;
         this._autoApplyBankedResetCancellable?.cancel();
+        this._withdrawUsageAlerts();
         this._usageNotificationStates.clear();
         this._deferredUsageResets = [];
         this._emitChange();
@@ -884,6 +916,7 @@ export class CodexMonitor {
             if (!response || response !== this._bankedResetSnapshot || interruptedBeforeRedemption)
                 return;
             const credentials = this._bankedResetCredentials;
+            if (this._bankedResetConsumeFor(credentials)?.pending.size) return;
             const recheck = this._bankedResetRecheckFor(credentials);
             if (recheck) {
                 // An unconfirmed consume can have succeeded. Do not act on pre-consume data.
@@ -895,15 +928,11 @@ export class CodexMonitor {
                 interruptedBeforeRedemption = cancellable.is_cancelled();
                 if (
                     interruptedBeforeRedemption ||
-                    !recheck.usageFresh ||
-                    !recheck.inventoryFresh ||
                     response !== this._bankedResetSnapshot ||
-                    !hasSameCodexAccount(credentials, this._accountCredentials)
+                    !hasSameCodexAccount(credentials, this._accountCredentials) ||
+                    !this._clearBankedResetRecheck(credentials, recheck)
                 )
                     return;
-                this._bankedResetRechecks = this._bankedResetRechecks.filter(
-                    (item) => item !== recheck,
-                );
             }
             const redemption = this._autoRedeemBankedReset(
                 response.credits,
@@ -959,12 +988,42 @@ export class CodexMonitor {
         const message = expiring
             ? "Expiring banked Codex reset redeemed automatically."
             : "Banked Codex reset redeemed automatically near a usage limit.";
-        return this._redeemBankedReset(credit.id, credentials, cancellable, message);
+        return this._redeemBankedReset(credit.id, credentials, {
+            cancellable,
+            message,
+            isEligible: () => {
+                if (this._bankedResetConsumeFor(credentials)) return false;
+                const currentCredit = this._bankedResetSnapshot?.credits.find(
+                    (candidate) => candidate.id === credit.id && candidate.status === "available",
+                );
+                if (!currentCredit) return false;
+                const now = Date.now();
+                if (expiring) {
+                    return (
+                        this._autoApplyBankedReset &&
+                        selectCreditExpiringWithin(
+                            [currentCredit],
+                            now,
+                            AUTO_APPLY_BANKED_RESET_WINDOW_MS,
+                        ) !== null
+                    );
+                }
+                const expiresAt = Date.parse(currentCredit.expires_at ?? "");
+                return (
+                    this._usageNeedsBankedReset(pendingUsage.snapshot) &&
+                    (!Number.isFinite(expiresAt) || expiresAt > now)
+                );
+            },
+        });
     }
 
     _emitChange() {
         this.onChange?.(this.state);
     }
+}
+
+function emptyBankedResetRecheck() {
+    return { inventoryFresh: false, usageFresh: false };
 }
 
 function formatBankedResetPreparationFailure(error) {

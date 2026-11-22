@@ -39,13 +39,12 @@ export default class CodexMeterExtension extends Extension {
         this._settings = settings;
         this._usageNotificationStatesByPath = new Map();
         this._pendingUsageAlerts = new Set();
+        this._bankedResetConsumes = new Map();
         this._usageNotificationsChangedId = settings.connect(
             `changed::${SETTINGS_USAGE_NOTIFICATIONS}`,
             () => {
                 if (!settings.get_boolean(SETTINGS_USAGE_NOTIFICATIONS)) {
-                    for (const alert of this._pendingUsageAlerts) {
-                        alert.destroy(MessageTray.NotificationDestroyedReason.SOURCE_CLOSED);
-                    }
+                    this._withdrawUsageAlerts();
                 }
                 // Re-opt-in rearms alerts for all paths, including inactive ones.
                 for (const states of this._usageNotificationStatesByPath.values()) states.clear();
@@ -54,7 +53,7 @@ export default class CodexMeterExtension extends Extension {
         this._credentialsChangedId = settings.connect(
             `changed::${SETTINGS_CREDENTIALS_PATH}`,
             () => {
-                this._stopRuntime();
+                this._stopRuntime({ replacing: true });
                 this._startRuntime(settings);
             },
         );
@@ -77,6 +76,12 @@ export default class CodexMeterExtension extends Extension {
             },
             credentialsPath,
             notificationStates,
+            {
+                bankedResetConsumes: this._bankedResetConsumes,
+                withdrawUsageAlerts: () => {
+                    if (this._monitor === monitor) this._withdrawUsageAlerts();
+                },
+            },
         );
         this._monitor = monitor;
         this._indicator = new CodexMeterIndicator(this, this._monitor);
@@ -92,20 +97,31 @@ export default class CodexMeterExtension extends Extension {
         this._credentialsChangedId = null;
         this._usageNotificationsChangedId = null;
         this._stopRuntime();
+        for (const { pending } of this._bankedResetConsumes.values()) {
+            for (const cancellable of pending) cancellable.cancel();
+        }
+        this._bankedResetConsumes.clear();
+        this._bankedResetConsumes = null;
         this._usageNotificationStatesByPath = null;
         this._pendingUsageAlerts = null;
     }
 
-    _stopRuntime() {
+    _stopRuntime(options) {
         const monitor = this._monitor;
         this._monitor = null;
         const source = this._notificationSource;
         this._notificationSource = null;
         // Drop queued alerts while the old monitor can still release its pending reservations.
         source?.destroy(MessageTray.NotificationDestroyedReason.SOURCE_CLOSED);
-        monitor?.stop();
+        monitor?.stop(options);
         this._indicator?.destroy();
         this._indicator = null;
+    }
+
+    _withdrawUsageAlerts() {
+        for (const alert of this._pendingUsageAlerts) {
+            alert.destroy(MessageTray.NotificationDestroyedReason.SOURCE_CLOSED);
+        }
     }
 
     /**
