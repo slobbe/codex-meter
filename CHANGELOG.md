@@ -28,13 +28,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Prevented usage data from a previous account appearing after an account change.
 - Fixed reset confirmation with animations off. Enter no longer redeems a reset by default.
 - Fixed automatic redemption missing a low-quota trigger or selecting the wrong expiration date.
+- Prevented automatic redemption after its trigger no longer applies or a previous redemption is still unresolved.
+- Fixed expired resets and stale expiry times in the menu.
 - Fixed unavailable resets remaining in the menu after a redemption attempt.
-- Fixed queued usage alerts still appearing after notifications are turned off.
+- Fixed queued usage alerts appearing after an account change or after notifications are turned off.
+- Fixed slow network responses keeping a refresh open indefinitely.
 - Fixed the refresh interval control accepting values above 30 minutes.
 - Fixed damaged history entries hiding valid usage history.
 - Fixed pauses in GNOME Shell when processing large usage histories.
-- Improved keyboard and screen reader access to the activity chart and panel quota values.
-- Improved the readability of warning and error messages in the light theme.
+- Improved keyboard and screen reader access to the activity chart, panel quota values, and reset confirmation.
+- Improved the readability and keyboard focus of warning and error messages.
+- Fixed the usage menu showing a full quota bar while loading.
+- Added an error message when the credentials chooser selects a non-local file.
 
 ## v0.12.0 (2026-11-13)
 
