@@ -1,5 +1,6 @@
 import Atk from "gi://Atk";
 import Clutter from "gi://Clutter";
+import GLib from "gi://GLib";
 import St from "gi://St";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
@@ -40,9 +41,14 @@ export class ActivityGrid {
         this._column = 0;
         this._row = 0;
         this._accessibleSummary = "";
+        this._allocationSyncId = 0;
         this._tooltip = new St.Label({ style_class: "dash-label", visible: false });
         Main.uiGroup.add_child(this._tooltip);
         this.item.connect("destroy", () => {
+            if (this._allocationSyncId) {
+                GLib.Source.remove(this._allocationSyncId);
+                this._allocationSyncId = 0;
+            }
             this._hoveredCell = null;
             this._keyboardCell = null;
             const tooltip = this._tooltip;
@@ -68,13 +74,7 @@ export class ActivityGrid {
                     track_hover: true,
                     can_focus: false,
                 });
-                cell.connect("notify::width", () => {
-                    if (cell.width <= 0) return;
-                    cell.height = cell.width;
-                    if (this._hoveredCell === cell || this._keyboardCell === cell) {
-                        this._syncTooltip();
-                    }
-                });
+
                 cell.connect("notify::hover", () => {
                     if (cell.mapped && cell.hover) this._hoveredCell = cell;
                     else if (this._hoveredCell === cell) this._hoveredCell = null;
@@ -92,6 +92,7 @@ export class ActivityGrid {
             return { label, cells };
         });
 
+        this._grid.connect("notify::allocation", () => this._queueAllocationSync());
         this.item.connect("key-focus-in", () => {
             this._hoveredCell = null;
             this._selectKeyboardCell(this._days[this._column].cells[this._row]);
@@ -131,6 +132,22 @@ export class ActivityGrid {
         this.item.show();
         this._syncAccessibleName();
         this._syncTooltip();
+    }
+
+    _queueAllocationSync() {
+        if (this._allocationSyncId) return;
+        // Wait for the grid to allocate its cells before reading widths or requesting new heights.
+        this._allocationSyncId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._allocationSyncId = 0;
+            if (this._hoveredCell || this._keyboardCell) this._syncTooltip();
+            for (const { cells } of this._days) {
+                for (const cell of cells) {
+                    const width = cell.get_allocation_box().get_width();
+                    if (width > 0 && cell.natural_height !== width) cell.height = width;
+                }
+            }
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     _onKeyPress(event) {

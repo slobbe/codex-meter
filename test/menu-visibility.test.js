@@ -54,7 +54,8 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
             if (key === 'Return' || key === 'space') this.click();
         }
         has_key_focus() { return Boolean(this.focused); }
-        get_transformed_position() { return [100, 100]; }
+        get_allocation_box() { return { get_width: () => this.allocatedWidth ?? 0 }; }
+        get_transformed_position() { return [100, this.allocatedY ?? 100]; }
         get_transformed_size() { return [32, 32]; }
         get_preferred_width() { return [60, 60]; }
         get_preferred_height() { return [24, 24]; }
@@ -72,6 +73,8 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
         constructor(options) { Object.assign(this, options); }
         attach(child, column, row) { this.children.set(column + ',' + row, child); }
     }
+    const idleSources = new Map();
+    let nextSource = 1;
     export default {
         BoxLayout: Actor, Icon: Actor, Label: Actor, Button: Actor, Widget: Actor, GridLayout,
         Role: { SECTION: 'section' },
@@ -83,7 +86,20 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
         KEY_Left: 'Left', KEY_Right: 'Right', KEY_Up: 'Up', KEY_Down: 'Down',
         EVENT_STOP: true, EVENT_PROPAGATE: false,
         PolicyType: { NEVER: 'never', AUTOMATIC: 'automatic' },
+        PRIORITY_DEFAULT_IDLE: 200,
+        SOURCE_REMOVE: false,
+        idle_add(_priority, callback) {
+            const id = nextSource++;
+            idleSources.set(id, callback);
+            return id;
+        },
+        Source: { remove: id => idleSources.delete(id) },
     };
+    export function runIdle() {
+        for (const [id, callback] of [...idleSources]) {
+            if (idleSources.delete(id)) callback();
+        }
+    }
     export const uiGroup = new Actor();
     export const layoutManager = { findMonitorForActor: () => ({ x: 0, width: 130 }) };
     export const PopupBaseMenuItem = Actor;
@@ -184,7 +200,7 @@ test("usage and banner rows stay vertical without the removed St property", () =
 });
 
 test("shows activity details on hover or with arrow keys from one focus stop", async () => {
-    const { uiGroup } = await import(stubUrl);
+    const { runIdle, uiGroup } = await import(stubUrl);
     const menu = new CodexMeterPopupMenu({});
     const tooltip = uiGroup.children.at(-1);
     assert.equal(menu.trendItem.visible, false);
@@ -238,14 +254,31 @@ test("shows activity details on hover or with arrow keys from one focus stop", a
 
     const cell = children.get("0,1");
     const lastMonday = children.get("21,1");
-    for (const [square, width] of [
-        [cell, 10],
-        [lastMonday, 11],
-    ]) {
-        square.width = width;
-        square.emit("notify::width");
-        assert.equal(square.height, width);
+    const heightRequests = [];
+    for (const square of [cell, lastMonday]) {
+        square.natural_height = 0;
+        Object.defineProperty(square, "height", {
+            set(height) {
+                heightRequests.push(height);
+                this.natural_height = height;
+            },
+        });
     }
+    const allocate = () => {
+        grid.emit("notify::allocation");
+        runIdle();
+    };
+    grid.emit("notify::allocation");
+    cell.allocatedWidth = 10;
+    lastMonday.allocatedWidth = 11;
+    runIdle();
+    assert.deepEqual(heightRequests, [10, 11]);
+    allocate();
+    assert.deepEqual(
+        heightRequests,
+        [10, 11],
+        "height-only allocation must not request new heights",
+    );
 
     cell.mapped = true;
     cell.hover = true;
@@ -253,6 +286,11 @@ test("shows activity details on hover or with arrow keys from one focus stop", a
     assert.equal(tooltip.visible, true);
     assert.equal(tooltip.text, "Mon, 26 Oct, midnight to 6 am: Low activity");
     assert.equal(tooltip.x, 70, "the tooltip must fit inside the monitor");
+    cell.allocatedWidth = 9;
+    cell.allocatedY = 110;
+    allocate();
+    assert.deepEqual(heightRequests, [10, 11, 9]);
+    assert.equal(tooltip.y, 80, "allocation must move the active tooltip");
     cell.mapped = false;
     cell.emit("notify::mapped");
     assert.equal(tooltip.visible, false);
@@ -308,7 +346,11 @@ test("shows activity details on hover or with arrow keys from one focus stop", a
 
     menu.setTrend({ visible: false, title, summary: "", days: [] });
     assert.equal(menu.trendItem.visible, false);
+    cell.allocatedWidth = 8;
+    grid.emit("notify::allocation");
     menu.trendItem.destroy();
+    runIdle();
+    assert.deepEqual(heightRequests, [10, 11, 9], "destroy must cancel pending sizing");
     assert.equal(uiGroup.children.includes(tooltip), false);
 });
 
