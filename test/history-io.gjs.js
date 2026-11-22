@@ -57,15 +57,16 @@ try {
     assertEqual(await readFile(path), jsonl(first, second), "Oversized row was not removed");
 
     const append = Gio.File.prototype.append_to_async;
+    const newFromBytes = GLib.Bytes.new_from_bytes;
     try {
+        // The static constructor exists only since GLib 2.88. Simulate GNOME 45 to 49.
+        GLib.Bytes.new_from_bytes = undefined;
         Gio.File.prototype.append_to_async = async function (...args) {
             const stream = await append.apply(this, args);
             return {
                 write_bytes_async(bytes, ...options) {
-                    const chunk = GLib.Bytes.new_from_bytes(
-                        bytes,
-                        0,
-                        Math.min(7, bytes.get_size()),
+                    const chunk = new GLib.Bytes(
+                        bytes.get_data().subarray(0, Math.min(7, bytes.get_size())),
                     );
                     return stream.write_bytes_async(chunk, ...options);
                 },
@@ -76,6 +77,7 @@ try {
         assertEqual(await readFile(path), jsonl(first, second, first), "Short writes lost bytes");
     } finally {
         Gio.File.prototype.append_to_async = append;
+        GLib.Bytes.new_from_bytes = newFromBytes;
     }
 
     const open = Gio.File.prototype.read_async;

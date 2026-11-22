@@ -211,7 +211,8 @@ export async function appendFile(path, line, cancellable = null) {
         if (info) await setMode(file, info, PRIVATE_FILE_MODE, cancellable);
         const prefix = info && (await needsLineSeparator(file, cancellable)) ? "\n" : "";
         const text = line.endsWith("\n") ? line : `${line}\n`;
-        const bytes = new GLib.Bytes(new TextEncoder().encode(prefix + text));
+        const encoded = new TextEncoder().encode(prefix + text);
+        const bytes = new GLib.Bytes(encoded);
         const stream = await file.append_to_async(
             Gio.FileCreateFlags.PRIVATE,
             GLib.PRIORITY_DEFAULT,
@@ -222,8 +223,8 @@ export async function appendFile(path, line, cancellable = null) {
             let offset = 0;
             while (offset < size) {
                 cancellable?.set_error_if_cancelled();
-                const remaining =
-                    offset === 0 ? bytes : GLib.Bytes.new_from_bytes(bytes, offset, size - offset);
+                // GLib.Bytes.new_from_bytes is a static constructor only since GLib 2.88.
+                const remaining = offset === 0 ? bytes : new GLib.Bytes(encoded.subarray(offset));
                 const written = await stream.write_bytes_async(
                     remaining,
                     GLib.PRIORITY_DEFAULT,

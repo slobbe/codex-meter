@@ -38,6 +38,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Fixed slow network responses keeping a refresh open indefinitely.
 - Fixed the refresh interval control accepting values above 30 minutes.
 - Fixed damaged history entries hiding valid usage history.
+- Fixed usage history appends failing on GNOME 45 to 49 when a write completes partially.
 - Fixed pauses in GNOME Shell when processing large usage histories.
 - Improved keyboard and screen reader access to the activity chart, panel quota values, and reset confirmation.
 - Improved the readability and keyboard focus of warning and error messages.
