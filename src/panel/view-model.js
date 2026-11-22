@@ -1,4 +1,5 @@
 import { getUsageWindowMetadata, sortUsageQuotas } from "../codex/usage/model.js";
+import { createActivityGridViewModel } from "./activity-grid-model.js";
 
 export function createPanelBarViewModel(settings, snapshot, errorMessage, prediction = null) {
     if (errorMessage) {
@@ -49,7 +50,7 @@ export function createMenuViewModel(
             usageItems: [],
             accountType: "--",
             refreshLabel,
-            trend: createUsageTrendViewModel(null, []),
+            trend: createActivityGridViewModel(null),
         };
     }
     if (!snapshot) {
@@ -69,7 +70,7 @@ export function createMenuViewModel(
             ],
             accountType: "--",
             refreshLabel,
-            trend: createUsageTrendViewModel(null, []),
+            trend: createActivityGridViewModel(null),
         };
     }
     const quotas = sortUsageQuotas(snapshot.quotas);
@@ -83,7 +84,7 @@ export function createMenuViewModel(
         })),
         accountType: formatPlan(snapshot.planType),
         refreshLabel,
-        trend: createUsageTrendViewModel(snapshot, history),
+        trend: createActivityGridViewModel(snapshot, history),
     };
 }
 
@@ -138,114 +139,6 @@ export function createUsageItemViewModel({
         predictionStyle,
         colorStyleClass,
     };
-}
-
-const TREND_TITLE = "Weekly activity";
-
-const TREND_LOOKBACK_SECONDS = 7 * 24 * 60 * 60;
-
-const TREND_BUCKET_COUNT = 56;
-
-const TREND_MIN_BAR_PERCENT = 12;
-
-export function createUsageTrendViewModel(snapshot, history = [], nowSeconds = Date.now() / 1000) {
-    const minTimestamp = nowSeconds - TREND_LOOKBACK_SECONDS;
-    const samples = getUsageTrendSamples(snapshot, history, nowSeconds);
-    if (samples.length < 2) return createHiddenUsageTrendViewModel();
-    const bucketSize = TREND_LOOKBACK_SECONDS / TREND_BUCKET_COUNT;
-    const bucketValues = Array(TREND_BUCKET_COUNT).fill(0);
-    for (let index = 1; index < samples.length; index += 1) {
-        const previous = samples[index - 1];
-        const current = samples[index];
-        const delta = current.usedPercent - previous.usedPercent;
-        if (delta <= 0 || delta > 100) continue;
-        addTrendDeltaToBuckets({
-            bucketValues,
-            delta,
-            fromTimestamp: previous.timestamp,
-            toTimestamp: current.timestamp,
-            minTimestamp,
-            bucketSize,
-        });
-    }
-    const maxValue = Math.max(...bucketValues);
-    if (maxValue <= 0) return createHiddenUsageTrendViewModel();
-    return {
-        visible: true,
-        title: TREND_TITLE,
-        bars: bucketValues.map((value) => {
-            if (value <= 0) return 0;
-            return Math.max(TREND_MIN_BAR_PERCENT, Math.round((value / maxValue) * 100));
-        }),
-    };
-}
-
-function createHiddenUsageTrendViewModel() {
-    return {
-        visible: false,
-        title: TREND_TITLE,
-        bars: [],
-    };
-}
-
-export function getUsageTrendSamples(snapshot, history = [], nowSeconds = Date.now() / 1000) {
-    const weeklyQuota =
-        snapshot?.quotas.find((quota) => quota.limitWindowSeconds === TREND_LOOKBACK_SECONDS) ??
-        snapshot?.quotas.find((quota) => quota.limitWindowSeconds == null && quota.id === "weekly");
-    if (snapshot && !weeklyQuota) return [];
-    const quotaId = weeklyQuota?.id ?? "weekly";
-    const minTimestamp = nowSeconds - TREND_LOOKBACK_SECONDS;
-    return history
-        .map((entry) => {
-            const timestamp = new Date(entry.timestamp).getTime() / 1000;
-            const quota = entry.quotas.find((item) => item.id === quotaId);
-            return {
-                timestamp,
-                usedPercent: quota?.usedPercent,
-            };
-        })
-        .filter(
-            (entry) =>
-                Number.isFinite(entry.timestamp) &&
-                entry.timestamp >= minTimestamp &&
-                Number.isFinite(entry.usedPercent),
-        )
-        .toSorted((a, b) => a.timestamp - b.timestamp);
-}
-
-function addTrendDeltaToBuckets({
-    bucketValues,
-    delta,
-    fromTimestamp,
-    toTimestamp,
-    minTimestamp,
-    bucketSize,
-}) {
-    const start = Math.max(minTimestamp, fromTimestamp);
-    const end = Math.max(start, toTimestamp);
-    if (end <= start) {
-        const bucketIndex = getTrendBucketIndex(toTimestamp, minTimestamp, bucketSize);
-        bucketValues[bucketIndex] += delta;
-        return;
-    }
-    const duration = end - start;
-    const firstBucketIndex = getTrendBucketIndex(start, minTimestamp, bucketSize);
-    const lastBucketIndex = getTrendBucketIndex(end, minTimestamp, bucketSize);
-    for (let index = firstBucketIndex; index <= lastBucketIndex; index += 1) {
-        const bucketStart = minTimestamp + index * bucketSize;
-        const bucketEnd = bucketStart + bucketSize;
-        const overlap = Math.max(0, Math.min(end, bucketEnd) - Math.max(start, bucketStart));
-        if (overlap > 0) {
-            bucketValues[index] += delta * (overlap / duration);
-        }
-    }
-}
-
-function getTrendBucketIndex(timestamp, minTimestamp, bucketSize) {
-    return Math.min(
-        TREND_BUCKET_COUNT - 1,
-        Math.max(0, Math.floor((timestamp - minTimestamp) / bucketSize)),
-    );
 }
 
 export function calculateBarFillWidth(trackWidth, percentValue) {

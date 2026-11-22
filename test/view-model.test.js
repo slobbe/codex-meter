@@ -138,7 +138,7 @@ test("uses one generic loading row and no rows for errors or empty snapshots", (
             statusMessage: null,
             accountType: "--",
             refreshLabel: "Not refreshed yet",
-            trend: { visible: false, title: "Weekly activity", bars: [] },
+            trend: { visible: false, title: "Activity over 28 days", days: [] },
         });
         const empty = createMenuViewModel(settings, { quotas: [] }, null);
         assert.deepEqual(empty, { ...loading, usageItems: [] });

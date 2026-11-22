@@ -18,7 +18,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Replaced the window selector with a skip period in minutes for each window.
 - Manual redemption shows the time left when a scheduled reset is close.
 - Changed popup warning and error messages to appear above the footer.
-- Changed weekly activity bars to follow the GNOME accent color when available.
+- Changed the activity chart to a four-week grid with six-hour blocks that use the GNOME accent color.
+- Increased local usage history retention from 21 to 30 days.
 
 ## v0.12.0 (2026-11-13)
 

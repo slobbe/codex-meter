@@ -4,6 +4,7 @@ import { registerHooks } from "node:module";
 import test from "node:test";
 
 const menuUrl = new URL("../src/panel/menu.js", import.meta.url).href;
+const activityGridUrl = new URL("../src/panel/activity-grid.js", import.meta.url).href;
 // Stub GNOME actors so menu construction and updates can run without GNOME Shell.
 const stubUrl = `data:text/javascript,${encodeURIComponent(
     `class Actor {
@@ -21,6 +22,8 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
             this.signals['notify::vscrollbar-policy']?.();
         }
         add_child(child) { this.children.push(child); child.parent = this; }
+        show() { this.visible = true; }
+        hide() { this.visible = false; }
         set_child_above_sibling(child, sibling) {
             this.children.splice(this.children.indexOf(child), 1);
             const index = sibling === null ? this.children.length : this.children.indexOf(sibling) + 1;
@@ -56,9 +59,14 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
             if (this.parent) this.parent.children.splice(this.parent.children.indexOf(this), 1);
         }
     }
+    class GridLayout {
+        children = new Map();
+        constructor(options) { Object.assign(this, options); }
+        attach(child, column, row) { this.children.set(column + ',' + row, child); }
+    }
     export default {
-        BoxLayout: Actor, Icon: Actor, Label: Actor, Button: Actor, Widget: Actor,
-        ActorAlign: { CENTER: 0, FILL: 1, END: 2 },
+        BoxLayout: Actor, Icon: Actor, Label: Actor, Button: Actor, Widget: Actor, GridLayout,
+        ActorAlign: { CENTER: 0, FILL: 1, END: 2, START: 3 },
         Orientation: { VERTICAL: 'vertical' },
         PolicyType: { NEVER: 'never', AUTOMATIC: 'automatic' },
     };
@@ -133,7 +141,12 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
 )}`;
 const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
-        if (context.parentURL === menuUrl && specifier !== "./view-model.js") {
+        if (
+            (context.parentURL === activityGridUrl && specifier !== "./activity-grid-model.js") ||
+            (context.parentURL === menuUrl &&
+                specifier !== "./view-model.js" &&
+                specifier !== "./activity-grid.js")
+        ) {
             return { url: stubUrl, shortCircuit: true };
         }
         return nextResolve(specifier, context);
@@ -146,16 +159,84 @@ try {
     hooks.deregister();
 }
 
-test("usage, activity, and banner rows stay vertical without the removed St property", () => {
+test("usage and banner rows stay vertical without the removed St property", () => {
     const menu = new CodexMeterPopupMenu({});
-    const items = [menu._createUsageItem("Usage"), menu.trendItem, menu.statusItem];
+    const items = [menu._createUsageItem("Usage"), menu.statusItem];
     for (const item of items) {
         assert.equal(item.children[0].layout_manager.orientation, "vertical");
     }
 });
 
+test("shows one 28-day grid with consistent gaps and dated cell tooltips", async () => {
+    const { uiGroup } = await import(stubUrl);
+    const menu = new CodexMeterPopupMenu({});
+    const tooltip = uiGroup.children.at(-1);
+    assert.equal(menu.trendItem.visible, false);
+
+    const title = "Activity over 28 days";
+    const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    menu.setTrend({
+        visible: true,
+        title,
+        days: Array.from({ length: 28 }, (_, day) => ({
+            label: weekdays[day % 7][0],
+            dateLabel: `${weekdays[day % 7]}, ${day < 6 ? `${26 + day} Oct` : `${day - 5} Nov`}`,
+            cells: day === 27 ? ["empty", "high", "unknown", "future"] : Array(4).fill("low"),
+        })),
+    });
+    const [box] = menu.trendItem.children;
+    const [titleLabel, grid] = box.children;
+    const layout = grid.layout_manager;
+    const { children } = layout;
+    assert.equal(menu.trendItem.visible, true);
+    assert.equal(box.layout_manager.orientation, "vertical");
+    assert.equal(titleLabel.text, title);
+    assert.equal(grid.x_expand, true);
+    assert.equal(layout.column_spacing, 2);
+    assert.equal(layout.row_spacing, 2);
+    assert.equal(children.size, 126);
+    assert.equal(children.get("0,0").text, "M");
+    assert.equal(children.get("6,0").text, "S");
+    assert.equal(children.has("7,0"), false);
+    assert.equal(children.get("8,0").text, "T");
+    assert.match(children.get("27,2").style_class, /cx-activity-grid-cell-high/);
+    assert.match(children.get("27,4").style_class, /cx-activity-grid-cell-future/);
+
+    const cell = children.get("0,1");
+    const lastMonday = children.get("21,1");
+    for (const [square, width] of [
+        [cell, 10],
+        [lastMonday, 11],
+    ]) {
+        square.width = width;
+        square.emit("notify::width");
+        assert.equal(square.height, width);
+    }
+
+    cell.mapped = true;
+    cell.hover = true;
+    cell.emit("notify::hover");
+    assert.equal(tooltip.visible, true);
+    assert.equal(tooltip.text, "Mon, 26 Oct, 0-6am");
+    cell.mapped = false;
+    cell.emit("notify::mapped");
+    assert.equal(tooltip.visible, false);
+    lastMonday.mapped = true;
+    lastMonday.hover = true;
+    lastMonday.emit("notify::hover");
+    assert.equal(tooltip.text, "Mon, 16 Nov, 0-6am");
+    lastMonday.hover = false;
+    lastMonday.emit("notify::hover");
+    assert.equal(tooltip.visible, false);
+
+    menu.setTrend({ visible: false, title, days: [] });
+    assert.equal(menu.trendItem.visible, false);
+    menu.trendItem.destroy();
+    assert.equal(uiGroup.children.includes(tooltip), false);
+});
+
 test("reconciles usage rows through 0 -> 3 -> 1 -> 0 and updates all row data", (t) => {
-    for (const method of ["_createBannerItem", "_createTrendItem", "_createHeaderItem"]) {
+    for (const method of ["_createBannerItem", "_createHeaderItem"]) {
         t.mock.method(CodexMeterPopupMenu.prototype, method, () => ({}));
     }
     const menu = new CodexMeterPopupMenu({});
@@ -547,7 +628,7 @@ test("native mouse and keyboard Refresh activation stays open; other actions sti
 test("footer tooltips follow hover and keyboard focus and are cleaned up with their buttons", async () => {
     const { uiGroup } = await import(stubUrl);
     const menu = new CodexMeterPopupMenu({});
-    const tooltip = uiGroup.children.at(-2);
+    const tooltip = uiGroup.children.findLast((actor) => actor.text === "Refresh");
     const button = menu.refreshButton;
     const popup = new uiGroup.constructor();
     uiGroup.add_child(popup);

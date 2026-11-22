@@ -53,8 +53,7 @@
 .cx-panel-bar-track,
 .cx-usage-bar-track,
 .cx-usage-bar-fill,
-.cx-usage-bar-marker,
-.cx-trend-bar {
+.cx-usage-bar-marker {
     border-radius: 999px;
 }
 
@@ -139,8 +138,7 @@
     font-size: 1.05em;
 }
 
-.cx-usage-title,
-.cx-trend-title {
+.cx-usage-title {
     text-align: left;
 }
 
@@ -188,29 +186,8 @@
 }
 
 .cx-usage-heading-row,
-.cx-usage-detail,
-.cx-trend-row {
+.cx-usage-detail {
     spacing: 12px;
-}
-
-.cx-trend-row {
-    margin-top: 8px;
-    margin-bottom: 4px;
-}
-
-.cx-trend-sparkline {
-    min-height: 28px;
-    spacing: 2px;
-}
-
-.cx-trend-bar {
-    width: 3px;
-    background-color: #4f83ff;
-    background-color: -st-accent-color;
-}
-
-.cx-trend-bar-empty {
-    background-color: rgba(255, 255, 255, 0.22);
 }
 
 .cx-reset-dialog-content {
@@ -239,4 +216,36 @@
 
 .cx-reset-dialog-message {
     margin-top: 12px;
+}
+
+.cx-activity-grid {
+    spacing: 6px;
+}
+
+.cx-activity-grid-day {
+    font-size: 0.85em;
+}
+
+.cx-activity-grid-cell {
+    border-radius: 3px;
+}
+
+.cx-activity-grid-cell-unknown,
+.cx-activity-grid-cell-empty {
+    background-color: rgba(128, 128, 128, 0.45);
+}
+
+.cx-activity-grid-cell-low {
+    background-color: rgba(79, 131, 255, 0.45);
+    background-color: st-transparentize(-st-accent-color, 0.55);
+}
+
+.cx-activity-grid-cell-medium {
+    background-color: rgba(79, 131, 255, 0.72);
+    background-color: st-transparentize(-st-accent-color, 0.28);
+}
+
+.cx-activity-grid-cell-high {
+    background-color: #4f83ff;
+    background-color: -st-accent-color;
 }

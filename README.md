@@ -76,7 +76,7 @@ Codex Meter relies on ChatGPT backend endpoints, so upstream changes may affect 
 
 Codex Meter reads credentials from the file selected in Preferences (default `~/.codex/auth.json`) to request usage and banked reset data from ChatGPT. It does not store credentials or send them anywhere else.
 
-Usage data is cached locally in `~/.cache/codex-meter` and `~/.local/state/codex-meter`, with history kept for roughly 21 days (up to 25,000 entries).
+Codex Meter caches usage data in `~/.cache/codex-meter` and `~/.local/state/codex-meter`. It keeps up to 30 days of usage history, with a limit of 25,000 entries.
 
 ## License
 

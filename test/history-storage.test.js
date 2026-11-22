@@ -147,11 +147,11 @@ function jsonl(rows) {
 
 async function testReadCompactsPersistedHistory() {
     const path = createTempPath("retention.jsonl");
-    const recent = historyRow();
+    const retained = [historyRow(29), historyRow()];
     try {
-        writeText(path, jsonl([historyRow(22), recent]));
-        assertDeepEqual(await readHistory(path), [recent], "expired rows are omitted");
-        assertEqual(await readText(path), jsonl([recent]), "expired rows are removed on disk");
+        writeText(path, jsonl([historyRow(31), ...retained]));
+        assertDeepEqual(await readHistory(path), retained, "only rows over 30 days are omitted");
+        assertEqual(await readText(path), jsonl(retained), "expired rows are removed on disk");
 
         const rows = Array.from({ length: MAX_HISTORY_ENTRIES + 7 }, (_, i) => historyRow(0, i));
         writeText(path, jsonl(rows));
@@ -159,7 +159,7 @@ async function testReadCompactsPersistedHistory() {
         const expected = jsonl(rows.slice(-MAX_HISTORY_ENTRIES));
         assertEqual(await readText(path), expected, "startup bounds physical row count and size");
 
-        writeText(path, jsonl([historyRow(22)]));
+        writeText(path, jsonl([historyRow(31)]));
         assertDeepEqual(await readHistory(path), [], "fully expired history is empty");
         assertEqual(await readText(path), "\n", "fully expired history is removed on disk");
     } finally {
@@ -187,7 +187,7 @@ async function testServiceRetention() {
         return replace.apply(this, args);
     };
     try {
-        writeText(historyPath, jsonl([historyRow(22), recent]));
+        writeText(historyPath, jsonl([historyRow(31), recent]));
         let service = new UsageService();
         await service.appendSnapshotToHistory(snapshot);
         assertEqual(await readText(historyPath), jsonl([recent]), "unchanged startup compacts");
@@ -195,7 +195,7 @@ async function testServiceRetention() {
         await service.appendSnapshotToHistory(snapshot);
         assertEqual(rewrites, 1, "unchanged retained history is not rewritten");
 
-        writeText(historyPath, jsonl([historyRow(20), recent]));
+        writeText(historyPath, jsonl([historyRow(29), recent]));
         service = new UsageService();
         await service.readHistory();
         const now = Date.now;
@@ -218,7 +218,7 @@ async function testServiceRetention() {
         }
 
         // Advance time so even the last cached row expires without changing quota values.
-        Date.now = () => now() + 22 * 86_400_000;
+        Date.now = () => now() + 31 * 86_400_000;
         try {
             await service.appendSnapshotToHistory({ ...snapshot, fetchedAt: Date.now() / 1000 });
             const persisted = (await readText(historyPath)).trim().split("\n").map(JSON.parse);
@@ -281,7 +281,7 @@ async function testCancelledCompactionCanRetry() {
         for (const full of [false, true]) {
             const rows = full
                 ? Array.from({ length: MAX_HISTORY_ENTRIES }, (_, i) => historyRow(0, i))
-                : [historyRow(22), recent];
+                : [historyRow(31), recent];
             writeText(historyPath, jsonl(rows));
             const service = new UsageService();
             const cancellable = new Gio.Cancellable();

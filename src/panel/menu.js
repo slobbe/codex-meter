@@ -2,16 +2,9 @@ import Clutter from "gi://Clutter";
 import St from "gi://St";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
+import { ActivityGrid } from "./activity-grid.js";
 import { UsageBar } from "./usage-bar.js";
 import { formatDuration } from "./view-model.js";
-
-const TREND_BAR_COUNT = 56;
-
-const TREND_BAR_MAX_HEIGHT = 28;
-
-const TREND_BAR_MIN_HEIGHT = 3;
-
-const TREND_BAR_SPACING = 2;
 
 export class CodexMeterPopupMenu {
     constructor({ onRefresh, onRedeemBankedReset, onOpenPreferences }) {
@@ -32,7 +25,8 @@ export class CodexMeterPopupMenu {
         this.footerItem = this._createFooterItem();
         this.statusItem = this._createBannerItem();
         this.usageItems = [];
-        this.trendItem = this._createTrendItem();
+        this._activityGrid = new ActivityGrid();
+        this.trendItem = this._activityGrid.item;
         this.headerItem = this._createHeaderItem();
     }
 
@@ -55,21 +49,7 @@ export class CodexMeterPopupMenu {
     }
 
     setTrend(viewModel) {
-        this.trendItem.visible = viewModel.visible;
-        this.trendItem.titleLabel.text = viewModel.title;
-        this._updateTrendBarWidths();
-        for (let index = 0; index < this.trendItem.bars.length; index += 1) {
-            const bar = this.trendItem.bars[index];
-            const value = viewModel.bars[index] ?? 0;
-            bar.visible = index < viewModel.bars.length;
-            bar.height =
-                value > 0 ? Math.round(TREND_BAR_MAX_HEIGHT * (value / 100)) : TREND_BAR_MIN_HEIGHT;
-            if (value > 0) {
-                bar.remove_style_class_name("cx-trend-bar-empty");
-            } else {
-                bar.add_style_class_name("cx-trend-bar-empty");
-            }
-        }
+        this._activityGrid.update(viewModel);
     }
 
     setUsageItems(viewModels) {
@@ -297,51 +277,6 @@ export class CodexMeterPopupMenu {
         return item;
     }
 
-    _createTrendItem() {
-        const item = new PopupMenu.PopupBaseMenuItem({
-            reactive: false,
-            can_focus: false,
-        });
-        const box = new St.BoxLayout({
-            x_expand: true,
-            style_class: "cx-trend-row",
-        });
-        box.layout_manager.orientation = Clutter.Orientation.VERTICAL;
-        const titleLabel = new St.Label({
-            text: "Weekly activity",
-            x_expand: true,
-            y_align: Clutter.ActorAlign.CENTER,
-            style_class: "cx-usage-heading cx-trend-title",
-        });
-        const sparklineBox = new St.BoxLayout({
-            x_expand: true,
-            y_align: Clutter.ActorAlign.END,
-            style_class: "cx-trend-sparkline",
-        });
-        sparklineBox.connect("notify::width", () => {
-            this._updateTrendBarWidths();
-        });
-        const bars = [];
-        for (let index = 0; index < TREND_BAR_COUNT; index += 1) {
-            const bar = new St.Widget({
-                y_align: Clutter.ActorAlign.END,
-                style_class: "cx-trend-bar",
-            });
-            bar.height = 0;
-            bar.visible = false;
-            bars.push(bar);
-            sparklineBox.add_child(bar);
-        }
-        box.add_child(titleLabel);
-        box.add_child(sparklineBox);
-        item.add_child(box);
-        item.titleLabel = titleLabel;
-        item.sparklineBox = sparklineBox;
-        item.bars = bars;
-        item.visible = false;
-        return item;
-    }
-
     _createBannerItem() {
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
@@ -440,22 +375,6 @@ export class CodexMeterPopupMenu {
         item.add_child(item.titleLabel);
         item.add_child(item.planLabel);
         return item;
-    }
-
-    _updateTrendBarWidths() {
-        if (!this.trendItem?.sparklineBox || !this.trendItem?.bars) return;
-        const visibleBars = this.trendItem.bars.length;
-        if (visibleBars <= 0 || this.trendItem.sparklineBox.width <= 0) return;
-        const totalSpacing = TREND_BAR_SPACING * Math.max(0, visibleBars - 1);
-        const availableWidth = Math.max(
-            visibleBars,
-            this.trendItem.sparklineBox.width - totalSpacing,
-        );
-        const baseBarWidth = Math.max(1, Math.floor(availableWidth / visibleBars));
-        const extraPixels = Math.max(0, availableWidth - baseBarWidth * visibleBars);
-        for (let index = 0; index < this.trendItem.bars.length; index += 1) {
-            this.trendItem.bars[index].width = baseBarWidth + (index < extraPixels ? 1 : 0);
-        }
     }
 }
 

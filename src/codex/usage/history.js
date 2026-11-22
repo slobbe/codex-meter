@@ -5,7 +5,7 @@ import { appendFile, isCancellationError, readFile, writeFile } from "../../io/f
 
 export const MAX_HISTORY_ENTRIES = 25_000;
 
-const MAX_HISTORY_AGE_SECONDS = 21 * 24 * 60 * 60;
+const MAX_HISTORY_AGE_SECONDS = 30 * 24 * 60 * 60;
 export const HISTORY_PATH = GLib.build_filenamev([STATE_DIR, "codex", "usage-history.jsonl"]);
 
 export async function readHistory(path = HISTORY_PATH, cancellable = null) {
