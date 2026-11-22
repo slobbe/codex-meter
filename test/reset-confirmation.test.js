@@ -15,11 +15,18 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         }
         add_child(child) { this.children.push(child); }
         get_n_children() { return this.children.length; }
+        connect(signal, callback) {
+            if (signal !== 'captured-event') throw new Error('Unexpected signal: ' + signal);
+            this.capture = callback;
+        }
         destroy() { this.destroyed = true; }
     }
     export default {
         registerClass() {}, BoxLayout: Actor, Label: Actor,
-        ActorAlign: { CENTER: 0, START: 1 }, KEY_Escape: 27,
+        ActorAlign: { CENTER: 0, START: 1 },
+        KEY_Escape: 'Escape', KEY_Return: 'Return', KEY_KP_Enter: 'KP_Enter', KEY_ISO_Enter: 'ISO_Enter',
+        EventType: { KEY_PRESS: 'press', KEY_RELEASE: 'release' },
+        EVENT_STOP: true, EVENT_PROPAGATE: false,
         Orientation: { VERTICAL: 'vertical' },
     };
     export const Button = Actor;
@@ -30,11 +37,32 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         constructor() {
             this.contentLayout = new Actor();
             this.destroyCallbacks = [];
+            this.buttons = [];
             modalState.dialogs.push(this);
         }
-        setButtons(buttons) { this.buttons = buttons; }
+        addButton(info) {
+            const button = new Actor(info);
+            this.buttons.push(button);
+            return button;
+        }
+        setInitialKeyFocus(button) { this.initialKeyFocus = button; }
         open() { return modalState.canGrab; }
-        close() { this.closed = true; }
+        pressKey(key, focused = this.initialKeyFocus) {
+            for (const type of ['press', 'release']) {
+                if (focused?.capture?.(focused, { type: () => type, get_key_symbol: () => key }))
+                    return;
+            }
+            const enter = ['Return', 'KP_Enter', 'ISO_Enter'].includes(key);
+            if (focused && (enter || key === 'space')) {
+                focused.action();
+                return;
+            }
+            this.buttons.find(button => button.key === key || (enter && button.default))?.action();
+        }
+        close() {
+            this.closed = true;
+            if (this.closeImmediately) this.destroy();
+        }
         connect(signal, callback) {
             assertDestroySignal(signal);
             this.destroyCallbacks.push(callback);
@@ -71,6 +99,16 @@ try {
     hooks.deregister();
 }
 const { modalState } = await import(stubUrl);
+
+function assertSafeKeyboardDefault(dialog) {
+    const [cancel, redeem] = dialog.buttons;
+    assert.equal(dialog.initialKeyFocus, cancel);
+    assert.equal(Boolean(redeem.default), false);
+    for (const key of ["Return", "KP_Enter", "ISO_Enter"]) {
+        dialog.pressKey(key, null);
+        assert.notEqual(dialog.closed, true, `${key} must not activate Redeem without focus`);
+    }
+}
 
 test("failed modal grab destroys the unopened confirmation and returns null", () => {
     modalState.canGrab = false;
@@ -125,7 +163,8 @@ test("confirmation shows the reset title, details, and warning before redeeming"
         dialog.buttons.map((button) => button.label),
         ["Cancel", "Redeem"],
     );
-    dialog.buttons[1].action();
+    assertSafeKeyboardDefault(dialog);
+    dialog.pressKey("Return", dialog.buttons[1]);
     assert.equal(confirmed, true);
     assert.equal(dialog.closed, true);
 });
@@ -150,7 +189,7 @@ test("confirmation omits missing details and invalid dates and supports cancella
         content.children[1].text,
         "This will consume this banked reset. This action cannot be undone",
     );
-    dialog.buttons[0].action();
+    dialog.pressKey("Escape");
     assert.equal(cancelled, true);
     assert.equal(dialog.closed, true);
 });
@@ -214,8 +253,11 @@ test("manual redemption warns about imminent scheduled resets but allows an over
         .map(({ text }) => text)
         .filter((text) => text.includes("resets in"));
     assert.deepEqual(countdowns, ["5 hours window: resets in 40m."]);
-    assert.equal(dialog.buttons.find((button) => button.default).label, "Cancel");
-    dialog.buttons.find((button) => button.label === "Redeem anyway").action();
+    assertSafeKeyboardDefault(dialog);
+    dialog.pressKey(
+        "space",
+        dialog.buttons.find((button) => button.label === "Redeem anyway"),
+    );
     assert.deepEqual(redeemed, ["selected"]);
 });
 
@@ -263,6 +305,33 @@ for (const [index, action] of ["Cancel", "Redeem"].entries()) {
         for (const button of dialog.buttons) button.action();
         assert.deepEqual(redeemed, action === "Redeem" ? ["selected"] : []);
         assert.equal(cancellations, cancellationsAfterDisable);
+    });
+}
+
+for (const [index, action] of ["Cancel", "Redeem"].entries()) {
+    test(`${action} runs before the dialog is destroyed with animations disabled`, async () => {
+        modalState.canGrab = true;
+        const indicator = Object.create(CodexMeterIndicator.prototype);
+        indicator._uiCancellable = { is_cancelled: () => false };
+        indicator.menu = { close() {} };
+        const actions = [];
+        indicator._monitor = {
+            state: {},
+            async prepareBankedReset(id) {
+                return { id };
+            },
+            cancelBankedResetPreparation: () => actions.push("Cancel"),
+        };
+        indicator._redeemBankedReset = (id) => actions.push(`Redeem ${id}`);
+        await indicator._confirmBankedReset("selected");
+        const dialog = indicator._resetConfirmationDialog;
+        dialog.closeImmediately = true;
+
+        dialog.buttons[index].action();
+
+        assert.deepEqual(actions, [action === "Cancel" ? "Cancel" : "Redeem selected"]);
+        assert.equal(dialog.destroyed, true);
+        assert.equal(indicator._resetConfirmationDialog, null);
     });
 }
 

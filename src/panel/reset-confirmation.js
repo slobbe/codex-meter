@@ -52,25 +52,21 @@ export function showBankedResetConfirmation(
     );
 
     dialog.contentLayout.add_child(content);
-    dialog.setButtons([
-        {
-            label: "Cancel",
-            action: () => {
-                dialog.close();
-                onCancel();
-            },
-            key: Clutter.KEY_Escape,
-            default: resetsSoon,
-        },
-        {
-            label: resetsSoon ? "Redeem anyway" : "Redeem",
-            action: () => {
-                dialog.close();
-                onConfirm();
-            },
-            default: !resetsSoon,
-        },
-    ]);
+    const finish = (action) => () => {
+        // Close can destroy the dialog before the guarded callback runs.
+        action();
+        dialog.close();
+    };
+    const cancel = dialog.addButton({
+        label: "Cancel",
+        action: finish(onCancel),
+        key: Clutter.KEY_Escape,
+    });
+    dialog.addButton({
+        label: resetsSoon ? "Redeem anyway" : "Redeem",
+        action: finish(onConfirm),
+    });
+    dialog.setInitialKeyFocus(cancel);
     if (!dialog.open()) {
         dialog.destroy();
         return null;
