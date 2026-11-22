@@ -136,7 +136,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         },
         StringList: { new: values => values },
         Orientation: { VERTICAL: 0 }, Justification: { CENTER: 0 },
-        SettingsBindFlags: { DEFAULT: 0, GET: 1 }, Display: { get_default: () => null },
+        SettingsBindFlags: { DEFAULT: 0, GET: 1 },
     };
     export class ExtensionPreferences {}
 `)}`;
@@ -271,6 +271,7 @@ function windowFixture() {
     const signals = {};
     return {
         children: [],
+        get_display: () => null,
         add(page) {
             this.children.push(page);
         },
@@ -440,21 +441,23 @@ test("credentials Browse initializes the current file and saves local selections
     }
 });
 
-test("credentials chooser cancellation and non-local or empty selections leave settings unchanged", () => {
-    for (const [response, file] of [
-        [toolkit.ResponseType.CANCEL, toolkit.File.new_for_path("/tmp/ignored.json")],
-        [toolkit.ResponseType.DELETE_EVENT, null],
-        [toolkit.ResponseType.ACCEPT, null],
-        [toolkit.ResponseType.ACCEPT, { get_path: () => null }],
+test("credentials chooser reports unusable selections but not cancellation", () => {
+    for (const [response, file, error] of [
+        [toolkit.ResponseType.CANCEL, toolkit.File.new_for_path("/tmp/ignored.json"), ""],
+        [toolkit.ResponseType.DELETE_EVENT, null, ""],
+        [toolkit.ResponseType.ACCEPT, null, "Select a local credentials file."],
+        [toolkit.ResponseType.ACCEPT, { get_path: () => null }, "Select a local credentials file."],
     ]) {
         const settings = settingsFixture();
         const window = windowFixture();
         const page = createPreferencesPage(settings, metadata, window);
-        const row = page.children[4].children[0];
+        const [row, errorLabel] = page.children[4].children;
         row.children[0].emit("clicked");
         const dialog = dialogs.at(-1);
         dialog.file = file;
         dialog.emit("response", response);
+        assert.equal(errorLabel.visible, Boolean(error));
+        assert.equal(errorLabel.label, error);
         assert.deepEqual(settings.writes, []);
         assert.equal(row.subtitle, DEFAULT_CREDENTIALS_PATH);
         assert.equal(dialog.destroyed, true);

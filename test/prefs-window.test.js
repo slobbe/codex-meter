@@ -12,8 +12,27 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     }
     export const createPreferencesPage = (settings, metadata, window, getReleaseNotes) =>
         ({ settings, getReleaseNotes });
+    export const display = { theme: null };
+    export const toplevels = {
+        windows: new Set(),
+        handlers: new Set(),
+        connect(signal, callback) {
+            if (signal !== "items-changed") throw new Error(signal);
+            this.handlers.add(callback);
+            return callback;
+        },
+        disconnect(callback) { this.handlers.delete(callback); },
+        remove(window) {
+            this.windows.delete(window);
+            for (const callback of this.handlers) callback(this, 0, 1, 0);
+        },
+    };
     export default {
-        Display: { get_default: () => null },
+        IconTheme: { get_for_display: (display) => display.theme },
+        Window: {
+            get_toplevels: () => toplevels,
+            list_toplevels: () => [...toplevels.windows],
+        },
         Cancellable: class {
             cancelled = false;
             cancel() { this.cancelled = true; }
@@ -40,7 +59,7 @@ try {
 } finally {
     hooks.deregister();
 }
-const { changelog } = await import(stubUrl);
+const { changelog, display, toplevels } = await import(stubUrl);
 
 function fixture() {
     const prefs = new CodexMeterPreferences();
@@ -48,6 +67,7 @@ function fixture() {
     prefs.settings = {};
     const window = {
         pages: [],
+        get_display: () => (display.theme ? display : null),
         add(page) {
             this.pages.push(page);
         },
@@ -56,7 +76,23 @@ function fixture() {
             this.close = callback;
         },
     };
+    if (display.theme) toplevels.windows.add(window);
     return { prefs, window };
+}
+
+function themeFixture(t, searchPath) {
+    const theme = {
+        get_search_path: () => [...searchPath],
+        add_search_path: (path) => searchPath.push(path),
+        set_search_path: (paths) => {
+            searchPath = paths;
+        },
+    };
+    display.theme = theme;
+    t.after(() => {
+        display.theme = null;
+    });
+    return theme;
 }
 
 test("preferences open without What's New when the changelog cannot be read", async (t) => {
@@ -93,4 +129,42 @@ test("closing preferences cancels the changelog read and ignores its result", as
             assert.equal(page.getReleaseNotes(), null);
         });
     }
+});
+
+test("windows share one icon path until GTK removes the last owner", async (t) => {
+    const iconPath = "/extension/icons";
+    const theme = themeFixture(t, ["/original"]);
+    const first = fixture();
+    const second = fixture();
+    const pending = first.prefs.fillPreferencesWindow(first.window);
+    assert.deepEqual(theme.get_search_path(), ["/original", iconPath]);
+    await second.prefs.fillPreferencesWindow(second.window);
+    await pending;
+    assert.deepEqual(theme.get_search_path(), ["/original", iconPath]);
+
+    assert.equal(first.window.close(), false);
+    toplevels.remove(first.window);
+    assert.deepEqual(theme.get_search_path(), ["/original", iconPath]);
+    theme.set_search_path(["/external", iconPath]);
+    assert.equal(second.window.close(), false);
+    assert.deepEqual(theme.get_search_path(), ["/external", iconPath]);
+    toplevels.remove(second.window);
+    assert.deepEqual(theme.get_search_path(), ["/external"]);
+
+    const reopened = fixture();
+    await reopened.prefs.fillPreferencesWindow(reopened.window);
+    assert.deepEqual(theme.get_search_path(), ["/external", iconPath]);
+    toplevels.remove(reopened.window);
+    assert.deepEqual(theme.get_search_path(), ["/external"]);
+    assert.equal(toplevels.handlers.size, 0);
+});
+
+test("preferences leave a pre-existing icon path untouched", async (t) => {
+    const paths = ["/extension/icons", "/external"];
+    const theme = themeFixture(t, [...paths]);
+    const { prefs, window } = fixture();
+    await prefs.fillPreferencesWindow(window);
+    assert.deepEqual(theme.get_search_path(), paths);
+    toplevels.remove(window);
+    assert.deepEqual(theme.get_search_path(), paths);
 });

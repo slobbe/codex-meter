@@ -150,10 +150,16 @@ function createCredentialsGroup(settings, settingsSignalIds, window) {
         );
         responseSignalId = dialog.connect("response", (chooser, response) => {
             if (closed || chooser !== dialog) return;
-            const path =
-                response === Gtk.ResponseType.ACCEPT ? chooser.get_file()?.get_path() : null;
+            const accepted = response === Gtk.ResponseType.ACCEPT;
+            const path = accepted ? chooser.get_file()?.get_path() : null;
             destroyDialog();
-            if (path) void validateSelection(path);
+            if (!accepted) return;
+            if (path) {
+                void validateSelection(path);
+            } else {
+                errorLabel.label = "Select a local credentials file.";
+                errorLabel.visible = true;
+            }
         });
         dialog.show();
     });
