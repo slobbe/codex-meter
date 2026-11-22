@@ -17,6 +17,9 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         add_style_class_name(name) { this.classes.add(name); }
         remove_style_class_name(name) { this.classes.delete(name); }
         set_style(style) { this.style = style; }
+        get_accessible() {
+            return this.accessible ??= { set_description(value) { this.description = value; } };
+        }
         destroy() {
             this.destroyed = true;
             this.signals = {};
@@ -108,6 +111,19 @@ function createIndicator() {
     indicator._openAiIcon.gicon = "openai-icon";
     return indicator;
 }
+
+test("panel sync updates the description without changing the indicator name", () => {
+    const indicator = createIndicator();
+    indicator.accessible_name = "CodexMeter";
+    const panel = { bars: [], showBars: false, showLabel: false, label: "" };
+    indicator._monitor.state.snapshot.panel = panel;
+    for (const description of ["5 hours: 40% used. Weekly: unavailable", "Usage unavailable"]) {
+        panel.accessibleDescription = description;
+        indicator._syncLabel();
+        assert.equal(indicator.get_accessible().description, description);
+        assert.equal(indicator.accessible_name, "CodexMeter");
+    }
+});
 
 test("panel bars stack vertically without the removed St vertical property", () => {
     const indicator = createIndicator();

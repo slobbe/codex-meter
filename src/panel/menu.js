@@ -72,7 +72,11 @@ export class CodexMeterPopupMenu {
         item.valueLabel.text = `${viewModel.value} ${viewModel.percentLabel}`;
         item.predictionLabel.text = viewModel.prediction;
         item.resetLabel.text = viewModel.reset;
-        setPredictionStyleClass(item.predictionLabel, viewModel.predictionStyle);
+        if (viewModel.predictionStyle === "muted") {
+            item.predictionLabel.add_style_class_name("cx-muted");
+        } else {
+            item.predictionLabel.remove_style_class_name("cx-muted");
+        }
         item.usageBar.update({
             percentValue: viewModel.percentValue,
             displayPercentValue: viewModel.displayPercentValue,
@@ -87,9 +91,7 @@ export class CodexMeterPopupMenu {
         const color = isError ? "danger" : "warning";
         item.visible = Boolean(title || message);
         item.icon.icon_name = isError ? "dialog-error-symbolic" : "dialog-warning-symbolic";
-        item.icon.style_class = `popup-menu-icon cx-color-${color}`;
         item.titleLabel.text = title ?? "";
-        item.titleLabel.style_class = `cx-error-title cx-color-${color}`;
         item.messageLabel.style_class = `cx-error-message cx-error-message-${color}`;
         item.setDetails(message, isError, severity !== this._statusSeverity);
         this._statusSeverity = severity;
@@ -295,14 +297,14 @@ export class CodexMeterPopupMenu {
         });
         const icon = new St.Icon({
             icon_name: "dialog-warning-symbolic",
-            style_class: "popup-menu-icon cx-color-warning",
+            style_class: "popup-menu-icon",
             y_align: Clutter.ActorAlign.CENTER,
         });
         const titleLabel = new St.Label({
             text: "",
             x_expand: true,
             y_align: Clutter.ActorAlign.CENTER,
-            style_class: "cx-error-title cx-color-warning",
+            style_class: "cx-error-title",
         });
         const expander = new St.Icon({
             icon_name: "pan-end-symbolic",
@@ -376,23 +378,6 @@ export class CodexMeterPopupMenu {
         item.add_child(item.planLabel);
         return item;
     }
-}
-
-function setPredictionStyleClass(label, style) {
-    removeColorStyleClasses(label);
-    label.add_style_class_name(getPredictionColorStyleClass(style));
-}
-
-function getPredictionColorStyleClass(style) {
-    if (style === "muted") return "cx-muted";
-    return `cx-color-${style}`;
-}
-
-function removeColorStyleClasses(actor) {
-    actor.remove_style_class_name("cx-color-safe");
-    actor.remove_style_class_name("cx-color-warning");
-    actor.remove_style_class_name("cx-color-exhausted");
-    actor.remove_style_class_name("cx-muted");
 }
 
 function resetExpiryTime(credit) {

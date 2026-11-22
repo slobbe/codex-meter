@@ -202,6 +202,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         const settings = readSettings(this._settings);
         const { snapshot, errorMessage, prediction } = this._monitor.state;
         const viewModel = createPanelBarViewModel(settings, snapshot, errorMessage, prediction);
+        this.get_accessible().set_description(viewModel.accessibleDescription);
         while (this._panelUsageBars.length > viewModel.bars.length) {
             this._panelUsageBars.pop().actor.destroy();
         }

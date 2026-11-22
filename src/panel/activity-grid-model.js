@@ -4,6 +4,15 @@ const TITLE = `Activity over ${ACTIVITY_GRID_DAYS} days`;
 const WEEK_SECONDS = 7 * 24 * 60 * 60;
 const BLOCK_HOURS = [0, 6, 12, 18];
 
+export const ACTIVITY_CELL_LABELS = {
+    future: "Future",
+    unknown: "No data",
+    empty: "No activity",
+    low: "Low activity",
+    medium: "Medium activity",
+    high: "High activity",
+};
+
 // Allow one missed refresh at the longest configured polling interval (30 minutes).
 const MAX_EMPTY_GAP_SECONDS = 60 * 60;
 
@@ -15,14 +24,14 @@ const MAX_EMPTY_GAP_SECONDS = 60 * 60;
  * @param {UsageSnapshot | null} snapshot
  * @param {HistoryEntry[]} history
  * @param {number} nowSeconds
- * @returns {{visible: boolean, title: string, days: {label: string, dateLabel: string, cells: ActivityCell[]}[]}}
+ * @returns {{visible: boolean, title: string, summary: string, days: {label: string, dateLabel: string, cells: ActivityCell[]}[]}}
  */
 export function createActivityGridViewModel(
     snapshot,
     history = [],
     nowSeconds = Date.now() / 1000,
 ) {
-    const hidden = { visible: false, title: TITLE, days: [] };
+    const hidden = { visible: false, title: TITLE, summary: "", days: [] };
     const now = new Date(nowSeconds * 1000);
     if (!Number.isFinite(now.getTime())) return hidden;
 
@@ -75,24 +84,36 @@ export function createActivityGridViewModel(
     const peak = Math.max(...blocks.map(({ value }) => value ?? 0));
     const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
     const month = new Intl.DateTimeFormat(undefined, { month: "short" });
+    const gridDays = days.map(({ date, blocks }) => {
+        const weekdayLabel = weekday.format(date);
+        const [label] = weekdayLabel;
+        return {
+            label,
+            dateLabel: `${weekdayLabel}, ${date.getDate()} ${month.format(date)}`,
+            cells: blocks.map(({ start, value }) => {
+                if (start > nowSeconds) return "future";
+                if (value === null) return "unknown";
+                if (value === 0) return "empty";
+                if (value <= peak / 3) return "low";
+                return value <= (2 * peak) / 3 ? "medium" : "high";
+            }),
+        };
+    });
+    let active = 0;
+    let empty = 0;
+    let unknown = 0;
+    for (const { cells } of gridDays) {
+        for (const cell of cells) {
+            if (cell === "unknown") unknown++;
+            else if (cell === "empty") empty++;
+            else if (cell !== "future") active++;
+        }
+    }
     return {
         visible: true,
         title: TITLE,
-        days: days.map(({ date, blocks }) => {
-            const weekdayLabel = weekday.format(date);
-            const [label] = weekdayLabel;
-            return {
-                label,
-                dateLabel: `${weekdayLabel}, ${date.getDate()} ${month.format(date)}`,
-                cells: blocks.map(({ start, value }) => {
-                    if (start > nowSeconds) return "future";
-                    if (value === null) return "unknown";
-                    if (value === 0) return "empty";
-                    if (value <= peak / 3) return "low";
-                    return value <= (2 * peak) / 3 ? "medium" : "high";
-                }),
-            };
-        }),
+        summary: `6-hour blocks: ${active} active, ${empty} with no activity, ${unknown} with no data.`,
+        days: gridDays,
     };
 }
 

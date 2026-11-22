@@ -29,8 +29,15 @@ test("shows only a loading label and hides errors and empty snapshots in the pan
                 showBars: false,
                 showLabel: true,
                 label: "--",
+                accessibleDescription: "Loading usage",
             });
-            const hidden = { bars: [], showBars: false, showLabel: false, label: "" };
+            const hidden = {
+                bars: [],
+                showBars: false,
+                showLabel: false,
+                label: "",
+                accessibleDescription: "Usage unavailable",
+            };
             assert.deepEqual(createPanelBarViewModel(settings, { quotas: [] }, null), hidden);
             for (const snapshot of [null, { quotas: [] }, { quotas: [sessionQuota] }]) {
                 assert.deepEqual(
@@ -56,6 +63,31 @@ test("circular and straight panel bars use the same quota values in used and rem
         assert.equal(circular.showBars, true);
         assert.equal(circular.showLabel, false);
         assert.equal(circular.bars[0].displayPercentValue, percentDisplayMode === "used" ? 40 : 60);
+    }
+});
+
+test("panel describes each quota in display order and reports missing values as unavailable", () => {
+    const snapshot = {
+        quotas: [
+            { label: "Weekly", usedPercent: null, limitWindowSeconds: 604_800 },
+            { ...sessionQuota, label: "5 hours", limitWindowSeconds: 18_000 },
+            { label: "Daily", usedPercent: 0, limitWindowSeconds: 86_400 },
+        ],
+    };
+    for (const topPanelDisplayMode of ["bars", "circular-bars", "percentages"]) {
+        for (const percentDisplayMode of ["left", "used"]) {
+            const panel = createPanelBarViewModel(
+                { topPanelDisplayMode, percentDisplayMode },
+                snapshot,
+                null,
+            );
+            assert.equal(
+                panel.accessibleDescription,
+                percentDisplayMode === "left"
+                    ? "5 hours: 60% left. Daily: 100% left. Weekly: unavailable"
+                    : "5 hours: 40% used. Daily: 0% used. Weekly: unavailable",
+            );
+        }
     }
 });
 
@@ -138,7 +170,7 @@ test("uses one generic loading row and no rows for errors or empty snapshots", (
             statusMessage: null,
             accountType: "--",
             refreshLabel: "Not refreshed yet",
-            trend: { visible: false, title: "Activity over 28 days", days: [] },
+            trend: { visible: false, title: "Activity over 28 days", summary: "", days: [] },
         });
         const empty = createMenuViewModel(settings, { quotas: [] }, null);
         assert.deepEqual(empty, { ...loading, usageItems: [] });
@@ -266,7 +298,8 @@ test("renders quotas shortest first in menu values and panel bars and percentage
                     menu.usageItems.map((row) => row.value),
                     percents.map((value) => `${value}%`),
                 );
-                assert.deepEqual(panel, {
+                const { accessibleDescription: _description, ...visualPanel } = panel;
+                assert.deepEqual(visualPanel, {
                     bars: sorted.map((quota, index) => ({
                         id: quota.id,
                         percentValue: quota.usedPercent,

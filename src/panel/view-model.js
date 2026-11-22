@@ -2,11 +2,15 @@ import { getUsageWindowMetadata, sortUsageQuotas } from "../codex/usage/model.js
 import { createActivityGridViewModel } from "./activity-grid-model.js";
 
 export function createPanelBarViewModel(settings, snapshot, errorMessage, prediction = null) {
-    if (errorMessage) {
-        return { bars: [], showBars: false, showLabel: false, label: "" };
-    }
-    if (!snapshot) {
-        return { bars: [], showBars: false, showLabel: true, label: "--" };
+    if (errorMessage || !snapshot) {
+        const loading = !errorMessage;
+        return {
+            bars: [],
+            showBars: false,
+            showLabel: loading,
+            label: loading ? "--" : "",
+            accessibleDescription: loading ? "Loading usage" : "Usage unavailable",
+        };
     }
     const quotas = sortUsageQuotas(snapshot.quotas);
     const percentDisplayMode = settings.percentDisplayMode;
@@ -27,6 +31,16 @@ export function createPanelBarViewModel(settings, snapshot, errorMessage, predic
                   .map((quota) => formatPercentForDisplay(quota.usedPercent, percentDisplayMode))
                   .join("/")
             : "",
+        accessibleDescription: quotas.length
+            ? quotas
+                  .map((quota) => {
+                      const value = Number.isFinite(quota.usedPercent)
+                          ? `${formatPercentForDisplay(quota.usedPercent, percentDisplayMode)} ${percentDisplayMode}`
+                          : "unavailable";
+                      return `${quota.label ?? "Usage"}: ${value}`;
+                  })
+                  .join(". ")
+            : "Usage unavailable",
     };
 }
 

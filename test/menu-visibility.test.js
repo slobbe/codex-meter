@@ -66,11 +66,13 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
     }
     export default {
         BoxLayout: Actor, Icon: Actor, Label: Actor, Button: Actor, Widget: Actor, GridLayout,
+        Role: { SECTION: 'section' },
         ActorAlign: { CENTER: 0, FILL: 1, END: 2, START: 3 },
         Orientation: { VERTICAL: 'vertical' },
         PolicyType: { NEVER: 'never', AUTOMATIC: 'automatic' },
     };
     export const uiGroup = new Actor();
+    export const layoutManager = { findMonitorForActor: () => ({ x: 0, width: 130 }) };
     export const PopupBaseMenuItem = Actor;
     export class PopupSeparatorMenuItem extends Actor {}
     export class PopupMenuItem extends Actor {
@@ -167,17 +169,19 @@ test("usage and banner rows stay vertical without the removed St property", () =
     }
 });
 
-test("shows one 28-day grid with consistent gaps and dated cell tooltips", async () => {
+test("shows one focusable activity summary and exposes the state of each cell", async () => {
     const { uiGroup } = await import(stubUrl);
     const menu = new CodexMeterPopupMenu({});
     const tooltip = uiGroup.children.at(-1);
     assert.equal(menu.trendItem.visible, false);
 
     const title = "Activity over 28 days";
+    const summary = "6-hour blocks: 109 active, 1 with no activity, 1 with no data.";
     const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     menu.setTrend({
         visible: true,
         title,
+        summary,
         days: Array.from({ length: 28 }, (_, day) => ({
             label: weekdays[day % 7][0],
             dateLabel: `${weekdays[day % 7]}, ${day < 6 ? `${26 + day} Oct` : `${day - 5} Nov`}`,
@@ -185,12 +189,16 @@ test("shows one 28-day grid with consistent gaps and dated cell tooltips", async
         })),
     });
     const [box] = menu.trendItem.children;
-    const [titleLabel, grid] = box.children;
+    const [titleLabel, grid, summaryLabel] = box.children;
     const layout = grid.layout_manager;
     const { children } = layout;
     assert.equal(menu.trendItem.visible, true);
     assert.equal(box.layout_manager.orientation, "vertical");
     assert.equal(titleLabel.text, title);
+    assert.equal(summaryLabel.text, summary);
+    assert.equal(menu.trendItem.can_focus, true);
+    assert.equal(menu.trendItem.reactive, false);
+    assert.equal(menu.trendItem.accessible_name, `${title}. ${summary}`);
     assert.equal(grid.x_expand, true);
     assert.equal(layout.column_spacing, 2);
     assert.equal(layout.row_spacing, 2);
@@ -199,6 +207,18 @@ test("shows one 28-day grid with consistent gaps and dated cell tooltips", async
     assert.equal(children.get("6,0").text, "S");
     assert.equal(children.has("7,0"), false);
     assert.equal(children.get("8,0").text, "T");
+    const lastDayStates = ["No activity", "High activity", "No data", "Future"];
+    for (const [index, state] of lastDayStates.entries()) {
+        const actor = children.get(`27,${index + 1}`);
+        assert.equal(actor.can_focus, false);
+        assert.ok(actor.accessible_name.endsWith(`: ${state}`));
+        actor.mapped = true;
+        actor.hover = true;
+        actor.emit("notify::hover");
+        assert.equal(tooltip.text, actor.accessible_name);
+        actor.hover = false;
+        actor.emit("notify::hover");
+    }
     assert.match(children.get("27,2").style_class, /cx-activity-grid-cell-high/);
     assert.match(children.get("27,4").style_class, /cx-activity-grid-cell-future/);
 
@@ -217,19 +237,20 @@ test("shows one 28-day grid with consistent gaps and dated cell tooltips", async
     cell.hover = true;
     cell.emit("notify::hover");
     assert.equal(tooltip.visible, true);
-    assert.equal(tooltip.text, "Mon, 26 Oct, 0-6am");
+    assert.equal(tooltip.text, "Mon, 26 Oct, midnight to 6 am: Low activity");
+    assert.equal(tooltip.x, 70, "the tooltip must fit inside the monitor");
     cell.mapped = false;
     cell.emit("notify::mapped");
     assert.equal(tooltip.visible, false);
     lastMonday.mapped = true;
     lastMonday.hover = true;
     lastMonday.emit("notify::hover");
-    assert.equal(tooltip.text, "Mon, 16 Nov, 0-6am");
+    assert.equal(tooltip.text, "Mon, 16 Nov, midnight to 6 am: Low activity");
     lastMonday.hover = false;
     lastMonday.emit("notify::hover");
     assert.equal(tooltip.visible, false);
 
-    menu.setTrend({ visible: false, title, days: [] });
+    menu.setTrend({ visible: false, title, summary: "", days: [] });
     assert.equal(menu.trendItem.visible, false);
     menu.trendItem.destroy();
     assert.equal(uiGroup.children.includes(tooltip), false);
@@ -278,14 +299,8 @@ test("reconciles usage rows through 0 -> 3 -> 1 -> 0 and updates all row data", 
         assert.equal(item.predictionLabel.text, vm.prediction);
         assert.equal(item.resetLabel.text, vm.reset);
         assert.deepEqual(
-            item.predictionLabel.classes,
-            new Set([
-                vm.predictionStyle === "safe"
-                    ? "cx-color-safe"
-                    : vm.predictionStyle === "muted"
-                      ? "cx-muted"
-                      : `cx-color-${vm.predictionStyle}`,
-            ]),
+            item.predictionLabel.classes ?? new Set(),
+            new Set(vm.predictionStyle === "muted" ? ["cx-muted"] : []),
         );
         assert.deepEqual(item.usageBar.state, {
             percentValue: vm.percentValue,
@@ -458,8 +473,8 @@ test("one status banner switches severity, resets expansion, and clears", () => 
         assert.equal(item.visible, true);
         assert.equal(item.icon.icon_name, `dialog-${severity}-symbolic`);
         const color = isError ? "danger" : "warning";
-        assert.equal(item.icon.style_class, `popup-menu-icon cx-color-${color}`);
-        assert.equal(item.titleLabel.style_class, `cx-error-title cx-color-${color}`);
+        assert.equal(item.icon.style_class, "popup-menu-icon");
+        assert.equal(item.titleLabel.style_class, "cx-error-title");
         assert.equal(item.messageLabel.style_class, `cx-error-message cx-error-message-${color}`);
         assert.equal(item.messageLabel.visible, isError);
         heading.signals.clicked();

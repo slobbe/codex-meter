@@ -25,7 +25,7 @@
 
 .cx-usage-label,
 .cx-usage-value {
-    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
 }
 
 .cx-usage-label {
@@ -57,16 +57,15 @@
     border-radius: 999px;
 }
 
-.cx-color-safe {
+.cx-panel-ring .cx-color-safe {
     color: #49c16d;
 }
 
-.cx-color-warning {
+.cx-panel-ring .cx-color-warning {
     color: #e59a2f;
 }
 
-.cx-color-danger,
-.cx-color-exhausted {
+.cx-panel-ring .cx-color-exhausted {
     color: #d9534f;
 }
 
@@ -174,7 +173,6 @@
 .cx-error-message {
     padding: 7px 8px;
     border-radius: 9px;
-    color: rgba(255, 255, 255, 0.92);
 }
 
 .cx-error-message-danger {
@@ -230,7 +228,10 @@
     border-radius: 3px;
 }
 
-.cx-activity-grid-cell-unknown,
+.cx-activity-grid-cell-unknown {
+    border: 1px solid rgba(128, 128, 128, 0.85);
+}
+
 .cx-activity-grid-cell-empty {
     background-color: rgba(128, 128, 128, 0.45);
 }

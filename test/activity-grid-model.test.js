@@ -6,7 +6,7 @@ import { createActivityGridViewModel } from "../src/panel/activity-grid-model.js
 process.env.TZ = "America/New_York";
 
 const now = new Date(2026, 10, 22, 14).getTime() / 1000;
-const hidden = { visible: false, title: "Activity over 28 days", days: [] };
+const hidden = { visible: false, title: "Activity over 28 days", summary: "", days: [] };
 
 function time(day, hour, minute = 0) {
     return new Date(2026, 10, day, hour, minute).getTime() / 1000;
@@ -22,6 +22,7 @@ function entry(timestamp, usedPercent, id = "weekly", resetAt) {
 test("shows 28 local days across a month boundary and marks future blocks", () => {
     const history = [entry(time(22, 8), 10), entry(time(22, 8, 30), 10)];
     const grid = createActivityGridViewModel(null, history, now);
+    assert.equal(grid.summary, "6-hour blocks: 0 active, 1 with no activity, 110 with no data.");
     const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
     const month = new Intl.DateTimeFormat(undefined, { month: "short" });
     const october = month.format(new Date(2026, 9, 26));
@@ -77,6 +78,7 @@ test("clips activity to the first day and scales positive deltas by elapsed over
     // The first interval adds 12 points to the first block and 4 to the second.
     // The next interval adds 2 points to the second block and 0.5 to the third.
     assert.deepEqual(grid.days[0].cells, ["high", "medium", "low", "unknown"]);
+    assert.equal(grid.summary, "6-hour blocks: 3 active, 0 with no activity, 108 with no data.");
     assert.deepEqual(
         createActivityGridViewModel(
             null,
