@@ -153,6 +153,32 @@ export async function readFile(path, cancellable = null) {
     }
 }
 
+export async function readFileChunks(path, onChunk, cancellable = null) {
+    try {
+        cancellable?.set_error_if_cancelled();
+        const file = Gio.File.new_for_path(path);
+        const stream = await file.read_async(GLib.PRIORITY_DEFAULT, cancellable);
+        await withStream(stream, async () => {
+            while (true) {
+                const bytes = await stream.read_bytes_async(
+                    64 * 1024,
+                    GLib.PRIORITY_DEFAULT,
+                    cancellable,
+                );
+                cancellable?.set_error_if_cancelled();
+                if (bytes.get_size() === 0) break;
+                onChunk(bytes.get_data());
+            }
+        });
+    } catch (error) {
+        if (isCancellationError(error)) throw error;
+        throw new Error(
+            `Failed to read file "${path}": ${error instanceof Error ? error.message : String(error)}`,
+            { cause: error },
+        );
+    }
+}
+
 export async function writeFile(path, text, cancellable = null) {
     try {
         cancellable?.set_error_if_cancelled();

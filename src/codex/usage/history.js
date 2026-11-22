@@ -1,28 +1,89 @@
 import GLib from "gi://GLib";
 
 import { STATE_DIR } from "../../io/paths.js";
-import { appendFile, isNotFoundError, readFile, writeFile } from "../../io/files.js";
+import { appendFile, isNotFoundError, readFileChunks, writeFile } from "../../io/files.js";
 
 export const MAX_HISTORY_ENTRIES = 25_000;
 
 const MAX_HISTORY_AGE_SECONDS = 30 * 24 * 60 * 60;
+const MAX_HISTORY_ROW_BYTES = 2 * 1024 * 1024;
 export const HISTORY_PATH = GLib.build_filenamev([STATE_DIR, "codex", "usage-history.jsonl"]);
 
 export async function readHistory(path = HISTORY_PATH, cancellable = null) {
-    cancellable?.set_error_if_cancelled();
+    const decoder = new TextDecoder("utf-8");
+    const minTimestamp = Date.now() - MAX_HISTORY_AGE_SECONDS * 1000;
+    const entries = [];
+    let needsRewrite = false;
+    let partialRow;
+    let partialLength = 0;
+    let oversized = false;
 
-    let text;
+    const addRow = (bytes) => {
+        const text = decoder.decode(bytes).trim();
+        if (!text) return;
+        let row;
+        try {
+            row = normalizeHistoryEntry(JSON.parse(text));
+        } catch (_error) {
+            row = null;
+        }
+        const timestamp = row ? Date.parse(row.timestamp) : NaN;
+        if (!(timestamp >= minTimestamp)) {
+            needsRewrite = true;
+            return;
+        }
+        entries.push({ row, timestamp });
+        // Timestamps can be out of order after a clock change. Keep the newest rows, not the last bytes.
+        if (entries.length >= 2 * MAX_HISTORY_ENTRIES) {
+            trimHistory(entries);
+            needsRewrite = true;
+        }
+    };
+
     try {
-        text = await readFile(path, cancellable);
+        await readFileChunks(
+            path,
+            (bytes) => {
+                for (let offset = 0; offset < bytes.length;) {
+                    const end = bytes.indexOf(0x0a, offset);
+                    const part = bytes.subarray(offset, end === -1 ? bytes.length : end);
+                    offset = end === -1 ? bytes.length : end + 1;
+                    if (partialLength === 0 && !oversized && end !== -1) {
+                        addRow(part);
+                        continue;
+                    }
+                    if (!oversized) {
+                        if (partialLength + part.length > MAX_HISTORY_ROW_BYTES) {
+                            oversized = true;
+                            needsRewrite = true;
+                        } else {
+                            // Keep bytes until the newline so a chunk boundary cannot split a UTF-8 character.
+                            partialRow ??= new Uint8Array(MAX_HISTORY_ROW_BYTES);
+                            partialRow.set(part, partialLength);
+                            partialLength += part.length;
+                        }
+                    }
+                    if (end !== -1) {
+                        if (!oversized) addRow(partialRow.subarray(0, partialLength));
+                        partialLength = 0;
+                        oversized = false;
+                    }
+                }
+            },
+            cancellable,
+        );
     } catch (error) {
         if (isNotFoundError(error.cause)) return [];
         throw error;
     }
-    const rows = parseJsonlHistory(text);
-    const history = normalizeHistoryEntries(rows);
-    if (history.length !== rows.length || (text.length > 0 && !text.endsWith("\n"))) {
-        await rewriteHistory(history, path, cancellable);
+    if (!oversized && partialLength > 0) {
+        addRow(partialRow.subarray(0, partialLength));
+        needsRewrite = true;
     }
+    if (entries.length > MAX_HISTORY_ENTRIES) needsRewrite = true;
+    trimHistory(entries);
+    const history = entries.map(({ row }) => row);
+    if (needsRewrite) await writeHistoryRows(history, path, cancellable);
     cancellable?.set_error_if_cancelled();
     return history;
 }
@@ -36,28 +97,22 @@ export async function appendHistoryRow(row, path = HISTORY_PATH, cancellable = n
 }
 
 export async function rewriteHistory(rows, path = HISTORY_PATH, cancellable = null) {
-    const normalizedRows = normalizeHistoryEntries(rows);
-    await writeFile(
+    await writeHistoryRows(normalizeHistoryEntries(rows), path, cancellable);
+}
+
+function writeHistoryRows(rows, path, cancellable) {
+    return writeFile(
         path,
         // A newline also represents empty JSONL without a zero-length Gio write.
-        normalizedRows.map((row) => JSON.stringify(row)).join("\n") + "\n",
+        rows.map((row) => JSON.stringify(row)).join("\n") + "\n",
         cancellable,
     );
 }
 
-function parseJsonlHistory(text) {
-    return text
-        .replace(/^\uFEFF/, "")
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .map((line) => {
-            try {
-                return JSON.parse(line);
-            } catch (_error) {
-                return null;
-            }
-        });
+function trimHistory(entries) {
+    entries.sort((left, right) => left.timestamp - right.timestamp);
+    if (entries.length > MAX_HISTORY_ENTRIES)
+        entries.splice(0, entries.length - MAX_HISTORY_ENTRIES);
 }
 
 export function normalizeHistoryEntries(rows) {

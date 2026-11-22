@@ -159,6 +159,7 @@ try {
 
     const sent = Soup.Session.prototype.send_async;
     const load = Gio.File.prototype.load_contents_async;
+    const open = Gio.File.prototype.read_async;
     const replace = Gio.File.prototype.replace_contents_async;
     let usedPercent = 10;
     let planType = "account-a-plan";
@@ -318,10 +319,9 @@ try {
         );
 
         await writeCredentials(authPath, "account-a");
-        Gio.File.prototype.load_contents_async = async function (...args) {
-            const result = await load.apply(this, args);
+        Gio.File.prototype.read_async = async function (...args) {
             if (this.get_path() === historyPath) await writeCredentials(authPath, "account-b");
-            return result;
+            return open.apply(this, args);
         };
         refreshError = null;
         try {
@@ -329,7 +329,7 @@ try {
         } catch (error) {
             refreshError = error;
         } finally {
-            Gio.File.prototype.load_contents_async = load;
+            Gio.File.prototype.read_async = open;
         }
         assertEqual(
             refreshError?.kind,
@@ -430,9 +430,21 @@ try {
         const retained = new UsageService(authPath);
         let historyReads = 0;
         let historyRewrites = 0;
-        Gio.File.prototype.load_contents_async = function (...args) {
-            if (this.get_path() === historyPath) historyReads++;
-            return load.apply(this, args);
+        Gio.File.prototype.read_async = async function (...args) {
+            const stream = await open.apply(this, args);
+            if (this.get_path() === historyPath) {
+                const read = stream.read_bytes_async.bind(stream);
+                let counted = false;
+                stream.read_bytes_async = (size, ...options) => {
+                    // The append path reads only the final byte to check for a newline.
+                    if (!counted && size > 1) {
+                        historyReads++;
+                        counted = true;
+                    }
+                    return read(size, ...options);
+                };
+            }
+            return stream;
         };
         Gio.File.prototype.replace_contents_async = function (...args) {
             if (this.get_path() === historyPath) historyRewrites++;
@@ -487,6 +499,7 @@ try {
         Date.now = now;
         Soup.Session.prototype.send_async = sent;
         Gio.File.prototype.load_contents_async = load;
+        Gio.File.prototype.read_async = open;
         Gio.File.prototype.replace_contents_async = replace;
     }
 } finally {

@@ -42,6 +42,20 @@ try {
     );
     assertEqual(await readFile(path), jsonl(first, second), "Damaged rows were not removed");
 
+    const firstText = JSON.stringify(first);
+    const characterOffset = firstText.indexOf("é");
+    const padding = " ".repeat(64 * 1024 - characterOffset - 1);
+    GLib.file_set_contents(
+        path,
+        `${padding}${firstText}\n${"x".repeat(3 * 1024 * 1024)}\n${jsonl(second)}`,
+    );
+    assertEqual(
+        jsonl(...(await readHistory(path))),
+        jsonl(first, second),
+        "Split UTF-8 data or an oversized row hid valid rows",
+    );
+    assertEqual(await readFile(path), jsonl(first, second), "Oversized row was not removed");
+
     const append = Gio.File.prototype.append_to_async;
     try {
         Gio.File.prototype.append_to_async = async function (...args) {
@@ -64,14 +78,14 @@ try {
         Gio.File.prototype.append_to_async = append;
     }
 
-    const load = Gio.File.prototype.load_contents_async;
+    const open = Gio.File.prototype.read_async;
     try {
         const failure = new GLib.Error(
             Gio.io_error_quark(),
             Gio.IOErrorEnum.PERMISSION_DENIED,
             "Permission denied",
         );
-        Gio.File.prototype.load_contents_async = async () => {
+        Gio.File.prototype.read_async = async () => {
             throw failure;
         };
         let cause;
@@ -82,7 +96,7 @@ try {
         }
         assertEqual(cause, failure, "History treated a read failure as an empty file");
     } finally {
-        Gio.File.prototype.load_contents_async = load;
+        Gio.File.prototype.read_async = open;
     }
     assertEqual(await readFile(path), jsonl(first, second, first), "Read failure changed the file");
     console.log("Passed JSONL recovery, short-write, and read error checks.");

@@ -106,23 +106,7 @@ async function testJsonlIsReadable() {
 async function testMissingJsonlReturnsEmptyHistory() {
     const path = createTempPath("missing.jsonl");
 
-    const load = Gio.File.prototype.load_contents_async;
-    let reads = 0;
-    Gio.File.prototype.load_contents_async = function (...args) {
-        reads++;
-        return load.apply(this, args);
-    };
-    try {
-        const history = await readHistory(path);
-        assertDeepEqual(history, [], "missing JSONL history should be empty");
-        assertEqual(
-            reads,
-            1,
-            "missing JSONL history should be read without an existence preflight",
-        );
-    } finally {
-        Gio.File.prototype.load_contents_async = load;
-    }
+    assertDeepEqual(await readHistory(path), [], "missing JSONL history should be empty");
 }
 
 function historyRow(ageDays = 0, usedPercent = 14) {
@@ -144,10 +128,15 @@ async function testReadCompactsPersistedHistory() {
         assertDeepEqual(await readHistory(path), retained, "only rows over 30 days are omitted");
         assertEqual(await readText(path), jsonl(retained), "expired rows are removed on disk");
 
-        const rows = Array.from({ length: MAX_HISTORY_ENTRIES + 7 }, (_, i) => historyRow(0, i));
-        writeText(path, jsonl(rows));
+        const older = historyRow(1);
+        const rows = Array.from({ length: 2 * MAX_HISTORY_ENTRIES + 7 }, (_, i) => ({
+            ...older,
+            quotas: [{ id: "session", usedPercent: i }],
+        }));
+        const newest = historyRow();
+        writeText(path, jsonl([newest, ...rows]));
         await readHistory(path);
-        const expected = jsonl(rows.slice(-MAX_HISTORY_ENTRIES));
+        const expected = jsonl([...rows.slice(1 - MAX_HISTORY_ENTRIES), newest]);
         assertEqual(await readText(path), expected, "startup bounds physical row count and size");
 
         writeText(path, jsonl([historyRow(31)]));

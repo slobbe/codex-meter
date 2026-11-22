@@ -57,10 +57,16 @@ async function testInFlightCancellationPreservation() {
         "cancelled I/O",
     );
     const load = Gio.File.prototype.load_contents_async;
+    const open = Gio.File.prototype.read_async;
     const replace = Gio.File.prototype.replace_contents_async;
     const append = Gio.File.prototype.append_to_async;
     const fileTest = GLib.file_test;
     let closed = 0;
+    const close = async (_priority, cleanupCancellable) => {
+        if (cleanupCancellable !== null) throw new Error("Cleanup must not be cancelled");
+        closed++;
+        throw new Error("Secondary close failure");
+    };
     const localPath = GLib.build_filenamev([directory, "file.json"]);
     try {
         Gio.File.prototype.load_contents_async = async () => {
@@ -69,15 +75,17 @@ async function testInFlightCancellationPreservation() {
         Gio.File.prototype.replace_contents_async = async () => {
             throw original;
         };
+        Gio.File.prototype.read_async = async () => ({
+            async read_bytes_async() {
+                throw original;
+            },
+            close_async: close,
+        });
         Gio.File.prototype.append_to_async = async () => ({
             async write_bytes_async() {
                 throw original;
             },
-            async close_async(_priority, cleanupCancellable) {
-                if (cleanupCancellable !== null) throw new Error("Cleanup must not be cancelled");
-                closed++;
-                throw new Error("Secondary close failure");
-            },
+            close_async: close,
         });
         GLib.file_test = () => true;
         for (const operation of [
@@ -91,10 +99,11 @@ async function testInFlightCancellationPreservation() {
         ]) {
             await assertOriginalCancellation(operation, original);
         }
-        if (closed !== 1) throw new Error("Cancelled append must close its stream");
-        console.log("Passed in-flight cancellation identity and append cleanup checks.");
+        if (closed !== 2) throw new Error("Cancelled reads and appends must close their streams");
+        console.log("Passed in-flight cancellation identity and stream cleanup checks.");
     } finally {
         Gio.File.prototype.load_contents_async = load;
+        Gio.File.prototype.read_async = open;
         Gio.File.prototype.replace_contents_async = replace;
         Gio.File.prototype.append_to_async = append;
         GLib.file_test = fileTest;
