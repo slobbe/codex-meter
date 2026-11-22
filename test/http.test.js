@@ -15,9 +15,35 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         FileQueryInfoFlags: { NOFOLLOW_SYMLINKS: 1 },
         InputStream: class {},
         OutputStream: class {},
+        Cancellable: class {
+            handlers = new Set();
+            error = null;
+
+            connect(handler) {
+                if (this.error) {
+                    handler();
+                    return 0;
+                }
+                this.handlers.add(handler);
+                return handler;
+            }
+
+            disconnect(handler) { this.handlers.delete(handler); }
+
+            cancel() {
+                if (this.error) return;
+                this.error = new GLib.Error('Cancelled');
+                for (const handler of this.handlers) handler();
+            }
+
+            set_error_if_cancelled() {
+                if (this.error) throw this.error;
+            }
+        },
     };
     export const GLib = {
         PRIORITY_DEFAULT: 0,
+        SOURCE_REMOVE: false,
         build_filenamev: parts => parts.join('/'),
         get_user_cache_dir: () => '/cache',
         get_user_state_dir: () => '/state',
@@ -53,11 +79,12 @@ const hooks = registerHooks({
     },
 });
 let fetchJson;
+let Gio;
 let GLib;
 let Soup;
 try {
     ({ fetchJson } = await import(httpUrl));
-    ({ GLib, Soup } = await import(stubUrl));
+    ({ Gio, GLib, Soup } = await import(stubUrl));
 } finally {
     hooks.deregister();
 }
@@ -78,6 +105,15 @@ const MAX_RESPONSE_BYTES = 1024 * 1024;
 
 function createHttp({ status = 200, text = '{"ok":true}', send, read, close, setup } = {}) {
     const sessions = [];
+    const deadlines = new Map();
+    let sourceId = 0;
+    GLib.timeout_add = (priority, interval, callback) => {
+        assert.equal(priority, GLib.PRIORITY_DEFAULT);
+        assert.equal(interval, 15_000);
+        deadlines.set(++sourceId, callback);
+        return sourceId;
+    };
+    GLib.source_remove = (id) => assert.ok(deadlines.delete(id));
     const body = new TextEncoder().encode(text);
     const stream = {
         readArgs: [],
@@ -122,12 +158,16 @@ function createHttp({ status = 200, text = '{"ok":true}', send, read, close, set
     Soup.Session = Session;
     Soup.Message = { new: () => message };
     setup?.({ Soup, GLib, message });
-    return { fetchJson, sessions, message, stream, GLibError: GLib.Error };
+    return { fetchJson, sessions, message, stream, deadlines };
 }
 
 test("fetchJson disables redirects and closes the request after parsing JSON", async () => {
-    const { fetchJson, sessions, message, stream } = createHttp();
-    const response = await fetchJson(url, config, { headers: { Authorization: "Bearer fake" } });
+    const { fetchJson, sessions, message, stream, deadlines } = createHttp();
+    const cancellable = new Gio.Cancellable();
+    const response = await fetchJson(url, config, {
+        headers: { Authorization: "Bearer fake" },
+        cancellable,
+    });
 
     assert.equal(message.flags, Soup.MessageFlags.NO_REDIRECT);
     assert.deepEqual(stream.closeArgs, [[0, null]]);
@@ -135,12 +175,13 @@ test("fetchJson disables redirects and closes the request after parsing JSON", a
     assert.equal(response.ok, true);
     assert.equal(sessions.length, 1);
     assert.equal(sessions[0].timeout, 15);
-    assert.deepEqual(sessions[0].sendArgs, [message, 0, null]);
     assert.equal(sessions[0].abortCount, 1);
+    assert.equal(deadlines.size, 0);
+    assert.equal(cancellable.handlers.size, 0);
 });
 
 test("fetchJson aborts after a network failure and preserves its error mapping", async () => {
-    const { fetchJson, sessions } = createHttp({
+    const { fetchJson, sessions, deadlines } = createHttp({
         send: () => Promise.reject(new Error("Connection refused")),
     });
 
@@ -151,52 +192,80 @@ test("fetchJson aborts after a network failure and preserves its error mapping",
         return true;
     });
     assert.equal(sessions[0].abortCount, 1);
+    assert.equal(deadlines.size, 0);
 });
 
-test("fetchJson forwards cancellation and aborts only once the pending request settles", async () => {
+test("fetchJson removes the deadline as soon as the caller cancels", async () => {
     let rejectRequest;
-    const pending = new Promise((resolve, reject) => {
+    const pending = new Promise((_resolve, reject) => {
         rejectRequest = reject;
     });
-    const { fetchJson, sessions, GLibError } = createHttp({ send: () => pending });
-    const cancellable = { set_error_if_cancelled() {} };
+    const { fetchJson, sessions, deadlines } = createHttp({ send: () => pending });
+    const cancellable = new Gio.Cancellable();
     const request = fetchJson(url, config, { cancellable });
-    const cancellation = new GLibError("Cancelled");
+    const transfer = sessions[0].sendArgs[2];
 
-    assert.equal(sessions[0].sendArgs[2], cancellable);
+    assert.notEqual(transfer, cancellable);
+    assert.equal(deadlines.size, 1);
+    cancellable.cancel();
+    assert.equal(deadlines.size, 0);
+    assert.ok(transfer.error);
     assert.equal(sessions[0].abortCount, 0);
-    rejectRequest(cancellation);
-    await assert.rejects(request, (error) => error === cancellation);
+
+    rejectRequest(transfer.error);
+    await assert.rejects(request, (error) => error === transfer.error);
     assert.equal(sessions[0].abortCount, 1);
+    assert.equal(cancellable.handlers.size, 0);
 });
 
-test("fetchJson preserves read cancellation and closes the stream without cancellation", async () => {
+test("fetchJson does not start an already cancelled transfer", async () => {
+    const { fetchJson, sessions, deadlines } = createHttp();
+    const cancellable = new Gio.Cancellable();
+    cancellable.cancel();
+
+    await assert.rejects(fetchJson(url, config, { cancellable }), (error) => {
+        return error === cancellable.error;
+    });
+    assert.equal(sessions[0].sendArgs, undefined);
+    assert.equal(sessions[0].abortCount, 1);
+    assert.equal(deadlines.size, 0);
+});
+
+test("fetchJson applies the original deadline even after the response makes progress", async () => {
     let markReading;
-    let rejectRead;
     const reading = new Promise((resolve) => {
         markReading = resolve;
     });
-    const pending = new Promise((_resolve, reject) => {
-        rejectRead = reject;
-    });
-    const { fetchJson, sessions, stream, GLibError } = createHttp({
-        read: () => {
-            markReading();
-            return pending;
+    let readCount = 0;
+    const { fetchJson, sessions, stream, deadlines } = createHttp({
+        read: (_count, _priority, transfer) => {
+            if (++readCount === 1) {
+                return { get_size: () => 1, get_data: () => new Uint8Array([123]) };
+            }
+            return new Promise((_resolve, reject) => {
+                transfer.connect(() => reject(transfer.error));
+                markReading();
+            });
         },
         close: () => {
             throw new Error("Secondary close failure");
         },
     });
-    const cancellable = { set_error_if_cancelled() {} };
+    const cancellable = new Gio.Cancellable();
     const request = fetchJson(url, config, { cancellable });
+    const [deadline] = deadlines.entries();
     await reading;
-    assert.equal(stream.readArgs[0][2], cancellable);
-    assert.equal(sessions[0].abortCount, 0);
+    assert.deepEqual([...deadlines.entries()], [deadline]);
 
-    const cancellation = new GLibError("Cancelled");
-    rejectRead(cancellation);
-    await assert.rejects(request, (error) => error === cancellation);
+    const [id, expire] = deadline;
+    assert.equal(expire(), GLib.SOURCE_REMOVE);
+    deadlines.delete(id);
+    await assert.rejects(request, {
+        kind: "network",
+        message: config.messages.networkUnavailable,
+    });
+    assert.equal(cancellable.error, null);
+    assert.equal(cancellable.handlers.size, 0);
     assert.equal(sessions[0].abortCount, 1);
     assert.deepEqual(stream.closeArgs, [[0, null]]);
 });

@@ -45,11 +45,13 @@ const config = {
     messages: { responseTooLarge: "Response too large", refreshFailed: "Refresh failed" },
 };
 const limits = gzip(`{"data":"${"x".repeat(1024 * 1024)}"}`);
+const cancellable = new Gio.Cancellable();
 let redirected = false;
 server.add_handler(null, (_server, message, path) => {
     if (path === "/redirect") {
         message.set_redirect(307, "/target");
     } else {
+        if (path === "/cancel") cancellable.cancel();
         const body = path === "/oversized" ? limits : gzip('{"ok":true}');
         if (path === "/target") redirected = true;
         message.get_response_headers().append("Content-Encoding", "gzip");
@@ -81,7 +83,15 @@ try {
         fetchJson(`${url}oversized`, config),
         config.messages.responseTooLarge,
     );
-    console.log("Passed local Soup redirect and decoded response limit checks.");
+    await fetchJson(`${url}cancel`, config, { cancellable }).then(
+        () => {
+            throw new Error("Expected caller cancellation");
+        },
+        (error) => {
+            if (!error.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) throw error;
+        },
+    );
+    console.log("Passed local Soup redirect, decoded response limit, and cancellation checks.");
 } finally {
     server.disconnect();
 }

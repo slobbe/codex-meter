@@ -4,7 +4,8 @@ import { CodexError } from "../codex/error.js";
 import Soup from "gi://Soup";
 import { isCancellationError } from "./files.js";
 
-const DEFAULT_TIMEOUT_SECONDS = 15;
+const SOCKET_TIMEOUT_SECONDS = 15;
+const TRANSFER_TIMEOUT_MS = 15_000;
 
 const MAX_ERROR_BODY_LENGTH = 512;
 
@@ -69,13 +70,22 @@ async function readResponse(stream, cancellable) {
 
 export async function fetchJson(url, config, options = {}) {
     const session = new Soup.Session();
-    const cancellable = options.cancellable ?? null;
+    const callerCancellable = options.cancellable;
+    const cancellable = new Gio.Cancellable();
+    let deadlineId = 0;
+    let cancellationId = 0;
+    let deadlineExpired = false;
+    const removeDeadline = () => {
+        if (deadlineId === 0) return;
+        GLib.source_remove(deadlineId);
+        deadlineId = 0;
+    };
     let stream;
     let response;
     try {
         const message = Soup.Message.new(options.method ?? "GET", url);
         message.add_flags(Soup.MessageFlags.NO_REDIRECT);
-        session.timeout = DEFAULT_TIMEOUT_SECONDS;
+        session.timeout = SOCKET_TIMEOUT_SECONDS;
         const headers = {
             Accept: "application/json",
             ...options.headers,
@@ -89,14 +99,31 @@ export async function fetchJson(url, config, options = {}) {
         }
         let data;
         try {
-            cancellable?.set_error_if_cancelled();
+            callerCancellable?.set_error_if_cancelled();
+            deadlineId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, TRANSFER_TIMEOUT_MS, () => {
+                deadlineId = 0;
+                deadlineExpired = true;
+                cancellable.cancel();
+                return GLib.SOURCE_REMOVE;
+            });
+            if (callerCancellable) {
+                cancellationId = callerCancellable.connect(() => {
+                    removeDeadline();
+                    cancellable.cancel();
+                });
+            }
             stream = await session.send_async(message, GLib.PRIORITY_DEFAULT, cancellable);
             data = await readResponse(stream, cancellable);
         } catch (error) {
-            if (isCancellationError(error)) {
+            if (!deadlineExpired && isCancellationError(error)) {
                 throw error;
             }
-            const message = error instanceof Error ? error.message : String(error);
+            callerCancellable?.set_error_if_cancelled();
+            const message = deadlineExpired
+                ? "Total transfer deadline exceeded"
+                : error instanceof Error
+                  ? error.message
+                  : String(error);
             throw new CodexError(
                 "network",
                 config.messages.networkUnavailable,
@@ -132,6 +159,8 @@ export async function fetchJson(url, config, options = {}) {
         }
         response = parseApiResponse(text, url, config);
     } finally {
+        removeDeadline();
+        if (cancellationId !== 0) callerCancellable.disconnect(cancellationId);
         // Stop the transfer before closing a partially read body.
         session.abort();
         if (stream) {
@@ -142,6 +171,6 @@ export async function fetchJson(url, config, options = {}) {
             }
         }
     }
-    cancellable?.set_error_if_cancelled();
+    callerCancellable?.set_error_if_cancelled();
     return response;
 }
