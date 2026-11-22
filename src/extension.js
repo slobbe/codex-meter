@@ -38,9 +38,15 @@ export default class CodexMeterExtension extends Extension {
         migrateSettings(settings);
         this._settings = settings;
         this._usageNotificationStatesByPath = new Map();
+        this._pendingUsageAlerts = new Set();
         this._usageNotificationsChangedId = settings.connect(
             `changed::${SETTINGS_USAGE_NOTIFICATIONS}`,
             () => {
+                if (!settings.get_boolean(SETTINGS_USAGE_NOTIFICATIONS)) {
+                    for (const alert of this._pendingUsageAlerts) {
+                        alert.destroy(MessageTray.NotificationDestroyedReason.SOURCE_CLOSED);
+                    }
+                }
                 // Re-opt-in rearms alerts for all paths, including inactive ones.
                 for (const states of this._usageNotificationStatesByPath.values()) states.clear();
             },
@@ -87,6 +93,7 @@ export default class CodexMeterExtension extends Extension {
         this._usageNotificationsChangedId = null;
         this._stopRuntime();
         this._usageNotificationStatesByPath = null;
+        this._pendingUsageAlerts = null;
     }
 
     _stopRuntime() {
@@ -133,6 +140,7 @@ export default class CodexMeterExtension extends Extension {
             const settle = (shown) => {
                 if (settled) return;
                 settled = true;
+                this._pendingUsageAlerts.delete(notification);
                 notification.disconnect(acknowledgedId);
                 notification.disconnect(destroyId);
                 onDelivery(shown);
@@ -143,6 +151,7 @@ export default class CodexMeterExtension extends Extension {
                 if (this._notificationSource === source && notification.acknowledged) settle(true);
             });
             const destroyId = notification.connect("destroy", () => settle(false));
+            this._pendingUsageAlerts.add(notification);
         }
         if (legacy) {
             notification.setTransient(true);

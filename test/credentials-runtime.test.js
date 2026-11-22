@@ -163,6 +163,10 @@ function fixture(t, credentialsPath = "/accounts/first/auth.json") {
             reads.push(key);
             return values.get(key);
         },
+        get_boolean(key) {
+            assert.ok(values.has(key), `Unexpected setting: ${key}`);
+            return values.get(key);
+        },
         set_string: setValue,
         set_boolean: setValue,
         connect(signal, callback) {
@@ -312,6 +316,28 @@ for (const legacy of [true, false]) {
         assert.deepEqual([...messageTray.sources], [sharedSource]);
     });
 }
+
+test("turning off usage alerts removes queued usage alerts but not reset results", (t) => {
+    const { settings, enable } = fixture(t);
+    settings.set_boolean(SETTINGS_USAGE_NOTIFICATIONS, true);
+    enable();
+    const notify = runtime.monitors[0].args[1];
+    const deliveries = [];
+    messageTray.onSubmit = (alert) => alert.show();
+    notify("Shown usage alert", (shown) => deliveries.push(shown));
+    messageTray.onSubmit = null;
+    notify("Queued usage alert", (shown) => deliveries.push(shown));
+    notify("Reset redeemed");
+    const [, source] = messageTray.sources;
+    const [shown, queued, reset] = source.notifications;
+
+    settings.set_boolean(SETTINGS_USAGE_NOTIFICATIONS, false);
+
+    assert.deepEqual(deliveries, [true, false]);
+    assert.equal(queued.destroyed, true);
+    assert.equal(queued.handlers.size, 0);
+    assert.deepEqual(source.notifications, [shown, reset]);
+});
 
 test("Shell can drop a pending alert without a credential switch", (t) => {
     const { enable } = fixture(t);
