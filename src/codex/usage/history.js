@@ -1,7 +1,7 @@
 import GLib from "gi://GLib";
-import Gio from "gi://Gio";
+
 import { STATE_DIR } from "../../io/paths.js";
-import { appendFile, isCancellationError, readFile, writeFile } from "../../io/files.js";
+import { appendFile, isNotFoundError, readFile, writeFile } from "../../io/files.js";
 
 export const MAX_HISTORY_ENTRIES = 25_000;
 
@@ -11,24 +11,16 @@ export const HISTORY_PATH = GLib.build_filenamev([STATE_DIR, "codex", "usage-his
 export async function readHistory(path = HISTORY_PATH, cancellable = null) {
     cancellable?.set_error_if_cancelled();
 
-    let rows;
-    let history;
+    let text;
     try {
-        rows = parseJsonlHistory(await readFile(path, cancellable));
-        history = normalizeHistoryEntries(rows);
+        text = await readFile(path, cancellable);
     } catch (error) {
-        if (isCancellationError(error)) throw error;
-        if (
-            error instanceof Error &&
-            error.cause instanceof GLib.Error &&
-            error.cause.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)
-        ) {
-            return [];
-        }
-        console.error("Unable to read usage history", error);
-        return [];
+        if (isNotFoundError(error.cause)) return [];
+        throw error;
     }
-    if (history.length !== rows.length) {
+    const rows = parseJsonlHistory(text);
+    const history = normalizeHistoryEntries(rows);
+    if (history.length !== rows.length || (text.length > 0 && !text.endsWith("\n"))) {
         await rewriteHistory(history, path, cancellable);
     }
     cancellable?.set_error_if_cancelled();
@@ -36,7 +28,7 @@ export async function readHistory(path = HISTORY_PATH, cancellable = null) {
 }
 
 /**
- * Append a history row verbatim without reading, deduping, or normalizing existing history.
+ * Append a history row verbatim without parsing or normalizing existing history.
  * Callers must pre-normalize rows and decide whether appending is appropriate.
  */
 export async function appendHistoryRow(row, path = HISTORY_PATH, cancellable = null) {
@@ -72,7 +64,8 @@ export function normalizeHistoryEntries(rows) {
     const minTimestamp = Date.now() - MAX_HISTORY_AGE_SECONDS * 1000;
     return rows
         .map(normalizeHistoryEntry)
-        .filter((row) => row !== null && new Date(row.timestamp).getTime() >= minTimestamp)
+        .filter((row) => row !== null && Date.parse(row.timestamp) >= minTimestamp)
+        .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp))
         .slice(-MAX_HISTORY_ENTRIES);
 }
 
@@ -114,7 +107,7 @@ function omitUndefined(value) {
 }
 
 function isValidTimestamp(value) {
-    return value.length > 0 && Number.isFinite(new Date(value).getTime());
+    return typeof value === "string" && value.length > 0 && Number.isFinite(Date.parse(value));
 }
 
 export function hasSameQuotaValues(left, right) {

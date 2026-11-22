@@ -6,15 +6,21 @@ import { CodexError } from "../src/codex/error.js";
 
 const httpUrl = new URL("../src/io/http.js", import.meta.url).href;
 const filesUrl = new URL("../src/io/files.js", import.meta.url).href;
+const pathsUrl = new URL("../src/io/paths.js", import.meta.url).href;
 const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export const Gio = {
         _promisify() {},
         IOErrorEnum: { CANCELLED: 19 },
         File: class {},
+        FileQueryInfoFlags: { NOFOLLOW_SYMLINKS: 1 },
+        InputStream: class {},
         OutputStream: class {},
     };
     export const GLib = {
         PRIORITY_DEFAULT: 0,
+        build_filenamev: parts => parts.join('/'),
+        get_user_cache_dir: () => '/cache',
+        get_user_state_dir: () => '/state',
         Error: class extends Error {
             constructor(message, domain = Gio.IOErrorEnum, code = Gio.IOErrorEnum.CANCELLED) {
                 super(message);
@@ -25,7 +31,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         },
         Bytes: class {},
     };
-    export const Soup = { Session: class {}, Message: {} };
+    export const Soup = { Session: class {}, Message: {}, MessageFlags: { NO_REDIRECT: 2 } };
 `)}`;
 const giStubs = new Map(
     [
@@ -39,7 +45,7 @@ const giStubs = new Map(
 );
 const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
-        if (context.parentURL === httpUrl || context.parentURL === filesUrl) {
+        if ([httpUrl, filesUrl, pathsUrl].includes(context.parentURL)) {
             const url = giStubs.get(specifier);
             if (url) return { url, shortCircuit: true };
         }
@@ -68,10 +74,33 @@ const config = {
     },
 };
 
-function createHttp({ status = 200, text = '{"ok":true}', size, send, setup } = {}) {
+const MAX_RESPONSE_BYTES = 1024 * 1024;
+
+function createHttp({ status = 200, text = '{"ok":true}', send, read, close, setup } = {}) {
     const sessions = [];
+    const body = new TextEncoder().encode(text);
+    const stream = {
+        readArgs: [],
+        closeArgs: [],
+        bytesRead: 0,
+        async read_bytes_async(count, ...args) {
+            this.readArgs.push([count, ...args]);
+            if (read) return read(count, ...args);
+            const data = body.subarray(this.bytesRead, this.bytesRead + count);
+            this.bytesRead += data.length;
+            return { get_size: () => data.length, get_data: () => data };
+        },
+        async close_async(...args) {
+            this.closeArgs.push(args);
+            return close?.(...args);
+        },
+    };
     const message = {
         statusCode: status,
+        flags: 0,
+        add_flags(flags) {
+            this.flags |= flags;
+        },
         request_headers: { append() {} },
         set_request_body_from_bytes() {},
     };
@@ -81,14 +110,9 @@ function createHttp({ status = 200, text = '{"ok":true}', size, send, setup } = 
             sessions.push(this);
         }
 
-        async send_and_read_async(...args) {
+        async send_async(...args) {
             this.sendArgs = args;
-            return send
-                ? send(...args)
-                : {
-                      get_size: () => size ?? text?.length ?? 0,
-                      get_data: () => (text === null ? null : new TextEncoder().encode(text)),
-                  };
+            return send ? send(...args) : stream;
         }
 
         abort() {
@@ -98,12 +122,15 @@ function createHttp({ status = 200, text = '{"ok":true}', size, send, setup } = 
     Soup.Session = Session;
     Soup.Message = { new: () => message };
     setup?.({ Soup, GLib, message });
-    return { fetchJson, sessions, message, GLibError: GLib.Error };
+    return { fetchJson, sessions, message, stream, GLibError: GLib.Error };
 }
 
-test("fetchJson aborts its session after returning parsed JSON", async () => {
-    const { fetchJson, sessions, message } = createHttp();
-    const response = await fetchJson(url, config);
+test("fetchJson disables redirects and closes the request after parsing JSON", async () => {
+    const { fetchJson, sessions, message, stream } = createHttp();
+    const response = await fetchJson(url, config, { headers: { Authorization: "Bearer fake" } });
+
+    assert.equal(message.flags, Soup.MessageFlags.NO_REDIRECT);
+    assert.deepEqual(stream.closeArgs, [[0, null]]);
 
     assert.equal(response.ok, true);
     assert.equal(sessions.length, 1);
@@ -132,7 +159,7 @@ test("fetchJson forwards cancellation and aborts only once the pending request s
         rejectRequest = reject;
     });
     const { fetchJson, sessions, GLibError } = createHttp({ send: () => pending });
-    const cancellable = {};
+    const cancellable = { set_error_if_cancelled() {} };
     const request = fetchJson(url, config, { cancellable });
     const cancellation = new GLibError("Cancelled");
 
@@ -141,6 +168,59 @@ test("fetchJson forwards cancellation and aborts only once the pending request s
     rejectRequest(cancellation);
     await assert.rejects(request, (error) => error === cancellation);
     assert.equal(sessions[0].abortCount, 1);
+});
+
+test("fetchJson preserves read cancellation and closes the stream without cancellation", async () => {
+    let markReading;
+    let rejectRead;
+    const reading = new Promise((resolve) => {
+        markReading = resolve;
+    });
+    const pending = new Promise((_resolve, reject) => {
+        rejectRead = reject;
+    });
+    const { fetchJson, sessions, stream, GLibError } = createHttp({
+        read: () => {
+            markReading();
+            return pending;
+        },
+        close: () => {
+            throw new Error("Secondary close failure");
+        },
+    });
+    const cancellable = { set_error_if_cancelled() {} };
+    const request = fetchJson(url, config, { cancellable });
+    await reading;
+    assert.equal(stream.readArgs[0][2], cancellable);
+    assert.equal(sessions[0].abortCount, 0);
+
+    const cancellation = new GLibError("Cancelled");
+    rejectRead(cancellation);
+    await assert.rejects(request, (error) => error === cancellation);
+    assert.equal(sessions[0].abortCount, 1);
+    assert.deepEqual(stream.closeArgs, [[0, null]]);
+});
+
+test("fetchJson reads at most one decoded byte beyond the limit", async () => {
+    const { fetchJson, sessions, stream } = createHttp({
+        text: "x".repeat(2 * MAX_RESPONSE_BYTES),
+    });
+    await assert.rejects(fetchJson(url, config), {
+        kind: "malformed-response",
+        message: config.messages.responseTooLarge,
+    });
+    assert.equal(stream.bytesRead, MAX_RESPONSE_BYTES + 1);
+    assert.equal(stream.readArgs.at(-1)[0], 1);
+    assert.equal(sessions[0].abortCount, 1);
+    assert.deepEqual(stream.closeArgs, [[0, null]]);
+});
+
+test("fetchJson accepts exactly 1 MiB and decodes UTF-8 across chunks", async () => {
+    // Split a multibyte character across the first chunk boundary.
+    const text = `{"data":"${"x".repeat(64 * 1024 - 10)}é${"y".repeat(MAX_RESPONSE_BYTES - 64 * 1024 - 3)}"}`;
+    const { fetchJson, stream } = createHttp({ text });
+    assert.deepEqual(await fetchJson(url, config), JSON.parse(text));
+    assert.equal(stream.bytesRead, MAX_RESPONSE_BYTES);
 });
 
 for (const { name, response, kind, message } of [
@@ -157,14 +237,14 @@ for (const { name, response, kind, message } of [
         message: config.messages.refreshFailed,
     },
     {
-        name: "oversized response",
-        response: { size: 1024 * 1024 + 1 },
-        kind: "malformed-response",
-        message: config.messages.responseTooLarge,
+        name: "redirect response",
+        response: { status: 307, text: "Redirect" },
+        kind: "network",
+        message: config.messages.refreshFailed,
     },
     {
         name: "empty response",
-        response: { text: null },
+        response: { text: "" },
         kind: "malformed-response",
         message: config.messages.emptyResponse,
     },
@@ -182,7 +262,7 @@ for (const { name, response, kind, message } of [
     },
 ]) {
     test(`fetchJson aborts after ${name} without changing the response error`, async () => {
-        const { fetchJson, sessions } = createHttp(response);
+        const { fetchJson, sessions, stream } = createHttp(response);
 
         await assert.rejects(fetchJson(url, config), (error) => {
             assert.ok(error instanceof CodexError);
@@ -191,6 +271,7 @@ for (const { name, response, kind, message } of [
             return true;
         });
         assert.equal(sessions[0].abortCount, 1);
+        assert.deepEqual(stream.closeArgs, [[0, null]]);
     });
 }
 

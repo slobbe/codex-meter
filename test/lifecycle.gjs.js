@@ -1,13 +1,24 @@
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
-import { appendFile, readFile, readJsonFile, writeFile, writeJsonFile } from "../src/io/files.js";
-import { getCodexCredentials } from "../src/codex/auth/auth.js";
-import { readSnapshot, writeSnapshot } from "../src/codex/usage/snapshot.js";
-import { appendHistoryRow, readHistory, rewriteHistory } from "../src/codex/usage/history.js";
-import { listCodexBankedResets, redeemCodexBankedReset } from "../src/codex/banked-resets/api.js";
-import { refreshCodexUsage } from "../src/codex/usage/api.js";
-
 const directory = GLib.dir_make_tmp("codex-meter-cancellation-XXXXXX");
+const stateBase = Gio.File.new_for_path(GLib.build_filenamev([directory, "state"]));
+const stateLink = Gio.File.new_for_path(GLib.build_filenamev([directory, "state-link"]));
+stateBase.make_directory(null);
+stateLink.make_symbolic_link(stateBase.get_path(), null);
+const getStateDir = GLib.get_user_state_dir;
+GLib.get_user_state_dir = () => stateLink.get_path();
+const { STATE_DIR } = await import("../src/io/paths.js");
+GLib.get_user_state_dir = getStateDir;
+
+const { appendFile, readFile, readJsonFile, writeFile, writeJsonFile } =
+    await import("../src/io/files.js");
+const { getCodexCredentials } = await import("../src/codex/auth/auth.js");
+const { readSnapshot, writeSnapshot } = await import("../src/codex/usage/snapshot.js");
+const { appendHistoryRow, readHistory, rewriteHistory } =
+    await import("../src/codex/usage/history.js");
+const { listCodexBankedResets, redeemCodexBankedReset } =
+    await import("../src/codex/banked-resets/api.js");
+const { refreshCodexUsage } = await import("../src/codex/usage/api.js");
 const path = GLib.build_filenamev([directory, "missing", "file.json"]);
 const cancellable = new Gio.Cancellable();
 cancellable.cancel();
@@ -90,11 +101,85 @@ async function testInFlightCancellationPreservation() {
     }
 }
 
+function setFileMode(file, mode) {
+    file.set_attribute_uint32("unix::mode", mode, Gio.FileQueryInfoFlags.NONE, null);
+}
+
+function assertMode(file, mode) {
+    const info = file.query_info("unix::mode", Gio.FileQueryInfoFlags.NONE, null);
+    if ((info.get_attribute_uint32("unix::mode") & 0o777) !== mode) {
+        throw new Error(`Incorrect permissions for ${file.get_path()}`);
+    }
+}
+
+async function testLinkedStorage() {
+    const outside = Gio.File.new_for_path(GLib.build_filenamev([directory, "outside"]));
+    outside.make_directory(null);
+    setFileMode(outside, 0o755);
+    const original = outside.get_child("original");
+    GLib.file_set_contents(original.get_path(), "unchanged");
+    setFileMode(original, 0o644);
+    const root = Gio.File.new_for_path(STATE_DIR);
+    const nested = root.get_child("nested");
+    const leaf = root.get_child("leaf");
+    const hard = root.get_child("hard");
+
+    async function assertUnsafe(file) {
+        for (const operation of [writeFile, appendFile]) {
+            try {
+                await operation(file.get_path(), "must not write");
+            } catch (error) {
+                if (!error.message.includes("Not a safe storage")) throw error;
+                continue;
+            }
+            throw new Error(`Used linked storage: ${file.get_path()}`);
+        }
+    }
+
+    try {
+        root.make_symbolic_link(outside.get_path(), null);
+        await assertUnsafe(root.get_child("new").get_child("file.json"));
+        root.delete(null);
+        root.make_directory(null);
+        nested.make_symbolic_link(outside.get_path(), null);
+        leaf.make_symbolic_link(original.get_path(), null);
+        const link = Gio.Subprocess.new(
+            ["ln", original.get_path(), hard.get_path()],
+            Gio.SubprocessFlags.NONE,
+        );
+        link.wait_check(null);
+        await assertUnsafe(nested.get_child("original"));
+        await assertUnsafe(leaf);
+        await assertUnsafe(hard);
+        assertMode(outside, 0o755);
+        assertMode(original, 0o644);
+        if (
+            (await readFile(original.get_path())) !== "unchanged" ||
+            outside.get_child("new").query_exists(null)
+        ) {
+            throw new Error("Linked storage changed an external path");
+        }
+        console.log("Passed linked directory and file permission checks.");
+    } finally {
+        if (
+            root.query_file_type(Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null) ===
+            Gio.FileType.DIRECTORY
+        ) {
+            for (const file of [hard, leaf, nested]) {
+                if (file.query_exists(null)) file.delete(null);
+            }
+        }
+        if (root.query_exists(null)) root.delete(null);
+        original.delete(null);
+        outside.delete(null);
+    }
+}
+
 async function testAsyncFilesystemMetadata() {
     const mkdir = GLib.mkdir_with_parents;
     const chmod = GLib.chmod;
     const fileTest = GLib.file_test;
-    const localDirectory = GLib.build_filenamev([directory, "private"]);
+    const localDirectory = GLib.build_filenamev([STATE_DIR, "private"]);
     const nestedDirectory = GLib.build_filenamev([localDirectory, "nested"]);
     const localPath = GLib.build_filenamev([nestedDirectory, "file.json"]);
     const appendPath = GLib.build_filenamev([nestedDirectory, "append.json"]);
@@ -102,15 +187,11 @@ async function testAsyncFilesystemMetadata() {
         throw new Error("Synchronous filesystem metadata operation");
     };
     try {
+        setFileMode(stateBase, 0o755);
         GLib.mkdir_with_parents = GLib.chmod = GLib.file_test = forbidden;
         await Promise.all([writeFile(localPath, "first"), appendFile(appendPath, "line")]);
         for (const target of [nestedDirectory, localPath, appendPath]) {
-            Gio.File.new_for_path(target).set_attribute_uint32(
-                "unix::mode",
-                0o777,
-                Gio.FileQueryInfoFlags.NONE,
-                null,
-            );
+            setFileMode(Gio.File.new_for_path(target), 0o777);
         }
         await writeFile(localPath, "replacement");
         await appendFile(appendPath, "second\n");
@@ -122,15 +203,10 @@ async function testAsyncFilesystemMetadata() {
             [localPath, 0o600],
             [appendPath, 0o600],
         ]) {
-            const info = Gio.File.new_for_path(target).query_info(
-                "unix::mode",
-                Gio.FileQueryInfoFlags.NONE,
-                null,
-            );
-            if ((info.get_attribute_uint32("unix::mode") & 0o777) !== expected) {
-                throw new Error(`Incorrect permissions for ${target}`);
-            }
+            assertMode(Gio.File.new_for_path(target), expected);
         }
+        assertMode(Gio.File.new_for_path(STATE_DIR), 0o700);
+        assertMode(stateBase, 0o755);
         for (const operation of [writeFile, appendFile]) {
             let caught = false;
             try {
@@ -154,13 +230,19 @@ async function testAsyncFilesystemMetadata() {
 }
 
 async function testMetadataCancellation() {
-    const localPath = GLib.build_filenamev([directory, "file.json"]);
+    const parent = Gio.File.new_for_path(GLib.build_filenamev([STATE_DIR, "metadata"]));
+    const file = parent.get_child("file.json");
+    const localPath = file.get_path();
     const original = new GLib.Error(
         Gio.io_error_quark(),
         Gio.IOErrorEnum.CANCELLED,
         "cancelled metadata",
     );
     for (const method of ["make_directory_async", "query_info_async", "set_attributes_async"]) {
+        if (method === "set_attributes_async") {
+            parent.make_directory(null);
+            setFileMode(parent, 0o755);
+        }
         const implementation = Gio.File.prototype[method];
         try {
             for (const operation of [writeFile, appendFile]) {
@@ -186,20 +268,19 @@ async function testMetadataCancellation() {
     }
     const setAttributes = Gio.File.prototype.set_attributes_async;
     try {
-        for (const operation of [writeFile, appendFile]) {
-            const active = new Gio.Cancellable();
-            Gio.File.prototype.set_attributes_async = async function (...args) {
-                if (args.at(-1) !== active) throw new Error("chmod lost cancellation");
-                if (this.get_path() === localPath) throw original;
-                return setAttributes.apply(this, args);
-            };
-            await assertOriginalCancellation(() => operation(localPath, "text", active), original);
-            Gio.File.new_for_path(localPath).delete(null);
-        }
+        GLib.file_set_contents(localPath, "existing\n");
+        setFileMode(file, 0o644);
+        const active = new Gio.Cancellable();
+        Gio.File.prototype.set_attributes_async = async function (...args) {
+            if (args.at(-1) !== active) throw new Error("chmod lost cancellation");
+            if (this.get_path() === localPath) throw original;
+            return setAttributes.apply(this, args);
+        };
+        await assertOriginalCancellation(() => appendFile(localPath, "text", active), original);
     } finally {
         Gio.File.prototype.set_attributes_async = setAttributes;
-        const file = Gio.File.new_for_path(localPath);
         if (file.query_exists(null)) file.delete(null);
+        parent.delete(null);
     }
     console.log("Passed mkdir, directory query, and directory/file chmod cancellation checks.");
 }
@@ -266,6 +347,7 @@ async function testAsyncAuthErrors() {
 }
 
 try {
+    await testLinkedStorage();
     await testAsyncFilesystemMetadata();
     await testAsyncAuthErrors();
     await testMetadataCancellation();
@@ -290,5 +372,9 @@ try {
     console.log(`Passed ${operations.length} real GJS cancellation propagation checks.`);
     await testInFlightCancellationPreservation();
 } finally {
+    const stateRoot = Gio.File.new_for_path(STATE_DIR);
+    if (stateRoot.query_exists(null)) stateRoot.delete(null);
+    stateLink.delete(null);
+    stateBase.delete(null);
     Gio.File.new_for_path(directory).delete(null);
 }
