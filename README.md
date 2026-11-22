@@ -23,7 +23,7 @@ A GNOME Shell extension that shows your Codex usage limits, resets, and usage tr
 - **Display options**: Choose between percentages, bars or circular progress indicators.
 - **Notifications**: Get alerts when a usage window runs low, is exhausted, or resets after exhaustion.
 
-    The **Usage notifications** switch controls all three alert types. A reset alert requires a window previously observed at 100% usage or more. Its scheduled reset time must pass. A successful usage refresh must then show a later reset time in the future and usage below 100%. Banked resets do not trigger reset alerts. Each alert applies to one window, not the whole account. Notification state clears when you turn off notifications or disable the extension.
+    The **Usage notifications** switch controls all three alert types. A reset alert requires a window previously observed at 100% usage or more. Its scheduled reset time must pass. A successful usage refresh must then show a later reset time in the future and usage below 100%. Banked resets do not trigger reset alerts. Each alert applies to one window, not the whole account. Turning off usage notifications removes queued usage alerts. Turning off notifications or disabling the extension clears notification state.
 
 ## Requirements
 
@@ -54,7 +54,7 @@ If GNOME does not pick it up immediately, log out and back in.
 
 By default, Codex Meter reads `~/.codex/auth.json`. To use a different local credentials file, open **Preferences → Credentials → Browse…** and select the JSON file. Use the reset button to restore the default path.
 
-Usage caches and history are kept separately for each credentials-file path. The extension never modifies the credentials file.
+The extension never modifies the credentials file. It keeps usage history separate for each account and credentials-file path. It shows a cached snapshot only when it matches the selected account. If the credentials do not identify an account, the extension keeps usage data in memory only. Older cache and history files with no account information stay on disk, but the extension no longer uses them.
 
 ## Uninstall
 
@@ -78,7 +78,7 @@ Codex Meter relies on ChatGPT backend endpoints, so upstream changes may affect 
 
 Codex Meter reads credentials from the file selected in Preferences (default `~/.codex/auth.json`) to request usage and banked reset data from ChatGPT. It does not store credentials or send them anywhere else.
 
-Codex Meter caches usage data in `~/.cache/codex-meter` and `~/.local/state/codex-meter`. It keeps up to 30 days of usage history, with a limit of 25,000 entries.
+Codex Meter caches usage data in `~/.cache/codex-meter` and `~/.local/state/codex-meter`. It uses up to 30 days of usage history, with a limit of 25,000 entries. It removes older entries from disk in batches.
 
 ## License
 

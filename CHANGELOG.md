@@ -21,6 +21,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Changed the activity chart to a four-week grid with six-hour blocks that use the GNOME accent color.
 - Increased local usage history retention from 21 to 30 days.
 
+### Fixed
+
+- Fixed preferences not opening on GNOME Shell 45 and 46.
+- Prevented reset redemption for the wrong account when the credentials file changes.
+- Prevented usage data from a previous account appearing after an account change.
+- Fixed reset confirmation with animations off. Enter no longer redeems a reset by default.
+- Fixed automatic redemption missing a low-quota trigger or selecting the wrong expiration date.
+- Fixed unavailable resets remaining in the menu after a redemption attempt.
+- Fixed queued usage alerts still appearing after notifications are turned off.
+- Fixed the refresh interval control accepting values above 30 minutes.
+- Fixed damaged history entries hiding valid usage history.
+- Fixed pauses in GNOME Shell when processing large usage histories.
+- Improved keyboard and screen reader access to the activity chart and panel quota values.
+- Improved the readability of warning and error messages in the light theme.
+
 ## v0.12.0 (2026-11-13)
 
 ### Added
