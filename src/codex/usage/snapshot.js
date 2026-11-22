@@ -4,17 +4,27 @@ import { isCancellationError, readJsonFile, writeJsonFile } from "../../io/files
 
 export const SNAPSHOT_PATH = GLib.build_filenamev([CACHE_DIR, "codex", "snapshot.json"]);
 
-export async function writeSnapshot(snapshot, cancellable = null, path = SNAPSHOT_PATH) {
-    await writeJsonFile(path, snapshot, cancellable);
+export async function writeSnapshot(
+    snapshot,
+    cancellable = null,
+    path = SNAPSHOT_PATH,
+    accountFingerprint = null,
+) {
+    const data = accountFingerprint ? { accountFingerprint, snapshot } : snapshot;
+    await writeJsonFile(path, data, cancellable);
 }
 
-export async function readSnapshot(cancellable = null, path = SNAPSHOT_PATH) {
+export async function readSnapshot(
+    cancellable = null,
+    path = SNAPSHOT_PATH,
+    accountFingerprint = null,
+) {
     try {
         const raw = await readJsonFile(path, cancellable);
-        if (!isUsageSnapshot(raw)) {
-            return null;
-        }
-        return raw;
+        const snapshot = accountFingerprint
+            ? raw?.accountFingerprint === accountFingerprint && raw.snapshot
+            : raw;
+        return isUsageSnapshot(snapshot) ? snapshot : null;
     } catch (error) {
         if (isCancellationError(error)) throw error;
         return null;

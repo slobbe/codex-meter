@@ -6,6 +6,12 @@ import { toUsageSnapshot } from "../src/codex/usage/response.js";
 const monitorUrl = new URL("../src/background/monitor.js", import.meta.url).href;
 const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export const api = { list: null, redeem: null };
+    export const credentials = { accessToken: 'test-token', accountId: 'test-account' };
+    export async function getCodexCredentials(cancellable) {
+        cancellable?.set_error_if_cancelled();
+        return credentials;
+    }
+    export const hasSameCodexAccount = (left, right) => !!left && left === right;
     export const listCodexBankedResets = options => api.list(options);
     export const redeemCodexBankedReset = (id, options) => api.redeem(id, options);
     export class Cancellable {
@@ -53,10 +59,10 @@ const hooks = registerHooks({
     },
 });
 let CodexMonitor;
-let api;
+let api, credentials;
 try {
     ({ CodexMonitor } = await import(monitorUrl));
-    ({ api } = await import(stubUrl));
+    ({ api, credentials } = await import(stubUrl));
 } finally {
     hooks.deregister();
 }
@@ -90,9 +96,15 @@ function fixture(deliver = (_message, settle) => settle?.(true)) {
         notifications.push(message);
         deliver(message, settle);
     });
+    monitor._accountCredentials = credentials;
     monitor.onChange = (state) => changes.push(state);
     monitor.refreshUsage = async () => {};
     return { monitor, notifications, changes, settings, callbacks };
+}
+
+function confirmManualReset(monitor, creditId) {
+    monitor._bankedResetPreparation = { creditId, credentials };
+    return monitor.redeemBankedReset(creditId);
 }
 
 function notificationQuota(usedPercent, overrides = {}) {
@@ -518,7 +530,7 @@ test("monitor replacement cannot reuse exhaustion after discarding deferred earl
     await first.refreshUsage();
     const response = deferred();
     api.redeem = () => response.promise;
-    const redeeming = first.redeemBankedReset("credit");
+    const redeeming = confirmManualReset(first, "credit");
     now = 1_999;
     snapshot = { quotas: [notificationQuota(0, { resetAt: 4_000 })] };
     await first.refreshUsage();
@@ -580,7 +592,7 @@ test("failed banked redemption preserves scheduled-reset eligibility", async (t)
     api.redeem = async () => {
         throw new Error("redemption failed");
     };
-    await monitor.redeemBankedReset("credit");
+    await confirmManualReset(monitor, "credit");
     now = 2_001;
     monitor._usageService.refresh = async () => ({
         quotas: [notificationQuota(0, { resetAt: 4_000 })],
@@ -615,7 +627,7 @@ for (const succeeds of [false, true]) {
         const response = deferred();
         api.redeem = () => response.promise;
         api.list = async () => ({ credits: [] });
-        const redeeming = monitor.redeemBankedReset("credit");
+        const redeeming = confirmManualReset(monitor, "credit");
         await monitor._refreshUsageOnce();
         assert.equal(resetDeliveries, 1, "dropped reset must not retry during redemption");
         if (succeeds) response.resolve();
@@ -639,7 +651,7 @@ for (const succeeds of [false, true]) {
             const response = deferred();
             api.redeem = () => response.promise;
             api.list = async () => ({ credits: [] });
-            const redeeming = monitor.redeemBankedReset("credit");
+            const redeeming = confirmManualReset(monitor, "credit");
             now = recoveredAt;
             monitor._usageService.refresh = async () => ({
                 quotas: [
@@ -718,7 +730,7 @@ for (const automatic of [false, true]) {
             monitor._autoApplyBankedReset = automatic;
             const redeeming = automatic
                 ? monitor._refreshBankedResetsForAutoApply()
-                : monitor.redeemBankedReset("credit");
+                : confirmManualReset(monitor, "credit");
             if (startsDuringRedemption) refreshing = monitor.refreshUsage();
             await redeemed.promise;
             now = 1_500;
@@ -907,6 +919,24 @@ test("overlapping automatic triggers redeem at most one credit", async () => {
     assert.equal(calls, 2, "one pre-redemption and one post-redemption inventory fetch");
 });
 
+test("a low-quota trigger joins an expiry check that finds no expiring credit", async () => {
+    const { monitor, notifications } = fixture();
+    const snapshot = enableUsageAutoApply(monitor);
+    monitor._autoApplyBankedReset = true;
+    const response = deferred();
+    const ids = [];
+    api.list = () => response.promise;
+    api.redeem = async (id) => ids.push(id);
+
+    const expiry = monitor._refreshBankedResetsForAutoApply();
+    const usage = monitor._refreshBankedResetsForAutoApply(snapshot);
+    response.resolve(inventory);
+    await Promise.all([expiry, usage]);
+
+    assert.deepEqual(ids, [earlier.id]);
+    assert.match(notifications[0], /near a usage limit/);
+});
+
 test("live refresh saves the credit near reset and only redeems once when quota runs low again", async (t) => {
     const { monitor } = fixture();
     enableUsageAutoApply(monitor);
@@ -967,14 +997,16 @@ for (const outcome of ["success", "failure", "failure with cached inventory"]) {
         const { monitor, changes } = fixture();
         const options = { maxAgeMs: 5 * 60 * 1000 };
         const response = deferred();
+        const requested = deferred();
         let calls = 0;
         api.list = () => {
             calls++;
+            requested.resolve();
             return response.promise;
         };
         if (outcome === "failure with cached inventory") monitor._bankedResetSnapshot = inventory;
         const refresh = monitor.refreshBankedResets(options);
-        await Promise.resolve();
+        await requested.promise;
         assert.equal(calls, 1, "first popup fetches even at timestamp zero");
         now = 20_000;
         const shared = monitor.refreshBankedResets(options);
@@ -1089,9 +1121,11 @@ test("available selections without a parseable expiry retain API availability se
 test("inventory refresh deduplicates popup, preparation, and reentrant loading requests", async () => {
     const { monitor } = fixture();
     const response = deferred();
+    const requested = deferred();
     let calls = 0;
     api.list = () => {
         calls++;
+        requested.resolve();
         return response.promise;
     };
     let reentrant;
@@ -1103,6 +1137,7 @@ test("inventory refresh deduplicates popup, preparation, and reentrant loading r
     assert.equal(monitor.state.bankedResetError, null);
     const refresh = monitor.refreshBankedResets();
     const prepare = monitor.prepareBankedReset(selected.id);
+    await requested.promise;
     assert.equal(monitor.state.bankedResetLoading, true);
     response.resolve(inventory);
     assert.equal(await refresh, inventory);
@@ -1287,7 +1322,7 @@ test("redemption waits out older inventory requests and fetches post-redemption 
         consumed.resolve();
     };
     const refresh = monitor.refreshBankedResets();
-    const redeem = monitor.redeemBankedReset(selected.id);
+    const redeem = confirmManualReset(monitor, selected.id);
     await consumed.promise;
     assert.equal(monitor.state.redeemingBankedReset, true);
     oldResponse.resolve(inventory);
@@ -1323,13 +1358,15 @@ test("background auto-redemption still selects the earliest expiring reset and r
 test("stop cancels shared inventory and suppresses late state changes and notifications", async () => {
     const { monitor, changes, notifications } = fixture();
     const response = deferred();
+    const requested = deferred();
     let cancellable;
     api.list = (options) => {
         cancellable = options.cancellable;
+        requested.resolve();
         return response.promise;
     };
     const prepare = monitor.prepareBankedReset(selected.id);
-    await Promise.resolve();
+    await requested.promise;
     monitor.stop();
     const changeCount = changes.length;
     assert.equal(cancellable.cancelled, true);

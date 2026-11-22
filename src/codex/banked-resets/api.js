@@ -1,6 +1,7 @@
 import GLib from "gi://GLib";
 import { fetchJson } from "../../io/http.js";
-import { getCodexCredentials } from "../auth/auth.js";
+import { createCodexAuthHeaders, getCodexCredentials } from "../auth/auth.js";
+import { CodexError } from "../error.js";
 import { toListResponse, toRedeemResponse } from "./response.js";
 
 const CODEX_BANKED_RESETS_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
@@ -23,49 +24,58 @@ const CODEX_BANKED_RESETS_API_CONFIG = {
 export async function listCodexBankedResets(options = {}) {
     const cancellable = options.cancellable ?? null;
     cancellable?.set_error_if_cancelled();
-    const credentials = await getCodexCredentials(cancellable, options.credentialsPath);
+    const credentials =
+        options.credentials ?? (await getCodexCredentials(cancellable, options.credentialsPath));
     cancellable?.set_error_if_cancelled();
     const response = await fetchJson(CODEX_BANKED_RESETS_URL, CODEX_BANKED_RESETS_API_CONFIG, {
-        headers: createCodexBankedResetHeaders(credentials.accessToken, credentials.accountId),
-        cancellable: options.cancellable ?? null,
+        headers: { ...createCodexAuthHeaders(credentials), originator: "Codex Desktop" },
+        cancellable,
     });
-    cancellable?.set_error_if_cancelled();
+    await getCodexCredentials(cancellable, options.credentialsPath, credentials);
     return toListResponse(response);
 }
 
 export async function redeemCodexBankedReset(creditId, options = {}) {
-    const cancellable = options.cancellable ?? null;
-    cancellable?.set_error_if_cancelled();
-    const credentials = await getCodexCredentials(cancellable, options.credentialsPath);
-    cancellable?.set_error_if_cancelled();
+    const preflightCancellable = options.cancellable ?? null;
+    const consumeCancellable = options.consumeCancellable ?? preflightCancellable;
+    preflightCancellable?.set_error_if_cancelled();
+    if (!options.credentials) {
+        throw new CodexError(
+            "credentials-changed",
+            "Check banked Codex resets again before redeeming.",
+        );
+    }
+    const credentials = await getCodexCredentials(
+        preflightCancellable,
+        options.credentialsPath,
+        options.credentials,
+    );
+    preflightCancellable?.set_error_if_cancelled();
     const request = {
         credit_id: creditId,
         redeem_request_id: GLib.uuid_string_random(),
     };
+    consumeCancellable?.set_error_if_cancelled();
+    if (options.onDispatch?.() === false) {
+        throw new CodexError(
+            "credentials-changed",
+            "The Codex account changed. Try again with the current account.",
+        );
+    }
     const response = await fetchJson(
         CODEX_REDEEM_BANKED_RESET_URL,
         CODEX_BANKED_RESETS_API_CONFIG,
         {
             method: "POST",
             headers: {
-                ...createCodexBankedResetHeaders(credentials.accessToken, credentials.accountId),
+                ...createCodexAuthHeaders(credentials),
+                originator: "Codex Desktop",
                 "Content-Type": "application/json",
             },
             body: JSON.stringify(request),
-            cancellable: options.cancellable ?? null,
+            cancellable: consumeCancellable,
         },
     );
-    cancellable?.set_error_if_cancelled();
+    consumeCancellable?.set_error_if_cancelled();
     return toRedeemResponse(response);
-}
-
-function createCodexBankedResetHeaders(accessToken, accountId) {
-    const headers = {
-        Authorization: `Bearer ${accessToken}`,
-        originator: "Codex Desktop",
-    };
-    if (accountId) {
-        headers["ChatGPT-Account-ID"] = accountId;
-    }
-    return headers;
 }

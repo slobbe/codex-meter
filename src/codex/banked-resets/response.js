@@ -67,6 +67,14 @@ export function toListResponse(response) {
     return /** @type {CodexBankedResetListResponse} */ (response);
 }
 
+export class BankedResetRedemptionError extends CodexError {
+    /** @param {string} outcome @param {string} message */
+    constructor(outcome, message) {
+        super("redemption-failed", message, `Codex banked reset redemption returned ${outcome}`);
+        this.outcome = outcome;
+    }
+}
+
 /**
  * @param {Record<string, unknown>} response
  * @returns {{code: "reset", windows_reset?: number}}
@@ -100,29 +108,23 @@ export function toRedeemResponse(response) {
         default:
             throwUnexpected("code is missing or not a recognized redemption outcome");
     }
-    throw new CodexError(
-        "redemption-failed",
-        failureMessage,
-        `Codex banked reset redemption returned ${response.code}`,
-    );
+    throw new BankedResetRedemptionError(response.code, failureMessage);
 }
 
 /** @param {CodexBankedResetCredit[]} credits */
 export function selectCreditToRedeem(credits) {
-    const available = credits.filter((credit) => credit.status === "available");
-    if (available.length === 0) return null;
-    if (
-        available.some(
-            (credit) =>
-                typeof credit.expires_at !== "string" ||
-                !Number.isFinite(Date.parse(credit.expires_at)),
-        )
-    ) {
-        return available[0];
+    let earliest = null;
+    let earliestExpiry = Infinity;
+    for (const credit of credits) {
+        if (credit.status !== "available") continue;
+        earliest ??= credit;
+        const expiresAt = Date.parse(credit.expires_at ?? "");
+        if (expiresAt < earliestExpiry) {
+            earliest = credit;
+            earliestExpiry = expiresAt;
+        }
     }
-    return available.toSorted(
-        (left, right) => Date.parse(left.expires_at ?? "") - Date.parse(right.expires_at ?? ""),
-    )[0];
+    return earliest;
 }
 
 /**

@@ -11,16 +11,10 @@ export function resolveCredentialsPath(path = DEFAULT_CREDENTIALS_PATH) {
         : path;
 }
 
-export async function getCodexAccessToken(
-    cancellable = null,
-    credentialsPath = DEFAULT_CREDENTIALS_PATH,
-) {
-    return (await getCodexCredentials(cancellable, credentialsPath)).accessToken;
-}
-
 export async function getCodexCredentials(
     cancellable = null,
     credentialsPath = DEFAULT_CREDENTIALS_PATH,
+    expectedCredentials = null,
 ) {
     const auth = await readCodexAuth(resolveCredentialsPath(credentialsPath), cancellable);
     cancellable?.set_error_if_cancelled();
@@ -36,10 +30,67 @@ export async function getCodexCredentials(
             "Codex auth data does not contain a valid access token",
         );
     }
-    return {
-        accessToken: accessToken.trim(),
-        accountId: parseCodexAccountId(auth),
+    const token = accessToken.trim();
+    const configuredAccount = parseCodexAccountId(auth);
+    const claims = readAccessTokenClaims(token);
+    const account = claims?.["https://api.openai.com/auth"];
+    const tokenAccount = parseCodexAccountId({
+        tokens: { account_id: account?.chatgpt_account_id },
+    });
+    if (tokenAccount && configuredAccount && tokenAccount !== configuredAccount) {
+        throw new CodexError(
+            "missing-auth",
+            "The Codex token does not match the selected account. Sign in again.",
+        );
+    }
+
+    // Use the bearer token's account claim, not an uncorroborated file field, for cache isolation.
+    // This reads local identity metadata. The server authenticates the token on each request.
+    const principal = account?.chatgpt_user_id ?? account?.user_id ?? claims?.sub;
+    const credentials = {
+        accessToken: token,
+        accountId: tokenAccount ?? configuredAccount,
+        accountFingerprint: tokenAccount
+            ? GLib.compute_checksum_for_string(
+                  GLib.ChecksumType.SHA256,
+                  JSON.stringify([tokenAccount, typeof principal === "string" ? principal : null]),
+                  -1,
+              )
+            : null,
     };
+    if (expectedCredentials && !hasSameCodexAccount(credentials, expectedCredentials)) {
+        throw new CodexError(
+            "credentials-changed",
+            "The Codex account changed. Try again with the current account.",
+        );
+    }
+    return credentials;
+}
+
+export function hasSameCodexAccount(left, right) {
+    if (!left || !right) return false;
+    if (left.accountFingerprint || right.accountFingerprint) {
+        return left.accountFingerprint === right.accountFingerprint;
+    }
+    return left.accessToken === right.accessToken && left.accountId === right.accountId;
+}
+
+export function createCodexAuthHeaders({ accessToken, accountId }) {
+    const headers = { Authorization: `Bearer ${accessToken}` };
+    if (accountId) headers["ChatGPT-Account-ID"] = accountId;
+    return headers;
+}
+
+function readAccessTokenClaims(token) {
+    const parts = token.split(".");
+    if (parts.length !== 3 || parts.some((part) => !/^[A-Za-z0-9_-]+$/.test(part))) return null;
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    try {
+        const bytes = GLib.base64_decode(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
+        return JSON.parse(new TextDecoder().decode(bytes));
+    } catch (_error) {
+        return null;
+    }
 }
 
 async function readCodexAuth(path, cancellable) {

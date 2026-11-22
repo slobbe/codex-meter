@@ -141,11 +141,14 @@ test("selectCreditToRedeem selects earliest valid expiry", () => {
     assert.equal(selectCreditToRedeem([creditA, creditB]), creditB);
 });
 
-test("selectCreditToRedeem returns first available credit when any available expiry is invalid", () => {
-    const creditA = { id: "credit-a", status: "available", expires_at: "2026-07-05T00:00:00Z" };
-    const creditB = { id: "credit-b", status: "available" };
+test("selectCreditToRedeem prefers the earliest known expiry even with unknown expiries", () => {
+    const later = { id: "later", status: "available", expires_at: "2026-07-05T00:00:00Z" };
+    const earlier = { id: "earlier", status: "available", expires_at: "2026-07-03T00:00:00Z" };
+    const unknown = { id: "unknown", status: "available" };
 
-    assert.equal(selectCreditToRedeem([creditA, creditB]), creditA);
+    assert.equal(selectCreditToRedeem([later, unknown, earlier]), earlier);
+    assert.equal(selectCreditToRedeem([unknown, later, earlier]), earlier);
+    assert.equal(selectCreditToRedeem([unknown, { ...unknown }]), unknown);
 });
 
 test("selectCreditToRedeem ignores redeemed and unavailable credits", () => {

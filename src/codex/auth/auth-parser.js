@@ -15,9 +15,7 @@ export function parseCodexAccessToken(auth) {
 export function parseCodexAccountId(auth) {
     const accountId = auth.tokens?.account_id;
 
-    if (typeof accountId !== "string" || accountId.trim().length === 0) {
-        return null;
-    }
-
-    return accountId.trim();
+    if (typeof accountId !== "string") return null;
+    const trimmed = accountId.trim();
+    return trimmed && !/[\s\p{Cc}]/u.test(trimmed) ? trimmed : null;
 }

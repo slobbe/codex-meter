@@ -1,5 +1,5 @@
 import { fetchJson } from "../../io/http.js";
-import { getCodexAccessToken } from "../auth/auth.js";
+import { createCodexAuthHeaders, getCodexCredentials } from "../auth/auth.js";
 import { toUsageSnapshot } from "./response.js";
 
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
@@ -19,13 +19,14 @@ const CODEX_API_CONFIG = {
 export async function refreshCodexUsage(options = {}) {
     const cancellable = options.cancellable ?? null;
     cancellable?.set_error_if_cancelled();
-    const token = await getCodexAccessToken(cancellable, options.credentialsPath);
+    const credentials =
+        options.credentials ?? (await getCodexCredentials(cancellable, options.credentialsPath));
     cancellable?.set_error_if_cancelled();
     const apiResponse = await fetchJson(CODEX_USAGE_URL, CODEX_API_CONFIG, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: createCodexAuthHeaders(credentials),
         cancellable,
     });
 
-    cancellable?.set_error_if_cancelled();
+    await getCodexCredentials(cancellable, options.credentialsPath, credentials);
     return toUsageSnapshot(apiResponse);
 }

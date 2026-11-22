@@ -10,16 +10,20 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export const STATE_DIR = '/state';
     export const DEFAULT_CREDENTIALS_PATH = '~/.codex/auth.json';
     export const SNAPSHOT_PATH = '/cache/codex/snapshot.json';
-    export const HISTORY_PATH = '/state/codex/usage-history.jsonl';
     export const resolveCredentialsPath = (path = DEFAULT_CREDENTIALS_PATH) => path;
+    export const credentials = { accountFingerprint: 'test-account' };
+    export async function getCodexCredentials(cancellable) {
+        cancellable?.set_error_if_cancelled();
+        return credentials;
+    }
+    export const hasSameCodexAccount = (left, right) => !!left && left === right;
     export class CancellationError extends Error {}
     export class Cancellable {
         cancel() { this.cancelled = true; }
         is_cancelled() { return !!this.cancelled; }
         set_error_if_cancelled() { if (this.cancelled) throw new CancellationError('Cancelled'); }
     }
-    export default { Cancellable, Error: CancellationError, IOErrorEnum: { CANCELLED: 1 } };
-    CancellationError.prototype.matches = () => true;
+    export default { Cancellable, build_filenamev: parts => parts.join('/') };
     export const isCancellationError = error => error instanceof CancellationError;
     export const refreshCodexUsage = options => io.fetch(options);
     export const readSnapshot = cancellable => io.cacheRead(cancellable);
@@ -27,8 +31,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export const readHistory = (path, cancellable) => io.historyRead(cancellable);
     export const appendHistoryRow = (row, path, cancellable) => io.append(cancellable);
     export const rewriteHistory = (rows, path, cancellable) => io.rewrite(cancellable);
-    export const MAX_HISTORY_ENTRIES = 1;
-    export const normalizeHistoryEntries = rows => rows.slice(-1);
+    export const MAX_HISTORY_ENTRIES = 25_000;
     export const normalizeHistoryEntry = row => row;
     export const hasSameQuotaValues = () => false;
     export const toHistoryEntry = snapshot => snapshot;
@@ -49,6 +52,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export const formatRefreshFailure = () => 'Refresh failed';
     export const listCodexBankedResets = () => {};
     export const redeemCodexBankedReset = (id, options) => io.redeem(options);
+    export class BankedResetRedemptionError extends Error {}
     export const selectCreditExpiringWithin = credits => credits[0];
     export const selectCreditToRedeem = credits => credits[0];
 `)}`;
@@ -92,16 +96,25 @@ for (const action of ["stop", "toggle off"]) {
             (message) => notifications.push(message),
         );
         monitor._autoApplyBankedReset = true;
+        monitor._accountCredentials = stubs.credentials;
         const cancellable = new stubs.Cancellable();
         monitor._autoApplyBankedResetCancellable = cancellable;
         const result = deferred();
+        let redemptions = 0;
         stubs.io.redeem = (options) => {
+            redemptions++;
             assert.equal(options.cancellable, cancellable);
+            assert.equal(options.credentials, stubs.credentials);
             return result.promise;
         };
         let followUps = 0;
         monitor.refreshUsage = monitor.refreshBankedResets = async () => followUps++;
-        const pending = monitor._autoRedeemBankedReset([{ id: "credit" }], cancellable);
+        const pending = monitor._autoRedeemBankedReset(
+            [{ id: "credit" }],
+            stubs.credentials,
+            cancellable,
+        );
+        assert.equal(redemptions, 1);
         if (action === "stop") monitor.stop();
         else callbacks.get("changed::auto-apply")();
         assert.equal(cancellable.is_cancelled(), true);
@@ -121,13 +134,22 @@ function deferred() {
     return { promise, resolve };
 }
 
+function ioResult(name, stage) {
+    const quotas = [{ id: "session", usedPercent: 15 }];
+    if (name !== "historyRead") return { timestamp: new Date().toISOString(), quotas };
+    // A history with no recent rows is rewritten instead of appended to.
+    if (stage === "rewrite") {
+        return [{ timestamp: new Date(Date.now() - 31 * 86_400_000).toISOString(), quotas }];
+    }
+    return [];
+}
+
 for (const stage of ["cacheRead", "fetch", "cacheWrite", "historyRead", "append", "rewrite"]) {
     test(`stop during ${stage} cancels its I/O and prevents subsequent stages`, async () => {
         const entered = deferred();
         const result = deferred();
         const events = [];
         let activeCancellable;
-        const snapshot = { timestamp: "new", quotas: [] };
         for (const name of [
             "cacheRead",
             "fetch",
@@ -148,11 +170,7 @@ for (const stage of ["cacheRead", "fetch", "cacheWrite", "historyRead", "append"
                     entered.resolve();
                     await result.promise;
                 }
-                return name === "historyRead"
-                    ? stage === "append"
-                        ? []
-                        : [{ timestamp: "old", quotas: [] }]
-                    : snapshot;
+                return ioResult(name, stage);
             };
         }
         stubs.io.start = () => events.push("start");
@@ -178,29 +196,35 @@ for (const stage of ["cacheRead", "fetch", "cacheWrite", "historyRead", "append"
         assert.equal(changes, 0);
         assert.equal(monitor.state.errorMessage, null);
         assert.equal(monitor.state.snapshot, null);
-        assert.equal(
-            monitor._usageService.history?.some((row) => row.timestamp === "new") ?? false,
-            false,
-        );
+        assert.deepEqual(monitor.state.history, []);
     });
 }
 
 for (const stage of ["cacheWrite", "historyRead", "append", "rewrite"]) {
     test(`service preserves the original cancellation error from ${stage}`, async () => {
         const original = new stubs.CancellationError("cancelled I/O");
+        let failure = original;
         const events = [];
         for (const name of ["fetch", "cacheWrite", "historyRead", "append", "rewrite"]) {
             stubs.io[name] = async () => {
                 events.push(name);
-                if (name === stage) throw original;
-                return name === "historyRead"
-                    ? stage === "append"
-                        ? []
-                        : [{}]
-                    : { timestamp: "new", quotas: [] };
+                if (name === stage && failure) throw failure;
+                return ioResult(name, stage);
             };
         }
-        await assert.rejects(new UsageService().refresh(), (error) => error === original);
+        const service = new UsageService();
+        await assert.rejects(service.refresh(), (error) => error === original);
         assert.equal(events.at(-1), stage);
+
+        if (stage === "rewrite") {
+            failure = null;
+            events.length = 0;
+            await service.refresh();
+            assert.deepEqual(
+                events.filter((name) => name === "historyRead" || name === "rewrite"),
+                ["historyRead", "rewrite"],
+                "retry reloads persisted history before rewriting",
+            );
+        }
     });
 }

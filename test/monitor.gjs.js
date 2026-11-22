@@ -44,6 +44,7 @@ const workflows = [
 ];
 
 function createFixture(workflow) {
+    const credentials = { accessToken: "test-token", accountId: "test-account" };
     const snapshot = { bankedResetCount: 2 };
     const history = [{ timestamp: "history" }];
     const prediction = {
@@ -66,6 +67,12 @@ function createFixture(workflow) {
     // Skip construction so no real settings, timers, network, or storage are used.
     const monitor = Object.assign(Object.create(CodexMonitor.prototype), {
         _lifecycleCancellable: new Gio.Cancellable(),
+        _accountCredentials: credentials,
+        _bankedResetRechecks: [],
+        async _readAccount(cancellable) {
+            cancellable?.set_error_if_cancelled();
+            return credentials;
+        },
         _snapshot: null,
         _prediction: { quotas: {} },
         _history: [],

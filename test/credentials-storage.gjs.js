@@ -1,5 +1,6 @@
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
+import Soup from "gi://Soup";
 
 const directory = GLib.dir_make_tmp("codex-meter-credentials-storage-XXXXXX");
 // GJS may cache GLib's user directories before this module starts.
@@ -38,12 +39,14 @@ function removeTree(file) {
 
 try {
     const { UsageService } = await import("../src/codex/usage/service.js");
-    const { readSnapshot, writeSnapshot } = await import("../src/codex/usage/snapshot.js");
-    const { MAX_HISTORY_ENTRIES, readHistory } = await import("../src/codex/usage/history.js");
+    const { CodexMonitor } = await import("../src/background/monitor.js");
+    const { writeSnapshot } = await import("../src/codex/usage/snapshot.js");
+    const { appendHistoryRow, MAX_HISTORY_ENTRIES, rewriteHistory } =
+        await import("../src/codex/usage/history.js");
     const { DEFAULT_CREDENTIALS_PATH } = await import("../src/preferences/settings.js");
     const { resolveCredentialsPath, getCodexCredentials } =
         await import("../src/codex/auth/auth.js");
-    const { writeFile, writeJsonFile } = await import("../src/io/files.js");
+    const { readFile, writeFile, writeJsonFile } = await import("../src/io/files.js");
 
     async function assertCredentialsError(path, problem, privateContent = "private-token") {
         let caught;
@@ -123,132 +126,369 @@ try {
     }
     print("ok - local credentials validation and safe actionable errors");
     const { CACHE_DIR, STATE_DIR } = await import("../src/io/paths.js");
-
-    const legacy = new UsageService();
-    const resolvedDefault = new UsageService(resolveCredentialsPath(DEFAULT_CREDENTIALS_PATH));
-    const first = new UsageService(GLib.build_filenamev([directory, "first-auth.json"]));
-    const second = new UsageService(GLib.build_filenamev([directory, "second-auth.json"]));
-    const services = [legacy, first, second];
-
+    const defaults = new UsageService();
     assertEqual(
-        legacy.snapshotPath,
+        defaults.snapshotPath,
         GLib.build_filenamev([CACHE_DIR, "codex", "snapshot.json"]),
-        "default snapshot should retain its legacy path",
+        "default snapshot keeps its stable location",
     );
     assertEqual(
-        legacy.historyPath,
-        GLib.build_filenamev([STATE_DIR, "codex", "usage-history.jsonl"]),
-        "default history should retain its legacy path",
+        new UsageService(resolveCredentialsPath(DEFAULT_CREDENTIALS_PATH)).snapshotPath,
+        defaults.snapshotPath,
+        "resolved default uses the same location",
     );
-    assertEqual(
-        resolvedDefault.snapshotPath,
-        legacy.snapshotPath,
-        "resolved default snapshot path",
-    );
-    assertEqual(resolvedDefault.historyPath, legacy.historyPath, "resolved default history path");
 
-    for (const service of [first, second]) {
-        const hash = GLib.compute_checksum_for_string(
-            GLib.ChecksumType.SHA256,
-            service.credentialsPath,
-            -1,
-        );
-        assertEqual(
-            service.snapshotPath,
-            GLib.build_filenamev([CACHE_DIR, "codex", hash, "snapshot.json"]),
-            "custom snapshot should use the resolved path hash",
-        );
-        assertEqual(
-            service.historyPath,
-            GLib.build_filenamev([STATE_DIR, "codex", hash, "usage-history.jsonl"]),
-            "custom history should use the same hash",
-        );
+    async function writeCredentials(path, account, signature = "first") {
+        const claims = JSON.stringify({
+            sub: "test-user",
+            "https://api.openai.com/auth": { chatgpt_account_id: account },
+        });
+        const payload = GLib.base64_encode(new TextEncoder().encode(claims))
+            .replace(/\+/g, "-")
+            .replace(/\//g, "_")
+            .replace(/=+$/, "");
+        await writeJsonFile(path, { tokens: { access_token: `mock.${payload}.${signature}` } });
+        return await getCodexCredentials(null, path);
     }
 
-    const snapshots = services.map((_, index) => ({
-        fetchedAt: Math.floor(Date.now() / 1000),
-        planType: `plan-${index}`,
-        quotas: [{ id: `quota-${index}`, label: "Quota", usedPercent: 10 + index }],
-    }));
-    await writeSnapshot(snapshots[0]);
-    await legacy.appendSnapshotToHistory(snapshots[0]);
-    assertEqual(
-        await first.readCachedSnapshot(),
-        null,
-        "custom cache must not fall back to default",
-    );
-    assertEqual(
-        (await first.readHistory()).length,
-        0,
-        "custom history must not fall back to default",
-    );
+    const service = new UsageService(authPath);
+    const pathHash = GLib.compute_checksum_for_string(GLib.ChecksumType.SHA256, authPath, -1);
+    const snapshotPath = GLib.build_filenamev([CACHE_DIR, "codex", pathHash, "snapshot.json"]);
+    const historyDirectory = GLib.build_filenamev([STATE_DIR, "codex", pathHash]);
+    assertEqual(service.snapshotPath, snapshotPath, "custom snapshot keeps its stable location");
 
-    for (const [index, service] of services.entries()) {
-        if (index === 0) continue;
-        await writeSnapshot(snapshots[index], null, service.snapshotPath);
-        await service.appendSnapshotToHistory(snapshots[index]);
-    }
+    const sent = Soup.Session.prototype.send_async;
+    const load = Gio.File.prototype.load_contents_async;
+    const replace = Gio.File.prototype.replace_contents_async;
+    let usedPercent = 10;
+    let planType = "account-a-plan";
+    let afterSend = null;
+    const now = Date.now;
+    Soup.Session.prototype.send_async = async function (message) {
+        await afterSend?.(message);
+        Object.defineProperty(message, "statusCode", { value: 200 });
+        const text = JSON.stringify({
+            plan_type: planType,
+            rate_limit: {
+                limit_reached: false,
+                primary_window: {
+                    used_percent: usedPercent,
+                    limit_window_seconds: 18_000,
+                    reset_after_seconds: 9_000,
+                    reset_at: Math.floor(Date.now() / 1000) + 9_000,
+                },
+            },
+        });
+        return Gio.MemoryInputStream.new_from_bytes(new GLib.Bytes(new TextEncoder().encode(text)));
+    };
+    try {
+        const accountA = await writeCredentials(authPath, "account-a");
+        const legacy = {
+            fetchedAt: Math.floor(now() / 1000),
+            planType: "legacy",
+            quotas: [{ id: "legacy", label: "Legacy", usedPercent: 10 }],
+        };
+        const row = { timestamp: new Date().toISOString(), quotas: legacy.quotas };
+        const legacyHistoryPath = GLib.build_filenamev([historyDirectory, "usage-history.jsonl"]);
+        await writeSnapshot(legacy, null, service.snapshotPath);
+        await rewriteHistory([row], legacyHistoryPath);
+        assertEqual(await service.readCachedSnapshot(), null, "unscoped snapshot is not trusted");
+        assertEqual((await service.readHistory()).length, 0, "unscoped history is not adopted");
 
-    assertEqual((await readSnapshot()).planType, "plan-0", "legacy snapshot API stays compatible");
-    assertEqual(
-        (await readHistory())[0].quotas[0].id,
-        "quota-0",
-        "legacy history API stays compatible",
-    );
-    for (const [index, service] of services.entries()) {
-        const reloaded = new UsageService(service.credentialsPath);
+        const snapshotA = await service.refresh();
+        const reloaded = new UsageService(authPath);
         assertEqual(
             (await reloaded.readCachedSnapshot()).planType,
-            `plan-${index}`,
-            "each service should read its own persisted snapshot",
+            planType,
+            "verified snapshot survives restart",
         );
         assertEqual(
-            (await reloaded.readHistory())[0].quotas[0].id,
-            `quota-${index}`,
-            "each service should read its own persisted history",
+            (await reloaded.readHistory())[0].quotas[0].usedPercent,
+            10,
+            "verified history survives restart",
         );
         assertEqual(
-            Object.keys((await reloaded.predict(null)).quotas).join(","),
-            `quota-${index}`,
-            "prediction fallback should use its own snapshot",
+            Object.keys((await reloaded.predict(null)).quotas).length,
+            1,
+            "prediction can use verified cache",
         );
+        const rotated = await writeCredentials(authPath, "account-a", "rotated");
+        assertEqual(
+            rotated.accountFingerprint,
+            accountA.accountFingerprint,
+            "fingerprint is independent of the token",
+        );
+        assertEqual(
+            (await service.readCachedSnapshot()).planType,
+            planType,
+            "same account after token refresh",
+        );
+        const stored = await readFile(snapshotPath);
+        assertEqual(
+            stored.includes(accountA.accessToken),
+            false,
+            "snapshot does not contain the token",
+        );
+        const historyPath = GLib.build_filenamev([
+            historyDirectory,
+            accountA.accountFingerprint,
+            "usage-history.jsonl",
+        ]);
+        const historyA = await readFile(historyPath);
+        assertEqual(
+            historyA.includes(accountA.accessToken),
+            false,
+            "history does not contain the token",
+        );
+
+        Gio.File.prototype.load_contents_async = async function (...args) {
+            const result = await load.apply(this, args);
+            if (this.get_path() === snapshotPath) await writeCredentials(authPath, "account-b");
+            return result;
+        };
+        try {
+            assertEqual(
+                await service.readCachedSnapshot(),
+                null,
+                "auth replacement during cache read rejects old data",
+            );
+        } finally {
+            Gio.File.prototype.load_contents_async = load;
+        }
+        assertEqual(
+            (await service.readHistory()).length,
+            0,
+            "replacement account cannot see old history",
+        );
+        let predictionError;
+        try {
+            await service.predict(snapshotA);
+        } catch (error) {
+            predictionError = error;
+        }
+        assertEqual(Boolean(predictionError), true, "prediction cannot combine accounts");
+        usedPercent = 20;
+        planType = "account-b-plan";
+        await service.refresh();
+        assertEqual(
+            (await service.readHistory())[0].quotas[0].usedPercent,
+            20,
+            "replacement uses its own history",
+        );
+
+        await writeCredentials(authPath, "account-a");
+        assertEqual(
+            await service.readCachedSnapshot(),
+            null,
+            "latest cache for another account is not displayed",
+        );
+        assertEqual(
+            await readFile(historyPath),
+            historyA,
+            "the other account never writes to the first history",
+        );
+        assertEqual(
+            (await service.readHistory())[0].quotas[0].usedPercent,
+            10,
+            "returning to the first account restores its history",
+        );
+        afterSend = () => writeCredentials(authPath, "account-b");
+        let refreshError;
+        try {
+            await service.refresh();
+        } catch (error) {
+            refreshError = error;
+        } finally {
+            afterSend = null;
+        }
+        assertEqual(
+            refreshError?.kind,
+            "credentials-changed",
+            "credential change aborts the usage refresh",
+        );
+        assertEqual(
+            await readFile(historyPath),
+            historyA,
+            "in-flight result does not append a stale row",
+        );
+        assertEqual(
+            (await service.readCachedSnapshot()).planType,
+            "account-b-plan",
+            "in-flight result does not replace the latest cache",
+        );
+
+        await writeCredentials(authPath, "account-a");
+        Gio.File.prototype.load_contents_async = async function (...args) {
+            const result = await load.apply(this, args);
+            if (this.get_path() === historyPath) await writeCredentials(authPath, "account-b");
+            return result;
+        };
+        refreshError = null;
+        try {
+            await new UsageService(authPath).refresh();
+        } catch (error) {
+            refreshError = error;
+        } finally {
+            Gio.File.prototype.load_contents_async = load;
+        }
+        assertEqual(
+            refreshError?.kind,
+            "credentials-changed",
+            "switch during history load aborts append",
+        );
+        assertEqual(
+            await readFile(historyPath),
+            historyA,
+            "history is unchanged after the late switch",
+        );
+        assertEqual(
+            (await service.readCachedSnapshot())?.planType,
+            "account-b-plan",
+            "late switch does not replace the cache",
+        );
+
+        const settings = {
+            connect() {},
+            disconnect() {},
+            get_boolean: () => false,
+            get_string: () => "",
+            get_uint: () => 0,
+            get_value: () => ({ deep_unpack: () => ({}) }),
+        };
+        const monitor = new CodexMonitor(settings, () => {}, authPath);
+        let timer = null;
+        try {
+            await new Promise((resolve) => {
+                monitor._usageRefreshTask.start = resolve;
+                monitor.start();
+            });
+            assertEqual(
+                monitor.state.snapshot?.planType,
+                "account-b-plan",
+                "monitor loads verified usage",
+            );
+            const cleared = new Promise((resolve, reject) => {
+                timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
+                    timer = null;
+                    reject(new Error("The monitor did not clear usage after auth replacement"));
+                    return GLib.SOURCE_REMOVE;
+                });
+                monitor.onChange = ({ snapshot }) => {
+                    if (!snapshot) resolve();
+                };
+            });
+            await writeCredentials(authPath, "account-a");
+            await cleared;
+            assertEqual(monitor.state.history.length, 0, "monitor clears previous account history");
+            assertEqual(
+                monitor.state.prediction,
+                null,
+                "monitor clears previous account prediction",
+            );
+        } finally {
+            if (timer !== null) GLib.source_remove(timer);
+            monitor.stop();
+        }
+
+        await writeJsonFile(authPath, {
+            tokens: { access_token: "legacy-token", account_id: "account-b" },
+        });
+        const beforeOpaqueRefresh = await readFile(snapshotPath);
+        await service.refresh();
+        assertEqual(
+            await service.readCachedSnapshot(),
+            null,
+            "an opaque token cannot unlock account cache",
+        );
+        assertEqual(
+            (await service.readHistory()).length,
+            1,
+            "an unchanged legacy credential can use live history",
+        );
+        assertEqual(
+            await readFile(snapshotPath),
+            beforeOpaqueRefresh,
+            "legacy tokens never write a snapshot cache",
+        );
+        await writeJsonFile(authPath, {
+            tokens: { access_token: "changed-token", account_id: "account-b" },
+        });
+        assertEqual(
+            (await service.readHistory()).length,
+            0,
+            "a changed legacy token cannot unlock live history",
+        );
+        print("ok - verified account storage isolation and stable snapshot paths");
+
+        // Seed a full file to exercise rollover without issuing thousands of requests.
+        await writeCredentials(authPath, "account-a");
+        const day = 86_400_000;
+        const aged = { ...row, timestamp: new Date(now() - 29.5 * day).toISOString() };
+        const recent = { ...row, timestamp: new Date(now() - 60_000).toISOString() };
+        const seed = [...Array(128).fill(aged), ...Array(MAX_HISTORY_ENTRIES - 128).fill(recent)];
+        await rewriteHistory(seed, historyPath);
+        const retained = new UsageService(authPath);
+        let historyReads = 0;
+        let historyRewrites = 0;
+        Gio.File.prototype.load_contents_async = function (...args) {
+            if (this.get_path() === historyPath) historyReads++;
+            return load.apply(this, args);
+        };
+        Gio.File.prototype.replace_contents_async = function (...args) {
+            if (this.get_path() === historyPath) historyRewrites++;
+            return replace.apply(this, args);
+        };
+        for (usedPercent of [21, 22, 23]) await retained.refresh();
+        assertEqual(historyReads, 1, "refreshes reuse the loaded rows");
+        assertEqual(historyRewrites, 0, "full history does not rewrite after every change");
+        assertEqual(
+            (await retained.readHistory()).length,
+            MAX_HISTORY_ENTRIES,
+            "in-memory history stays bounded",
+        );
+        Date.now = () => now() + day;
+        usedPercent = 24;
+        await retained.refresh();
+        assertEqual(historyRewrites, 1, "expired rows compact in a batch");
+        const compacted = (await readFile(historyPath)).trim().split("\n");
+        assertEqual(
+            compacted.length,
+            MAX_HISTORY_ENTRIES - 128 + 4,
+            "compaction retains only recent rows",
+        );
+        assertEqual(
+            JSON.parse(compacted.at(-1)).quotas[0].usedPercent,
+            usedPercent,
+            "compaction persists the latest row",
+        );
+        print("ok - bounded batched history compaction");
+
+        // At capacity, a sample older than the retained range must stay off disk.
+        Date.now = () => now() - 2 * 60_000;
+        await rewriteHistory(Array(MAX_HISTORY_ENTRIES).fill(recent), historyPath);
+        const beforeRollback = await readFile(historyPath);
+        usedPercent = 25;
+        await new UsageService(authPath).refresh();
+        assertEqual(
+            (await readFile(historyPath)) === beforeRollback,
+            true,
+            "a pruned rollback sample is not appended",
+        );
+        // An older version could already have appended an out-of-order row to this file.
+        await appendHistoryRow(
+            { ...row, timestamp: new Date(Date.now()).toISOString() },
+            historyPath,
+        );
+        const afterRestart = await new UsageService(authPath).readHistory();
+        assertEqual(afterRestart.length, MAX_HISTORY_ENTRIES, "restart retains the full window");
+        assertEqual(afterRestart[0].timestamp, recent.timestamp, "restart keeps the newer samples");
+        print("ok - clock rollback preserves full history across restart");
+    } finally {
+        Date.now = now;
+        Soup.Session.prototype.send_async = sent;
+        Gio.File.prototype.load_contents_async = load;
+        Gio.File.prototype.replace_contents_async = replace;
     }
-
-    // Exercise both service rewrite paths without allowing them to affect another file.
-    const staleRow = {
-        timestamp: new Date(Date.now() - 22 * 86_400_000).toISOString(),
-        quotas: [{ id: "stale", usedPercent: 1 }],
-    };
-    first.history = [staleRow, ...(await first.readHistory())];
-    await first.loadHistory();
-    assertEqual(
-        (await readHistory(first.historyPath)).length,
-        1,
-        "load should compact custom history",
-    );
-
-    first.history = Array.from({ length: MAX_HISTORY_ENTRIES }, (_, row) => ({
-        timestamp: new Date().toISOString(),
-        quotas: [{ id: "quota-1", usedPercent: row % 2 }],
-    }));
-    await first.appendSnapshotToHistory(snapshots[1]);
-    assertEqual(
-        (await readHistory(first.historyPath)).length,
-        MAX_HISTORY_ENTRIES,
-        "retention rewrite should use custom history path",
-    );
-    assertEqual(
-        (await readHistory())[0].quotas[0].id,
-        "quota-0",
-        "default history stays untouched",
-    );
-    assertEqual(
-        (await readHistory(second.historyPath))[0].quotas[0].id,
-        "quota-2",
-        "other custom history stays untouched",
-    );
-
-    print("ok - credentials storage isolation and default compatibility");
 } finally {
     GLib.get_user_cache_dir = getCacheDir;
     GLib.get_user_state_dir = getStateDir;

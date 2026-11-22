@@ -11,11 +11,13 @@ import {
     SETTINGS_USAGE_NOTIFICATION_THRESHOLD,
 } from "../preferences/settings.js";
 import { getBankedResetSkipMinutes, getImminentResetSeconds } from "../codex/usage/model.js";
+import { getCodexCredentials, hasSameCodexAccount } from "../codex/auth/auth.js";
 import { UsageService } from "../codex/usage/service.js";
 import { isCodexError } from "../codex/error.js";
 import { isCancellationError } from "../io/files.js";
 import { listCodexBankedResets, redeemCodexBankedReset } from "../codex/banked-resets/api.js";
 import {
+    BankedResetRedemptionError,
     selectCreditExpiringWithin,
     selectCreditToRedeem,
 } from "../codex/banked-resets/response.js";
@@ -65,6 +67,11 @@ export class CodexMonitor {
 
         this._bankedResetSkipMinutes = readBankedResetSkipMinutes(settings);
         this._usageService = new UsageService(credentialsPath);
+        this._accountCredentials = null;
+        this._accountReadSequence = 0;
+        this._accountAppliedSequence = 0;
+        this._credentialsMonitor = null;
+        this._credentialsMonitorId = null;
         this._usageRefreshTask = new PeriodicTask(values.backgroundRefreshIntervalSeconds, () =>
             this.refreshUsage(),
         );
@@ -81,11 +88,14 @@ export class CodexMonitor {
         this._history = [];
         this._errorMessage = null;
         this._cachedFailureMessage = null;
-        this._bankedResetRefreshCancellable = null;
-        this._bankedResetRefreshPromise = null;
+        this._bankedResetRefresh = null;
+        this._bankedResetRechecks = [];
         this._bankedResetRefreshAttemptAt = null;
         this._autoApplyBankedResetCancellable = null;
+        this._pendingUsageReset = null;
         this._bankedResetSnapshot = null;
+        this._bankedResetCredentials = null;
+        this._bankedResetInventoryStale = false;
         this._bankedResetLoading = false;
         this._bankedResetError = null;
         this._preparingBankedReset = false;
@@ -103,10 +113,11 @@ export class CodexMonitor {
             history: this._history,
             errorMessage: this._errorMessage,
             cachedFailureMessage: this._cachedFailureMessage,
-            bankedResetCount:
-                this._bankedResetSnapshot?.available_count ??
-                this._snapshot?.bankedResetCount ??
-                null,
+            bankedResetCount: this._bankedResetInventoryStale
+                ? null
+                : (this._bankedResetSnapshot?.available_count ??
+                  this._snapshot?.bankedResetCount ??
+                  null),
             bankedResetSnapshot: this._bankedResetSnapshot,
             bankedResetLoading: this._bankedResetLoading,
             bankedResetError: this._bankedResetError,
@@ -121,6 +132,16 @@ export class CodexMonitor {
 
     start() {
         if (this._lifecycleCancellable.is_cancelled()) return;
+        try {
+            this._credentialsMonitor = Gio.File.new_for_path(
+                this._usageService.credentialsPath,
+            ).monitor_file(Gio.FileMonitorFlags.WATCH_MOVES, this._lifecycleCancellable);
+            this._credentialsMonitorId = this._credentialsMonitor.connect("changed", () => {
+                void this._readAccount(this._lifecycleCancellable).catch(() => {});
+            });
+        } catch (_error) {
+            // Request boundaries still check the credentials if a file monitor is unavailable.
+        }
         if (this._autoApplyBankedReset) {
             this._bankedResetRefreshTask.start();
         }
@@ -133,14 +154,25 @@ export class CodexMonitor {
     stop() {
         if (this._lifecycleCancellable.is_cancelled()) return;
         this._lifecycleCancellable.cancel();
+        if (this._credentialsMonitor) {
+            if (this._credentialsMonitorId !== null) {
+                this._credentialsMonitor.disconnect(this._credentialsMonitorId);
+            }
+            this._credentialsMonitor.cancel();
+            this._credentialsMonitor = null;
+            this._credentialsMonitorId = null;
+        }
+        this._accountCredentials = null;
+        this._bankedResetCredentials = null;
+        this._pendingUsageReset = null;
         this._bankedResetPreparation = null;
         this._usageRefreshTask.stop();
         this._bankedResetRefreshTask.stop();
         this._autoApplyBankedResetCancellable?.cancel();
         this._refreshCancellable?.cancel();
         this._refreshCancellable = null;
-        this._bankedResetRefreshCancellable?.cancel();
-        this._bankedResetRefreshCancellable = null;
+        this._bankedResetRefresh?.cancellable.cancel();
+        this._bankedResetRechecks = [];
 
         this._redeemBankedResetCancellable?.cancel();
         this._redeemBankedResetCancellable = null;
@@ -164,14 +196,17 @@ export class CodexMonitor {
         this.onChange = null;
     }
 
-    async refreshUsage() {
+    async refreshUsage({ expectedCredentials = null } = {}) {
         if (this._lifecycleCancellable.is_cancelled()) return;
         if (this._refreshPromise) {
             await this._refreshPromise;
             return;
         }
         this._refreshCancellable = new Gio.Cancellable();
-        this._refreshPromise = this._refreshUsageOnce(this._refreshCancellable);
+        this._refreshPromise = this._refreshUsageOnce(
+            this._refreshCancellable,
+            expectedCredentials,
+        );
         let snapshot;
         try {
             snapshot = await this._refreshPromise;
@@ -185,47 +220,80 @@ export class CodexMonitor {
         }
     }
 
-    async refreshBankedResets({ maxAgeMs = 0 } = {}) {
+    async refreshBankedResets({ maxAgeMs = 0, expectedCredentials = null } = {}) {
         if (this._lifecycleCancellable.is_cancelled()) return null;
-        if (this._bankedResetRefreshPromise) return await this._bankedResetRefreshPromise;
-        const now = Date.now();
-        if (
-            maxAgeMs > 0 &&
-            this._bankedResetRefreshAttemptAt !== null &&
-            now - this._bankedResetRefreshAttemptAt < maxAgeMs
-        )
-            return this._bankedResetSnapshot;
-        // Failed attempts also cool down popup requests; default callers always refresh.
-        this._bankedResetRefreshAttemptAt = now;
+        const pending = this._bankedResetRefresh;
+        if (pending) {
+            if (maxAgeMs <= 0) pending.force = true;
+            const response = await pending.promise;
+            const wanted = expectedCredentials ?? this._accountCredentials;
+            if (!hasSameCodexAccount(wanted, this._accountCredentials)) return null;
+            if (pending.credentials && !hasSameCodexAccount(wanted, pending.credentials)) {
+                return await this.refreshBankedResets({ maxAgeMs, expectedCredentials });
+            }
+            return response;
+        }
         const cancellable = new Gio.Cancellable();
-        this._bankedResetRefreshCancellable = cancellable;
-        this._bankedResetLoading = true;
-        this._bankedResetError = null;
+        const request = { cancellable, credentials: null, force: maxAgeMs <= 0, promise: null };
+        this._bankedResetRefresh = request;
         // Assign before notifying listeners so reentrant refreshes share this request too.
-        this._bankedResetRefreshPromise = Promise.resolve().then(async () => {
+        request.promise = Promise.resolve().then(async () => {
+            let changed = false;
             try {
-                cancellable.set_error_if_cancelled();
+                const credentials = await this._readAccount(cancellable);
+                request.credentials = expectedCredentials ?? credentials;
+                if (
+                    !hasSameCodexAccount(credentials, this._accountCredentials) ||
+                    (expectedCredentials && !hasSameCodexAccount(expectedCredentials, credentials))
+                ) {
+                    return null;
+                }
+                const now = Date.now();
+                if (
+                    !request.force &&
+                    this._bankedResetRefreshAttemptAt !== null &&
+                    now - this._bankedResetRefreshAttemptAt < maxAgeMs
+                )
+                    return this._bankedResetSnapshot;
+                // Failed requests also cool down popup requests; default callers always refresh.
+                this._bankedResetRefreshAttemptAt = now;
+                changed = true;
+                this._bankedResetLoading = true;
+                this._bankedResetError = null;
+                this._emitChange();
+                const recheck = this._bankedResetRecheckFor(credentials);
                 const response = await listCodexBankedResets({
                     cancellable,
+                    credentials,
                     credentialsPath: this._credentialsPath,
                 });
-                if (this._lifecycleCancellable.is_cancelled()) return null;
+                cancellable.set_error_if_cancelled();
+                if (!hasSameCodexAccount(credentials, this._accountCredentials)) return null;
                 this._bankedResetSnapshot = response;
+                this._bankedResetCredentials = credentials;
+                this._bankedResetInventoryStale = false;
+                if (recheck) recheck.inventoryFresh = true;
                 return response;
             } catch (error) {
                 if (!isCancellationError(error) && !this._lifecycleCancellable.is_cancelled()) {
-                    this._bankedResetError = formatBankedResetPreparationFailure(error);
+                    await this._readAccount(cancellable).catch(() => {});
+                    if (
+                        !cancellable.is_cancelled() &&
+                        (!request.credentials ||
+                            hasSameCodexAccount(request.credentials, this._accountCredentials))
+                    ) {
+                        this._bankedResetError = formatBankedResetPreparationFailure(error);
+                        changed = true;
+                    }
                 }
                 return null;
             } finally {
-                this._bankedResetRefreshPromise = null;
-                this._bankedResetRefreshCancellable = null;
+                this._bankedResetRefresh = null;
                 this._bankedResetLoading = false;
-                if (!this._lifecycleCancellable.is_cancelled()) this._emitChange();
+                if (changed && !this._lifecycleCancellable.is_cancelled()) this._emitChange();
             }
         });
-        this._emitChange();
-        return await this._bankedResetRefreshPromise;
+        return await request.promise;
     }
 
     async prepareBankedReset(creditId) {
@@ -237,11 +305,12 @@ export class CodexMonitor {
         )
             return null;
         // Ownership spans the fetch, confirmation dialog, and manual redemption.
-        const preparation = { creditId };
+        const preparation = { creditId, credentials: null, accountChanged: false };
+        const selectionCredentials = this._bankedResetCredentials;
         this._bankedResetPreparation = preparation;
         let prepared = false;
         this._preparingBankedReset = true;
-        const ownsInventoryRefresh = !this._bankedResetRefreshPromise;
+        const ownsInventoryRefresh = !this._bankedResetRefresh;
         this._emitChange();
         try {
             const response = await this.refreshBankedResets();
@@ -257,6 +326,15 @@ export class CodexMonitor {
                 );
                 return null;
             }
+            const credentials = this._bankedResetCredentials;
+            if (
+                preparation.accountChanged ||
+                this._bankedResetSnapshot !== response ||
+                (selectionCredentials && !hasSameCodexAccount(selectionCredentials, credentials))
+            ) {
+                this._notify("The Codex account changed. Choose a reset from the current account.");
+                return null;
+            }
             const credit = response.credits.find((credit) => credit.id === creditId);
             const expiresAt = Date.parse(credit?.expires_at ?? "");
             if (
@@ -269,6 +347,7 @@ export class CodexMonitor {
                 );
                 return null;
             }
+            preparation.credentials = credentials;
             prepared = true;
             return credit;
         } finally {
@@ -288,20 +367,87 @@ export class CodexMonitor {
     }
 
     async redeemBankedReset(creditId) {
-        await this._redeemBankedReset(creditId, new Gio.Cancellable());
+        const preparation = this._bankedResetPreparation;
+        if (preparation?.creditId !== creditId || !preparation?.credentials) return;
+        if (preparation.accountChanged) {
+            this.cancelBankedResetPreparation();
+            this._notify("The Codex account changed. Choose a reset from the current account.");
+            return;
+        }
+        await this._redeemBankedReset(creditId, preparation.credentials);
     }
 
-    async _redeemBankedReset(creditId, cancellable, automaticMessage = null) {
+    async _redeemBankedReset(creditId, credentials, eligibility = null, automaticMessage = null) {
         if (this._lifecycleCancellable.is_cancelled() || this._redeemingBankedReset) return;
+        const consumeCancellable = new Gio.Cancellable();
+        const preparation = this._bankedResetPreparation;
         this._redeemingBankedReset = true;
-        this._redeemBankedResetCancellable = cancellable;
+        this._redeemBankedResetCancellable = consumeCancellable;
         this._emitChange();
         try {
-            await redeemCodexBankedReset(creditId, {
-                cancellable,
-                credentialsPath: this._credentialsPath,
-            });
-            if (this._lifecycleCancellable.is_cancelled() || cancellable.is_cancelled()) return;
+            let dispatched = false;
+            let failure = null;
+            // A settings change can stop preflight, but not a consume already sent.
+            try {
+                await redeemCodexBankedReset(creditId, {
+                    cancellable: eligibility ?? consumeCancellable,
+                    consumeCancellable,
+                    credentials,
+                    credentialsPath: this._credentialsPath,
+                    onDispatch: () => {
+                        if (
+                            preparation?.accountChanged ||
+                            !hasSameCodexAccount(credentials, this._accountCredentials)
+                        )
+                            return false;
+                        dispatched = true;
+                    },
+                });
+            } catch (error) {
+                failure = error;
+            }
+            if (consumeCancellable.is_cancelled() || (!dispatched && eligibility?.is_cancelled()))
+                return;
+            const ambiguous =
+                dispatched && failure && !(failure instanceof BankedResetRedemptionError);
+            const recheck =
+                dispatched && (!failure || ambiguous)
+                    ? { credentials, inventoryFresh: false, usageFresh: false }
+                    : null;
+            if (recheck) {
+                this._bankedResetRechecks = this._bankedResetRechecks.filter(
+                    (item) => !hasSameCodexAccount(item.credentials, credentials),
+                );
+                this._bankedResetRechecks.push(recheck);
+            }
+            const current = await this._readAccount(consumeCancellable).catch(() => null);
+            if (consumeCancellable.is_cancelled()) return;
+            const sameAccount =
+                hasSameCodexAccount(current, credentials) &&
+                hasSameCodexAccount(this._accountCredentials, credentials);
+            if (failure) {
+                if (dispatched && !sameAccount) return;
+                if (!isCancellationError(failure)) {
+                    if (automaticMessage)
+                        console.warn("Unable to auto-redeem Codex banked reset", failure);
+                    else this._notify(formatBankedResetFailure(failure));
+                }
+                const unavailable =
+                    failure instanceof BankedResetRedemptionError &&
+                    ["no_credit", "already_redeemed"].includes(failure.outcome);
+                if (sameAccount && (ambiguous || unavailable)) {
+                    const pending = this._bankedResetRefresh;
+                    this._invalidateBankedResetInventory();
+                    if (unavailable) {
+                        await pending?.promise;
+                        if (!consumeCancellable.is_cancelled()) {
+                            await this.refreshBankedResets({ expectedCredentials: credentials });
+                        }
+                    }
+                }
+                return;
+            }
+            if (!sameAccount) return;
             this._usageResetGeneration++;
             this._deferredUsageResets = [];
             // Banked resets reset usage limits without identifying affected windows.
@@ -310,15 +456,23 @@ export class CodexMonitor {
             }
             this._notify(automaticMessage ?? "Banked Codex reset redeemed.");
             // Older requests must finish before the post-redemption refreshes start.
-            await Promise.all([this._refreshPromise, this._bankedResetRefreshPromise]);
-            if (this._lifecycleCancellable.is_cancelled() || cancellable.is_cancelled()) return;
-            await Promise.all([this.refreshUsage(), this.refreshBankedResets()]);
-        } catch (error) {
-            if (this._lifecycleCancellable.is_cancelled() || isCancellationError(error)) return;
-            if (automaticMessage) console.warn("Unable to auto-redeem Codex banked reset", error);
-            else this._notify(formatBankedResetFailure(error));
+            await Promise.all([this._refreshPromise, this._bankedResetRefresh?.promise]);
+            if (
+                consumeCancellable.is_cancelled() ||
+                !hasSameCodexAccount(credentials, this._accountCredentials)
+            )
+                return;
+            await Promise.all([
+                this.refreshUsage({ expectedCredentials: credentials }),
+                this.refreshBankedResets({ expectedCredentials: credentials }),
+            ]);
+            if (recheck?.inventoryFresh && recheck.usageFresh) {
+                this._bankedResetRechecks = this._bankedResetRechecks.filter(
+                    (item) => item !== recheck,
+                );
+            }
         } finally {
-            if (this._redeemBankedResetCancellable === cancellable) {
+            if (this._redeemBankedResetCancellable === consumeCancellable) {
                 this._redeemBankedResetCancellable = null;
             }
             this._bankedResetPreparation = null;
@@ -331,6 +485,61 @@ export class CodexMonitor {
             }
             this._emitChange();
         }
+    }
+
+    _bankedResetRecheckFor(credentials) {
+        return this._bankedResetRechecks.find((item) =>
+            hasSameCodexAccount(item.credentials, credentials),
+        );
+    }
+
+    _invalidateBankedResetInventory() {
+        this._bankedResetSnapshot = null;
+        this._bankedResetCredentials = null;
+        this._bankedResetInventoryStale = true;
+        this._bankedResetRefreshAttemptAt = null;
+        this._bankedResetRefresh?.cancellable.cancel();
+        this._emitChange();
+    }
+
+    async _readAccount(cancellable) {
+        const sequence = ++this._accountReadSequence;
+        let credentials = null;
+        try {
+            credentials = await getCodexCredentials(cancellable, this._credentialsPath);
+            return credentials;
+        } finally {
+            if (
+                !cancellable?.is_cancelled() &&
+                !this._lifecycleCancellable.is_cancelled() &&
+                sequence > this._accountAppliedSequence
+            ) {
+                this._accountAppliedSequence = sequence;
+                this._setAccount(credentials);
+            }
+        }
+    }
+
+    _setAccount(credentials) {
+        const changed =
+            this._accountCredentials && !hasSameCodexAccount(this._accountCredentials, credentials);
+        this._accountCredentials = credentials;
+        if (!changed) return;
+
+        this._snapshot = null;
+        this._prediction = null;
+        this._history = [];
+        this._cachedFailureMessage = null;
+        this._bankedResetSnapshot = null;
+        this._bankedResetCredentials = null;
+        this._bankedResetInventoryStale = false;
+        this._bankedResetRefreshAttemptAt = null;
+        this._bankedResetError = null;
+        if (this._bankedResetPreparation) this._bankedResetPreparation.accountChanged = true;
+        this._autoApplyBankedResetCancellable?.cancel();
+        this._usageNotificationStates.clear();
+        this._deferredUsageResets = [];
+        this._emitChange();
     }
 
     _connectSettings() {
@@ -389,25 +598,38 @@ export class CodexMonitor {
         );
     }
 
-    async _refreshUsageOnce(cancellable = this._lifecycleCancellable) {
+    async _refreshUsageOnce(cancellable = this._lifecycleCancellable, expectedCredentials = null) {
         const resetGeneration = this._usageResetGeneration;
         try {
             if (this._lifecycleCancellable.is_cancelled()) return;
-            const snapshot = await this._usageService.refresh({ cancellable });
+            const credentials = await this._readAccount(cancellable);
+            if (
+                !hasSameCodexAccount(credentials, this._accountCredentials) ||
+                (expectedCredentials && !hasSameCodexAccount(expectedCredentials, credentials))
+            )
+                return;
+            const recheck = this._bankedResetRecheckFor(credentials);
+            const snapshot = await this._usageService.refresh({ cancellable, credentials });
             if (this._lifecycleCancellable.is_cancelled()) return;
+            if (!hasSameCodexAccount(credentials, this._accountCredentials)) return;
             this._snapshot = snapshot;
-            await this._loadHistory(cancellable);
+            await this._loadHistory(cancellable, credentials);
             cancellable?.set_error_if_cancelled();
             this._errorMessage = null;
             this._cachedFailureMessage = null;
-            await this._loadPrediction(this._snapshot, cancellable);
+            await this._loadPrediction(this._snapshot, cancellable, credentials);
+            await this._readAccount(cancellable);
             cancellable?.set_error_if_cancelled();
+            if (!hasSameCodexAccount(credentials, this._accountCredentials)) return;
+            if (recheck) recheck.usageFresh = true;
             // A pre-redemption result must not restore old exhaustion observations.
             this._notifyUsage(snapshot, resetGeneration === this._usageResetGeneration);
             return snapshot;
         } catch (error) {
             if (this._lifecycleCancellable.is_cancelled() || isCancellationError(error)) return;
             const failureMessage = formatRefreshFailure(error);
+            await this._readAccount(cancellable).catch(() => {});
+            if (this._lifecycleCancellable.is_cancelled() || cancellable?.is_cancelled()) return;
             if (this._snapshot) {
                 this._errorMessage = null;
                 this._cachedFailureMessage = failureMessage;
@@ -434,18 +656,24 @@ export class CodexMonitor {
         if (this._lifecycleCancellable.is_cancelled() || this._snapshot || this._errorMessage)
             return;
         try {
-            const snapshot = await this._usageService.readCachedSnapshot({ cancellable });
+            const credentials = await this._readAccount(cancellable);
+            const snapshot = await this._usageService.readCachedSnapshot({
+                cancellable,
+                credentials,
+            });
             if (
                 this._lifecycleCancellable.is_cancelled() ||
+                !hasSameCodexAccount(credentials, this._accountCredentials) ||
                 !snapshot ||
                 this._snapshot ||
                 this._errorMessage
             )
                 return;
             this._snapshot = snapshot;
-            await this._loadHistory(cancellable);
+            await this._loadHistory(cancellable, credentials);
             cancellable?.set_error_if_cancelled();
-            await this._loadPrediction(snapshot, cancellable);
+            await this._loadPrediction(snapshot, cancellable, credentials);
+            await this._readAccount(cancellable);
             if (!this._lifecycleCancellable.is_cancelled()) this._emitChange();
         } catch (error) {}
     }
@@ -453,40 +681,56 @@ export class CodexMonitor {
     async _loadCachedSnapshotAfterFailure(cancellable = this._lifecycleCancellable) {
         if (this._lifecycleCancellable.is_cancelled()) return false;
         try {
-            const snapshot = await this._usageService.readCachedSnapshot({ cancellable });
-            if (this._lifecycleCancellable.is_cancelled() || !snapshot) return false;
+            const credentials = this._accountCredentials;
+            if (!credentials) return false;
+            const snapshot = await this._usageService.readCachedSnapshot({
+                cancellable,
+                credentials,
+            });
+            if (
+                this._lifecycleCancellable.is_cancelled() ||
+                !snapshot ||
+                !hasSameCodexAccount(credentials, this._accountCredentials)
+            )
+                return false;
             if (this._snapshot) return true;
             this._snapshot = snapshot;
-            await this._loadHistory(cancellable);
+            await this._loadHistory(cancellable, credentials);
             cancellable?.set_error_if_cancelled();
-            await this._loadPrediction(snapshot, cancellable);
-            return true;
+            await this._loadPrediction(snapshot, cancellable, credentials);
+            await this._readAccount(cancellable);
+            return hasSameCodexAccount(credentials, this._accountCredentials);
         } catch (error) {
             return false;
         }
     }
 
-    async _loadPrediction(snapshot, cancellable = this._lifecycleCancellable) {
+    async _loadPrediction(snapshot, cancellable, credentials) {
+        if (!hasSameCodexAccount(credentials, this._accountCredentials)) return;
         try {
             cancellable?.set_error_if_cancelled();
-            const prediction = await this._usageService.predict(snapshot, { cancellable });
+            const prediction = await this._usageService.predict(snapshot, {
+                cancellable,
+                credentials,
+            });
             cancellable?.set_error_if_cancelled();
-            this._prediction = prediction;
+            if (hasSameCodexAccount(credentials, this._accountCredentials))
+                this._prediction = prediction;
         } catch (error) {
             if (isCancellationError(error)) throw error;
-            this._prediction = null;
+            if (hasSameCodexAccount(credentials, this._accountCredentials)) this._prediction = null;
         }
     }
 
-    async _loadHistory(cancellable = this._lifecycleCancellable) {
+    async _loadHistory(cancellable, credentials) {
         try {
             cancellable?.set_error_if_cancelled();
-            const history = await this._usageService.readHistory({ cancellable });
+            const history = await this._usageService.readHistory({ cancellable, credentials });
             cancellable?.set_error_if_cancelled();
-            this._history = history;
+            if (hasSameCodexAccount(credentials, this._accountCredentials)) this._history = history;
         } catch (error) {
             if (isCancellationError(error)) throw error;
-            this._history = [];
+            if (hasSameCodexAccount(credentials, this._accountCredentials)) this._history = [];
         }
     }
 
@@ -621,30 +865,82 @@ export class CodexMonitor {
     }
 
     async _refreshBankedResetsForAutoApply(usageSnapshot = null) {
-        if (this._autoApplyBankedResetCancellable || this._redeemingBankedReset) return;
+        if (this._lifecycleCancellable.is_cancelled() || this._redeemingBankedReset) return;
+        const usageCredentials = usageSnapshot ? this._accountCredentials : null;
+        if (usageSnapshot) {
+            if (!usageCredentials || !this._usageNeedsBankedReset(usageSnapshot)) return;
+            // A quota refresh can finish while an expiry check is fetching the same inventory.
+            this._pendingUsageReset = { snapshot: usageSnapshot, credentials: usageCredentials };
+        }
+        if (this._autoApplyBankedResetCancellable) return;
         const cancellable = new Gio.Cancellable();
         this._autoApplyBankedResetCancellable = cancellable;
+        let interruptedBeforeRedemption = false;
         try {
-            const response = await this.refreshBankedResets();
-            if (!response || cancellable.is_cancelled()) return;
-            await this._autoRedeemBankedReset(response.credits, cancellable, usageSnapshot);
+            const response = await this.refreshBankedResets({
+                expectedCredentials: usageCredentials,
+            });
+            interruptedBeforeRedemption = cancellable.is_cancelled();
+            if (!response || response !== this._bankedResetSnapshot || interruptedBeforeRedemption)
+                return;
+            const credentials = this._bankedResetCredentials;
+            const recheck = this._bankedResetRecheckFor(credentials);
+            if (recheck) {
+                // An unconfirmed consume can have succeeded. Do not act on pre-consume data.
+                if (!recheck.usageFresh) {
+                    await this._refreshPromise;
+                    if (!recheck.usageFresh && !cancellable.is_cancelled())
+                        await this.refreshUsage({ expectedCredentials: credentials });
+                }
+                interruptedBeforeRedemption = cancellable.is_cancelled();
+                if (
+                    interruptedBeforeRedemption ||
+                    !recheck.usageFresh ||
+                    !recheck.inventoryFresh ||
+                    response !== this._bankedResetSnapshot ||
+                    !hasSameCodexAccount(credentials, this._accountCredentials)
+                )
+                    return;
+                this._bankedResetRechecks = this._bankedResetRechecks.filter(
+                    (item) => item !== recheck,
+                );
+            }
+            const redemption = this._autoRedeemBankedReset(
+                response.credits,
+                credentials,
+                cancellable,
+                usageCredentials,
+            );
+            if (redemption) await redemption;
         } finally {
-            if (this._autoApplyBankedResetCancellable === cancellable) {
-                this._autoApplyBankedResetCancellable = null;
+            const pending = this._pendingUsageReset;
+            this._pendingUsageReset = null;
+            this._autoApplyBankedResetCancellable = null;
+            // A fresh observation can arrive after a different account's check was interrupted.
+            if (
+                interruptedBeforeRedemption &&
+                hasSameCodexAccount(pending?.credentials, this._accountCredentials)
+            ) {
+                await this._refreshBankedResetsForAutoApply(pending.snapshot);
             }
         }
     }
 
-    async _autoRedeemBankedReset(credits, cancellable, usageSnapshot) {
+    _autoRedeemBankedReset(credits, credentials, cancellable, usageCredentials = null) {
         if (
             this._lifecycleCancellable.is_cancelled() ||
             cancellable.is_cancelled() ||
             this._preparingBankedReset ||
             this._bankedResetPreparation ||
-            this._redeemingBankedReset
+            this._redeemingBankedReset ||
+            !hasSameCodexAccount(credentials, this._accountCredentials) ||
+            (usageCredentials && !hasSameCodexAccount(usageCredentials, credentials))
         )
             return;
-        const forUsage = usageSnapshot && this._usageNeedsBankedReset(usageSnapshot);
+        const pendingUsage = this._pendingUsageReset;
+        const forUsage =
+            hasSameCodexAccount(pendingUsage?.credentials, credentials) &&
+            this._usageNeedsBankedReset(pendingUsage.snapshot);
         const now = Date.now();
         const expiring = this._autoApplyBankedReset
             ? selectCreditExpiringWithin(credits, now, AUTO_APPLY_BANKED_RESET_WINDOW_MS)
@@ -663,7 +959,7 @@ export class CodexMonitor {
         const message = expiring
             ? "Expiring banked Codex reset redeemed automatically."
             : "Banked Codex reset redeemed automatically near a usage limit.";
-        await this._redeemBankedReset(credit.id, cancellable, message);
+        return this._redeemBankedReset(credit.id, credentials, cancellable, message);
     }
 
     _emitChange() {

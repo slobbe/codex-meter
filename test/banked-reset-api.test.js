@@ -3,18 +3,25 @@ import { registerHooks } from "node:module";
 import test, { beforeEach } from "node:test";
 
 const apiUrl = new URL("../src/codex/banked-resets/api.js", import.meta.url).href;
+const authUrl = new URL("../src/codex/auth/auth.js", import.meta.url).href;
+const usageUrl = new URL("../src/codex/usage/api.js", import.meta.url).href;
 const monitorUrl = new URL("../src/background/monitor.js", import.meta.url).href;
 const stubUrl = `data:text/javascript,${encodeURIComponent(`
-    import { randomUUID } from "node:crypto";
+    import { createHash, randomUUID } from "node:crypto";
     export const io = {};
     class Cancellable {
         cancel() { this.cancelled = true; }
         is_cancelled() { return !!this.cancelled; }
         set_error_if_cancelled() { if (this.cancelled) throw new Error("Cancelled"); }
     }
-    export default { uuid_string_random: randomUUID, Cancellable };
+    export default {
+        uuid_string_random: randomUUID, Cancellable, Error,
+        base64_decode: value => Buffer.from(value, 'base64'),
+        ChecksumType: { SHA256: 'sha256' },
+        compute_checksum_for_string: (type, value) => createHash(type).update(value).digest('hex'),
+    };
     export class UsageService {}
-    export class PeriodicTask {}
+    export class PeriodicTask { start() {} stop() {} }
     export const readSettings = () => ({ autoApplyBankedReset: true });
     export const readBankedResetSkipMinutes = () => ({});
     export const SETTINGS_BANKED_RESET_SKIP_MINUTES = "banked-reset-skip-minutes";
@@ -28,30 +35,33 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES = "refresh";
     export const isCancellationError = () => false;
     export const formatRefreshFailure = () => "Usage refresh failed";
-    export async function getCodexCredentials(cancellable, credentialsPath) {
+    export async function readJsonFile(credentialsPath, cancellable) {
         io.authPaths.push(credentialsPath);
         io.authCalls.push(cancellable);
+        const auth = structuredClone(io.auth);
         await io.afterAuth?.();
-        return io.credentials;
+        return auth;
     }
     export async function fetchJson(url, config, options) {
         io.requests.push({ url, config, options });
-        await io.afterFetch?.();
-        return io.response;
+        await io.afterFetch?.(url, options);
+        return io.respond ? io.respond(url, options) : io.response;
     }
 `)}`;
 const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
-        if (context.parentURL === apiUrl) {
-            if (specifier === "./response.js") return nextResolve(specifier, context);
-            if (["gi://GLib", "../../io/http.js", "../auth/auth.js"].includes(specifier)) {
-                return { url: stubUrl, shortCircuit: true };
-            }
-            throw new Error(`Unexpected banked reset API dependency: ${specifier}`);
+        if (
+            ((context.parentURL === apiUrl || context.parentURL === usageUrl) &&
+                ["gi://GLib", "../../io/http.js"].includes(specifier)) ||
+            (context.parentURL === authUrl &&
+                ["gi://Gio", "gi://GLib", "../../io/files.js"].includes(specifier))
+        ) {
+            return { url: stubUrl, shortCircuit: true };
         }
         if (
             context.parentURL === monitorUrl &&
             ![
+                "../codex/auth/auth.js",
                 "../codex/banked-resets/api.js",
                 "../codex/banked-resets/response.js",
                 "../codex/error.js",
@@ -64,38 +74,56 @@ const hooks = registerHooks({
     },
 });
 const { listCodexBankedResets, redeemCodexBankedReset } = await import(apiUrl);
+const { refreshCodexUsage } = await import(usageUrl);
 const { CodexMonitor } = await import(monitorUrl);
 const { io } = await import(stubUrl);
 hooks.deregister();
 
 const listUrl = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
+const credentialsPath = "/custom/auth.json";
+const expiringCredit = () => ({
+    id: "credit-a",
+    status: "available",
+    expires_at: new Date(Date.now() + 60_000).toISOString(),
+});
+const list = (options) => listCodexBankedResets({ credentialsPath, ...options });
+const redeem = (options) =>
+    redeemCodexBankedReset("credit-a", {
+        credentialsPath,
+        credentials: {
+            accessToken: io.auth.tokens.access_token,
+            accountId: io.auth.tokens.account_id,
+        },
+        ...options,
+    });
 const operations = [
-    ["list", (options) => listCodexBankedResets(options)],
-    ["redeem", (options) => redeemCodexBankedReset("credit-a", options)],
+    ["list", list],
+    ["redeem", redeem],
 ];
 
 beforeEach(() => {
     Object.assign(io, {
-        credentials: { accessToken: "test-token", accountId: "test-account" },
+        auth: { tokens: { access_token: "test-token", account_id: "test-account" } },
         response: { available_count: 1, credits: [{ id: "credit-a", status: "available" }] },
         authCalls: [],
         authPaths: [],
         requests: [],
         afterAuth: null,
         afterFetch: null,
+        respond: null,
     });
 });
 
 for (const [name, operation] of operations) {
     test(`${name} reads credentials from the configured file`, async () => {
         if (name === "redeem") io.response = { code: "reset", windows_reset: 2 };
-        await operation({ credentialsPath: "/custom/auth.json" });
-        assert.deepEqual(io.authPaths, ["/custom/auth.json"]);
+        await operation();
+        assert.deepEqual(io.authPaths, Array(name === "list" ? 2 : 1).fill(credentialsPath));
     });
 
     test(`${name} sends authentication headers and optional account ID`, async () => {
         for (const accountId of ["test-account", null]) {
-            io.credentials.accountId = accountId;
+            io.auth.tokens.account_id = accountId;
             if (name === "redeem") io.response = { code: "reset", windows_reset: 2 };
             assert.equal(await operation(), io.response);
             const { url, options } = io.requests.at(-1);
@@ -146,7 +174,7 @@ test("redeem posts the credit ID and a fresh request UUID and returns the respon
     io.response = { code: "reset", windows_reset: 2 };
     const requestIds = [];
     for (let attempt = 0; attempt < 2; attempt++) {
-        assert.equal(await redeemCodexBankedReset("credit-a"), io.response);
+        assert.equal(await redeem(), io.response);
         const { options } = io.requests.at(-1);
         assert.equal(options.method, "POST");
         assert.equal(options.headers["Content-Type"], "application/json");
@@ -177,7 +205,7 @@ test("redeem rejects responses that do not confirm a reset instead of reporting 
     ]) {
         io.response = response;
         await assert.rejects(
-            redeemCodexBankedReset("credit-a"),
+            redeem(),
             (error) => error.kind === "unexpected-response" || error.kind === "redemption-failed",
         );
     }
@@ -198,7 +226,7 @@ const redemptionFailures = [
 for (const [code, message] of redemptionFailures) {
     test(`redeem reports ${code} rather than success`, async () => {
         io.response = { code, windows_reset: 0 };
-        await assert.rejects(redeemCodexBankedReset("credit-a"), (error) => {
+        await assert.rejects(redeem(), (error) => {
             assert.equal(error.kind, "redemption-failed");
             assert.equal(error.message, message);
             assert.equal(error.technicalMessage, `Codex banked reset redemption returned ${code}`);
@@ -209,7 +237,7 @@ for (const [code, message] of redemptionFailures) {
 
 test("redeem accepts an explicit reset outcome from backends omitting the window count", async () => {
     io.response = { code: "reset" };
-    assert.equal(await redeemCodexBankedReset("credit-a"), io.response);
+    assert.equal(await redeem(), io.response);
 });
 
 for (const automatic of [false, true]) {
@@ -218,32 +246,37 @@ for (const automatic of [false, true]) {
             const notifications = [];
             const warnings = [];
             t.mock.method(console, "warn", (...args) => warnings.push(args));
-            const monitor = new CodexMonitor({ connect() {} }, (message) =>
-                notifications.push(message),
+            const monitor = new CodexMonitor(
+                { connect() {} },
+                (message) => notifications.push(message),
+                credentialsPath,
             );
             const usage = { bankedResetCount: 1 };
-            const inventory = {
-                available_count: 1,
-                credits: [{ id: "credit-a", status: "available" }],
-            };
+            const inventory = { available_count: 1, credits: [expiringCredit()] };
+            const empty = { available_count: 0, credits: [] };
+            const invalidates = code === "no_credit" || code === "already_redeemed";
+            const refreshFails = code === "already_redeemed";
+            const counts = [];
+            let consumed = false;
+            let usageRefreshes = 0;
             monitor._snapshot = usage;
-            monitor._bankedResetSnapshot = inventory;
-            let refreshes = 0;
-            monitor.refreshUsage = async () => refreshes++;
-            monitor.refreshBankedResets = async () => refreshes++;
-            io.response = { code, windows_reset: code === "reset" ? 2 : 0 };
+            monitor.refreshUsage = async () => usageRefreshes++;
+            monitor.onChange = (state) => {
+                if (consumed) counts.push(state.bankedResetCount);
+            };
+            io.respond = (url) => {
+                if (url.endsWith("/consume")) {
+                    consumed = true;
+                    return { code, windows_reset: code === "reset" ? 2 : 0 };
+                }
+                if (consumed && refreshFails) throw new Error("List unavailable");
+                return consumed ? empty : inventory;
+            };
 
             if (automatic) {
-                await monitor._autoRedeemBankedReset(
-                    [
-                        {
-                            ...inventory.credits[0],
-                            expires_at: new Date(Date.now() + 60_000).toISOString(),
-                        },
-                    ],
-                    { is_cancelled: () => false, set_error_if_cancelled() {} },
-                );
+                await monitor._refreshBankedResetsForAutoApply();
             } else {
+                assert.equal(await monitor.prepareBankedReset("credit-a"), inventory.credits[0]);
                 await monitor.redeemBankedReset("credit-a");
             }
 
@@ -253,12 +286,33 @@ for (const automatic of [false, true]) {
                         ? "Expiring banked Codex reset redeemed automatically."
                         : "Banked Codex reset redeemed.",
                 ]);
-                assert.equal(refreshes, 2);
+                assert.equal(usageRefreshes, 1);
+                assert.equal(io.requests.filter(({ url }) => url === listUrl).length, 2);
                 assert.equal(warnings.length, 0);
             } else {
-                assert.equal(refreshes, 0, "a no-op is not treated as a redeemed reset");
+                assert.equal(usageRefreshes, 0, "a no-op is not treated as a redeemed reset");
                 assert.equal(monitor.state.snapshot, usage);
-                assert.equal(monitor.state.bankedResetSnapshot, inventory);
+                assert.equal(
+                    io.requests.filter(({ url }) => url === listUrl).length,
+                    invalidates ? 2 : 1,
+                );
+                assert.equal(
+                    monitor.state.bankedResetSnapshot,
+                    invalidates
+                        ? refreshFails
+                            ? null
+                            : empty
+                        : code === "unknown"
+                          ? null
+                          : inventory,
+                );
+                if (invalidates) {
+                    assert.ok(
+                        counts.includes(null),
+                        "the stale quota count is hidden during refresh",
+                    );
+                    assert.equal(monitor.state.bankedResetCount, refreshFails ? null : 0);
+                }
                 if (automatic) {
                     assert.deepEqual(notifications, []);
                     assert.equal(warnings.length, 1);
@@ -277,7 +331,305 @@ for (const automatic of [false, true]) {
     }
 }
 
+function useAccount(accountId, signature = "one", sub = "test-user") {
+    const claims = Buffer.from(
+        JSON.stringify({
+            sub,
+            "https://api.openai.com/auth": { chatgpt_account_id: accountId },
+        }),
+    ).toString("base64url");
+    io.auth = { tokens: { access_token: `mock.${claims}.${signature}` } };
+}
+
+function usageMonitor(t, notify = () => {}, settings = { connect() {} }) {
+    const monitor = new CodexMonitor(settings, notify, credentialsPath);
+    monitor._autoApplyBankedReset = false;
+    monitor._autoApplyBankedResetOnUsage = true;
+    monitor._usageService = {
+        refresh: (options) => refreshCodexUsage({ ...options, credentialsPath }),
+        readHistory: async () => [],
+        predict: async () => null,
+        readCachedSnapshot: async () => null,
+    };
+    const usage = {
+        plan_type: "test",
+        rate_limit: {
+            limit_reached: false,
+            primary_window: {
+                used_percent: 99,
+                limit_window_seconds: 3600,
+                reset_after_seconds: 3600,
+                reset_at: Math.floor(Date.now() / 1000) + 3600,
+            },
+        },
+    };
+    io.respond = (url) =>
+        url.endsWith("/usage") ? usage : url === listUrl ? io.response : { code: "reset" };
+    t.mock.method(console, "warn", () => {});
+    return monitor;
+}
+
+test("usage, inventory, and consume keep the verified account across a token refresh", async (t) => {
+    useAccount("account-a");
+    const originalToken = io.auth.tokens.access_token;
+    const monitor = usageMonitor(t);
+    monitor.onChange = (state) => {
+        if (state.redeemingBankedReset) useAccount("account-a", "rotated");
+    };
+    await monitor.refreshUsage();
+
+    const [usage, list, consume] = io.requests;
+    assert.deepEqual(
+        [usage.url.split("/").at(-1), list.url, consume.url],
+        ["usage", listUrl, `${listUrl}/consume`],
+    );
+    for (const request of [usage, list, consume]) {
+        assert.equal(request.options.headers["ChatGPT-Account-ID"], "account-a");
+    }
+    assert.equal(usage.options.headers.Authorization, `Bearer ${originalToken}`);
+    assert.equal(list.options.headers.Authorization, `Bearer ${originalToken}`);
+    assert.equal(consume.options.headers.Authorization, `Bearer ${io.auth.tokens.access_token}`);
+    assert.notEqual(consume.options.headers.Authorization, usage.options.headers.Authorization);
+});
+
+for (const phase of ["usage", "list", "consume"]) {
+    test(`automatic redemption aborts when credentials are replaced during ${phase}`, async (t) => {
+        useAccount("account-a");
+        const monitor = usageMonitor(t);
+        if (phase === "consume") {
+            monitor.onChange = ({ redeemingBankedReset }) => {
+                if (redeemingBankedReset) useAccount("account-b");
+            };
+        } else {
+            io.afterFetch = (url) => {
+                if (url.endsWith(phase === "usage" ? "/usage" : "/rate-limit-reset-credits")) {
+                    useAccount("account-b");
+                }
+            };
+        }
+        await monitor.refreshUsage();
+        assert.equal(
+            io.requests.some(({ options }) => options.method === "POST"),
+            false,
+        );
+        assert.equal(monitor.state.snapshot, null, "old account usage is not shown");
+        assert.equal(monitor.state.bankedResetSnapshot, null, "old account inventory is not shown");
+    });
+}
+
+test("opting out during consume still reports a confirmed reset and refreshes its account", async (t) => {
+    useAccount("account-a");
+    const messages = [];
+    const callbacks = new Map();
+    const monitor = usageMonitor(t, (message) => messages.push(message), {
+        connect: (signal, callback) => callbacks.set(signal, callback),
+        get_boolean: () => false,
+    });
+    const dispatched = Promise.withResolvers();
+    const release = Promise.withResolvers();
+    io.afterFetch = (url) => {
+        if (url.endsWith("/consume")) {
+            dispatched.resolve();
+            return release.promise;
+        }
+    };
+    const refresh = monitor.refreshUsage();
+    await dispatched.promise;
+    callbacks.get("changed::auto-usage")();
+    release.resolve();
+    await refresh;
+
+    assert.deepEqual(messages, ["Banked Codex reset redeemed automatically near a usage limit."]);
+    const paths = io.requests.map(({ url }) => url.split("/").at(-1));
+    assert.deepEqual(paths.slice(0, 3), ["usage", "rate-limit-reset-credits", "consume"]);
+    assert.deepEqual(paths.slice(3).sort(), ["rate-limit-reset-credits", "usage"]);
+});
+
+for (const transition of ["account switch", "stop"]) {
+    test(`consume completion never updates the wrong UI after ${transition}`, async (t) => {
+        useAccount("account-a");
+        const messages = [];
+        const monitor = usageMonitor(t, (message) => messages.push(message), {
+            connect() {},
+            disconnect() {},
+        });
+        const dispatched = Promise.withResolvers();
+        const release = Promise.withResolvers();
+        io.afterFetch = (url, options) => {
+            if (url.endsWith("/consume")) {
+                dispatched.resolve(options.cancellable);
+                return release.promise;
+            }
+        };
+        const changes = [];
+        monitor.onChange = (state) => changes.push(state);
+        const refresh = monitor.refreshUsage();
+        const transport = await dispatched.promise;
+        if (transition === "stop") {
+            monitor.stop();
+        } else {
+            useAccount("account-b");
+            await monitor.refreshUsage();
+            await monitor.refreshBankedResets();
+        }
+        const { snapshot, bankedResetSnapshot } = monitor.state;
+        const requests = io.requests.length;
+        const emitted = changes.length;
+        assert.equal(transport.is_cancelled(), transition === "stop");
+        release.resolve();
+        await refresh;
+
+        assert.deepEqual(messages, []);
+        assert.equal(
+            io.requests.length,
+            requests,
+            "no redemption follow-up runs for another account",
+        );
+        assert.equal(monitor.state.snapshot, snapshot);
+        assert.equal(monitor.state.bankedResetSnapshot, bankedResetSnapshot);
+        if (transition === "stop") assert.equal(changes.length, emitted);
+    });
+}
+
+for (const failure of ["lost response", "unknown reply"]) {
+    test(`automatic redemption waits for fresh inventory and usage after ${failure}`, async (t) => {
+        useAccount("account-a");
+        const monitor = usageMonitor(t);
+        monitor._autoApplyBankedReset = true;
+        const oldRespond = io.respond;
+        let attempts = 0;
+        let failUsage = false;
+        let failList = false;
+        io.respond = (url, options) => {
+            if (url.endsWith("/consume")) {
+                attempts++;
+                if (attempts === 1) {
+                    if (failure === "lost response") throw new Error("Response lost");
+                    return { code: "unknown" };
+                }
+            }
+            if (url === listUrl) {
+                if (failList) throw new Error("Inventory unavailable");
+                return { available_count: 1, credits: [expiringCredit()] };
+            }
+            if (url.endsWith("/usage") && failUsage) throw new Error("Usage unavailable");
+            return oldRespond(url, options);
+        };
+        await monitor.refreshUsage();
+        assert.equal(attempts, 1, "an ambiguous consume is not retried");
+
+        failUsage = true;
+        await monitor._refreshBankedResetsForAutoApply();
+        assert.equal(attempts, 1, "inventory alone cannot authorize another auto decision");
+
+        failUsage = false;
+        failList = true;
+        await monitor.refreshUsage();
+        assert.equal(attempts, 1, "usage alone cannot authorize another auto decision");
+
+        failList = false;
+        await monitor._refreshBankedResetsForAutoApply();
+        assert.equal(attempts, 2, "a later decision can use both refreshed observations");
+    });
+}
+
+test("a popup inventory request cannot swallow a new account's low-quota trigger", async (t) => {
+    useAccount("account-a");
+    const monitor = usageMonitor(t);
+    const requested = Promise.withResolvers();
+    const release = Promise.withResolvers();
+    const joined = Promise.withResolvers();
+    io.afterFetch = (url, { headers }) => {
+        if (url === listUrl && headers["ChatGPT-Account-ID"] === "account-a") {
+            requested.resolve();
+            return release.promise;
+        }
+    };
+    const refreshInventory = monitor.refreshBankedResets.bind(monitor);
+    monitor.refreshBankedResets = (options) => {
+        if (options?.expectedCredentials?.accountId === "account-b") joined.resolve();
+        return refreshInventory(options);
+    };
+    const popup = monitor.refreshBankedResets();
+    await requested.promise;
+    useAccount("account-b");
+    const usage = monitor.refreshUsage();
+    await joined.promise;
+    release.resolve();
+    await Promise.all([popup, usage]);
+
+    const consumes = io.requests.filter(({ options }) => options.method === "POST");
+    assert.equal(consumes.length, 1);
+    assert.equal(consumes[0].options.headers["ChatGPT-Account-ID"], "account-b");
+});
+
+test("an interrupted expiry check does not drop a fresh trigger from the replacement account", async (t) => {
+    useAccount("account-a");
+    const monitor = usageMonitor(t);
+    monitor._autoApplyBankedReset = true;
+    const requested = Promise.withResolvers();
+    const release = Promise.withResolvers();
+    io.afterFetch = (url, { headers }) => {
+        if (url === listUrl && headers["ChatGPT-Account-ID"] === "account-a") {
+            requested.resolve();
+            return release.promise;
+        }
+    };
+    const expiry = monitor._refreshBankedResetsForAutoApply();
+    await requested.promise;
+    useAccount("account-b");
+    await monitor.refreshUsage();
+    release.resolve();
+    await expiry;
+
+    const consumes = io.requests.filter(({ options }) => options.method === "POST");
+    assert.equal(consumes.length, 1);
+    assert.equal(consumes[0].options.headers["ChatGPT-Account-ID"], "account-b");
+});
+
+test("manual validation does not confirm an identically named credit from a replacement account", async () => {
+    useAccount("account-a");
+    const monitor = new CodexMonitor({ connect() {} }, () => {}, credentialsPath);
+    await monitor.refreshBankedResets();
+    useAccount("account-b");
+    assert.equal(await monitor.prepareBankedReset("credit-a"), null);
+    await monitor.redeemBankedReset("credit-a");
+    assert.equal(
+        io.requests.some(({ options }) => options.method === "POST"),
+        false,
+    );
+});
+
+for (const replacement of ["account", "user", "opaque token"]) {
+    test(`manual confirmation cannot redeem after a change of ${replacement}`, async () => {
+        if (replacement !== "opaque token") useAccount("account-a");
+        const messages = [];
+        const monitor = new CodexMonitor(
+            { connect() {} },
+            (text) => messages.push(text),
+            credentialsPath,
+        );
+        assert.equal(await monitor.prepareBankedReset("credit-a"), io.response.credits[0]);
+        if (replacement === "account") useAccount("account-b");
+        if (replacement === "user") useAccount("account-a", "other", "other-user");
+        if (replacement === "opaque token") io.auth.tokens.access_token = "replacement-token";
+        await monitor.redeemBankedReset("credit-a");
+        assert.equal(
+            io.requests.some(({ options }) => options.method === "POST"),
+            false,
+        );
+        assert.match(messages.at(-1), /account changed/);
+    });
+}
+
+test("a token and file account conflict is rejected before any request", async () => {
+    useAccount("account-a");
+    io.auth.tokens.account_id = "account-b";
+    await assert.rejects(list(), (error) => error.kind === "missing-auth");
+    assert.equal(io.requests.length, 0);
+});
+
 test("list still validates the network response", async () => {
     io.response = { credits: [] };
-    await assert.rejects(listCodexBankedResets(), (error) => error.kind === "unexpected-response");
+    await assert.rejects(list(), (error) => error.kind === "unexpected-response");
 });
