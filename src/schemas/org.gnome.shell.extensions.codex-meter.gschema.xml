@@ -63,7 +63,7 @@
     <key name="usage-notifications" type="b">
       <default>false</default>
       <summary>Usage notifications</summary>
-      <description>Notify after successful usage refreshes when remaining usage is low or exhausted, once per notification level per quota cycle while enabled.</description>
+      <description>Notify after successful usage refreshes when a window runs low, is exhausted, or resets after exhaustion. Send each alert once per window per quota cycle. Exclude banked resets. Clear notification state when notifications or the extension are disabled.</description>
     </key>
     <key name="usage-notification-threshold" type="u">
       <default>10</default>

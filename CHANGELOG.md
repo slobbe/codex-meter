@@ -9,7 +9,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 - Added configurable path for authentication credentials (default `~/.codex/auth.json`).
-- Added optional notifications for low and exhausted usage windows, with a configurable warning threshold.
+- Added optional notifications for low usage, exhausted windows, and scheduled resets after exhaustion, with a configurable warning threshold.
 - Added About window in preferences with details, version, changelog, credits, license, and project links.
 
 ### Changed

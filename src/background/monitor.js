@@ -74,6 +74,8 @@ export class CodexMonitor {
         );
         this._refreshPromise = null;
         this._refreshCancellable = null;
+        this._usageResetGeneration = 0;
+        this._deferredUsageResets = [];
         this._snapshot = null;
         this._prediction = null;
         this._history = [];
@@ -149,8 +151,16 @@ export class CodexMonitor {
         this._settings.disconnect(this._refreshIntervalChangedId);
         this._settings.disconnect(this._usageNotificationsChangedId);
         this._settings.disconnect(this._usageNotificationThresholdChangedId);
+        // Discarded observations must not leave old reset eligibility on this path.
+        for (const { snapshot } of this._deferredUsageResets) {
+            for (const quota of snapshot.quotas) {
+                const state = this._usageNotificationStates.get(quota.id);
+                if (state) state.observedExhausted = false;
+            }
+        }
         // The extension retains this path's state across monitor replacements.
         this._usageNotificationStates = null;
+        this._deferredUsageResets = [];
         this.onChange = null;
     }
 
@@ -292,9 +302,15 @@ export class CodexMonitor {
                 credentialsPath: this._credentialsPath,
             });
             if (this._lifecycleCancellable.is_cancelled() || cancellable.is_cancelled()) return;
+            this._usageResetGeneration++;
+            this._deferredUsageResets = [];
+            // Banked resets reset usage limits without identifying affected windows.
+            for (const state of this._usageNotificationStates.values()) {
+                state.observedExhausted = false;
+            }
             this._notify(automaticMessage ?? "Banked Codex reset redeemed.");
-            // A request started before redemption must finish before fetching fresh inventory.
-            await this._bankedResetRefreshPromise;
+            // Older requests must finish before the post-redemption refreshes start.
+            await Promise.all([this._refreshPromise, this._bankedResetRefreshPromise]);
             if (this._lifecycleCancellable.is_cancelled() || cancellable.is_cancelled()) return;
             await Promise.all([this.refreshUsage(), this.refreshBankedResets()]);
         } catch (error) {
@@ -308,6 +324,11 @@ export class CodexMonitor {
             this._bankedResetPreparation = null;
             if (this._lifecycleCancellable.is_cancelled()) return;
             this._redeemingBankedReset = false;
+            const deferredResets = this._deferredUsageResets;
+            this._deferredUsageResets = [];
+            for (const { snapshot, observedAt } of deferredResets) {
+                this._notifyUsageResets(snapshot, observedAt);
+            }
             this._emitChange();
         }
     }
@@ -318,6 +339,7 @@ export class CodexMonitor {
             () => {
                 this._usageNotifications = this._settings.get_boolean(SETTINGS_USAGE_NOTIFICATIONS);
                 this._usageNotificationStates.clear();
+                this._deferredUsageResets = [];
             },
         );
         this._usageNotificationThresholdChangedId = this._settings.connect(
@@ -368,6 +390,7 @@ export class CodexMonitor {
     }
 
     async _refreshUsageOnce(cancellable = this._lifecycleCancellable) {
+        const resetGeneration = this._usageResetGeneration;
         try {
             if (this._lifecycleCancellable.is_cancelled()) return;
             const snapshot = await this._usageService.refresh({ cancellable });
@@ -379,7 +402,8 @@ export class CodexMonitor {
             this._cachedFailureMessage = null;
             await this._loadPrediction(this._snapshot, cancellable);
             cancellable?.set_error_if_cancelled();
-            this._notifyUsage(snapshot);
+            // A pre-redemption result must not restore old exhaustion observations.
+            this._notifyUsage(snapshot, resetGeneration === this._usageResetGeneration);
             return snapshot;
         } catch (error) {
             if (this._lifecycleCancellable.is_cancelled() || isCancellationError(error)) return;
@@ -466,7 +490,7 @@ export class CodexMonitor {
         }
     }
 
-    _notifyUsage(snapshot) {
+    _notifyUsage(snapshot, trackResets = true) {
         if (!this._usageNotifications || this._lifecycleCancellable.is_cancelled()) return;
         const now = Date.now() / 1000;
         const activeQuotas = snapshot.quotas.filter((quota) => (quota.resetAt ?? Infinity) > now);
@@ -486,6 +510,7 @@ export class CodexMonitor {
             const remaining = Math.max(0, 100 - quota.usedPercent);
             const exhausted = remaining === 0;
             let state = states.get(quota.id);
+            const resetAlerts = state?.resetAlerts ?? [];
             // A new reset deadline or a redeemed reset starts a fresh notification cycle.
             if (
                 !state ||
@@ -493,10 +518,18 @@ export class CodexMonitor {
                 (state.exhausted && !exhausted) ||
                 (quota.usedPercent === 0 && state.usedPercent > 0)
             ) {
-                state = { resetAt: quota.resetAt ?? null, warned: false, exhausted: false };
+                state = {
+                    resetAt: quota.resetAt ?? null,
+                    warned: false,
+                    exhausted: false,
+                    observedExhausted: state?.observedExhausted,
+                    observedResetAt: state?.observedResetAt,
+                };
                 states.set(quota.id, state);
             }
             state.usedPercent = quota.usedPercent;
+            // Reset observations and delivery reservations outlive notification cycles.
+            state.resetAlerts = resetAlerts;
             if (exhausted) {
                 // A displayed window alert also explains this account-wide episode.
                 const markAccountExplained = () => {
@@ -534,6 +567,44 @@ export class CodexMonitor {
                 "exhausted",
                 "Codex account usage limit reached.",
             );
+        }
+        if (trackResets) {
+            if (this._redeemingBankedReset) {
+                // Preserve order and observation times if redemption later fails.
+                this._deferredUsageResets.push({ snapshot, observedAt: now });
+            } else {
+                this._notifyUsageResets(snapshot, now);
+            }
+        }
+    }
+
+    _notifyUsageResets(snapshot, observedAt) {
+        if (!this._usageNotifications || this._lifecycleCancellable.is_cancelled()) return;
+        const now = Date.now() / 1000;
+        for (const quota of snapshot.quotas) {
+            if ((quota.resetAt ?? Infinity) <= observedAt) continue;
+            const state = this._usageNotificationStates.get(quota.id);
+            if (!state) continue;
+            if (
+                state.observedExhausted &&
+                Number.isFinite(state.observedResetAt) &&
+                state.observedResetAt <= observedAt &&
+                quota.resetAt > now &&
+                quota.resetAt > state.observedResetAt &&
+                quota.usedPercent < 100
+            ) {
+                state.resetAlerts.push({
+                    message: `${quota.label} usage window reset.`,
+                    shown: false,
+                });
+            }
+            state.observedExhausted = quota.usedPercent >= 100;
+            state.observedResetAt = quota.resetAt ?? null;
+            state.resetAlerts = state.resetAlerts.filter((alert) => alert.shown !== true);
+            if ((quota.resetAt ?? Infinity) <= now) continue;
+            for (const alert of state.resetAlerts) {
+                if (!alert.shown) queueUsageAlert(this._notify, alert, "shown", alert.message);
+            }
         }
     }
 

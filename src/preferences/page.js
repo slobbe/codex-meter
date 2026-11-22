@@ -399,7 +399,8 @@ function createNotificationsGroup(settings, settingsSignalIds) {
             settings,
             key: SETTINGS_USAGE_NOTIFICATIONS,
             title: "Usage notifications",
-            subtitle: "Notify when remaining usage is low or exhausted.",
+            subtitle:
+                "Notify when a usage window runs low, is exhausted, or resets after exhaustion.",
         }),
     );
     const key = SETTINGS_USAGE_NOTIFICATION_THRESHOLD;

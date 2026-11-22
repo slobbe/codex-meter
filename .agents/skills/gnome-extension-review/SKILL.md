@@ -97,6 +97,7 @@ Evaluate the extension against the current EGO review guidelines.
 Pay particular attention to:
 
 **Lifecycle**
+
 - No runtime side effects during module import or construction
 - Runtime objects and connections created during `enable()`
 - All owned resources released during `disable()`
@@ -108,11 +109,13 @@ Pay particular attention to:
 - No stale references after disabling
 
 **Process isolation**
+
 - No Gtk, Gdk, or Adw imports in the Shell process
 - No St, Clutter, Meta, or Shell imports in preferences
 - Shared modules do not introduce incompatible imports
 
 **Security and restrictions**
+
 - No prohibited binary executables or libraries
 - No obfuscated or minified submitted JavaScript
 - No prohibited telemetry
@@ -123,6 +126,7 @@ Pay particular attention to:
 - No deprecated or forbidden modules
 
 **Metadata and distribution**
+
 - Correct UUID and metadata fields
 - Valid, accurately declared Shell versions
 - Valid GSettings schema ID and path

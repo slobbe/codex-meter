@@ -385,6 +385,374 @@ test("stop during a usage refresh prevents late usage notifications", async () =
     assert.deepEqual(notifications, []);
 });
 
+test("live scheduled resets notify each window even while another remains exhausted", async (t) => {
+    let now = 1_000;
+    t.mock.method(Date, "now", () => now * 1000);
+    const { monitor, notifications } = fixture();
+    enableNotifications(monitor);
+    delete monitor.refreshUsage;
+    t.after(() => monitor.stop());
+    let quotas = [
+        notificationQuota(100, { resetAt: 2_000 }),
+        notificationQuota(101, { id: "weekly", label: "Weekly", resetAt: 3_000 }),
+    ];
+    monitor._usageService.refresh = async () => ({ quotas });
+    await monitor.refreshUsage();
+    now = 2_000;
+    quotas = [notificationQuota(0, { resetAt: 4_000 }), quotas[1]];
+    await monitor.refreshUsage();
+    await monitor.refreshUsage();
+    now = 3_000;
+    quotas = [quotas[0], { ...quotas[1], usedPercent: 50, resetAt: 5_000 }];
+    await monitor.refreshUsage();
+    assert.deepEqual(notifications, [
+        "5 hours usage window exhausted.",
+        "Weekly usage window exhausted.",
+        "5 hours usage window reset.",
+        "Weekly usage window reset.",
+    ]);
+});
+
+test("reset alerts require observed exhaustion and a passed, advanced scheduled deadline", (t) => {
+    let now = 1_000;
+    t.mock.method(Date, "now", () => now * 1000);
+    for (const [name, previous, fresh, refreshAt, interim] of [
+        ["deadline movement alone", [99, 2_000], [0, 4_000], 2_001],
+        ["early recovery", [100, 2_000], [0, 4_000], 1_999],
+        ["unknown old deadline", [100, null], [0, 4_000], 2_001],
+        ["unknown new deadline", [100, 2_000], [0, null], 2_001],
+        ["expired observation", [100, 999], [0, 4_000], 2_001],
+        ["expired fresh quota", [100, 2_000], [0, 2_000], 2_001],
+        ["still exhausted", [100, 2_000], [100, 4_000], 2_001],
+        ["account flag alone", [50, 2_000], [0, 4_000], 2_001],
+        ["recovered before deadline", [100, 2_000], [0, 4_000], 2_001, [50, 2_000]],
+        ["deadline moved before reset", [100, 2_000], [0, 4_000], 2_001, [100, 3_000]],
+    ]) {
+        now = 1_000;
+        const { monitor, notifications } = fixture();
+        enableNotifications(monitor);
+        const observe = ([usedPercent, resetAt]) =>
+            monitor._notifyUsage({
+                quotas: [notificationQuota(usedPercent, { resetAt, limitReached: true })],
+            });
+        observe(previous);
+        if (interim) observe(interim);
+        now = refreshAt;
+        observe(fresh);
+        assert.equal(
+            notifications.some((message) => message.endsWith(" reset.")),
+            false,
+            name,
+        );
+        monitor.stop();
+    }
+});
+
+test("reset delivery survives cycle and monitor replacement, with retries only after drops", (t) => {
+    let now = 1_000;
+    t.mock.method(Date, "now", () => now * 1000);
+    const states = new Map();
+    const deliveries = [];
+    const createMonitor = () =>
+        new CodexMonitor(
+            { connect() {}, disconnect() {}, get_boolean: () => true, get_uint: () => 10 },
+            (message, settle) => {
+                if (message.endsWith(" reset.")) deliveries.push({ message, settle });
+                else settle(false); // Observed exhaustion must not depend on banner delivery.
+            },
+            "/a/auth.json",
+            states,
+        );
+    let monitor = createMonitor();
+    monitor._notifyUsage({ quotas: [notificationQuota(100, { resetAt: 2_000 })] });
+    monitor.stop();
+    now = 2_001;
+    monitor = createMonitor();
+    const recovered = { quotas: [notificationQuota(0, { resetAt: 4_000 })] };
+    monitor._notifyUsage(recovered);
+    monitor.stop();
+    monitor = createMonitor();
+    monitor._notifyUsage(recovered);
+    assert.equal(deliveries.length, 1, "queued reset survives monitor replacement");
+    deliveries[0].settle(false);
+    monitor.stop();
+    monitor = createMonitor();
+    // Replace the quota cycle again before retrying the dropped event.
+    recovered.quotas[0].resetAt = 5_000;
+    monitor._notifyUsage(recovered);
+    deliveries[0].settle(true);
+    monitor._notifyUsage(recovered);
+    assert.equal(deliveries.length, 2, "stale acknowledgment cannot release a new reservation");
+    deliveries[1].settle(true);
+    monitor.stop();
+    monitor = createMonitor();
+    monitor._notifyUsage(recovered);
+    assert.deepEqual(
+        deliveries.map(({ message }) => message),
+        ["5 hours usage window reset.", "5 hours usage window reset."],
+    );
+    monitor.stop();
+});
+
+test("monitor replacement cannot reuse exhaustion after discarding deferred early recovery", async (t) => {
+    let now = 1_000;
+    t.mock.method(Date, "now", () => now * 1000);
+    const states = new Map();
+    const notifications = [];
+    let snapshot = { quotas: [notificationQuota(100, { resetAt: 2_000 })] };
+    const createMonitor = () => {
+        const monitor = new CodexMonitor(
+            { connect() {}, disconnect() {}, get_boolean: () => true, get_uint: () => 10 },
+            (message, settle) => {
+                notifications.push(message);
+                settle?.(true);
+            },
+            "/a/auth.json",
+            states,
+        );
+        monitor._usageService.refresh = async () => snapshot;
+        t.after(() => monitor.stop());
+        return monitor;
+    };
+    const first = createMonitor();
+    await first.refreshUsage();
+    const response = deferred();
+    api.redeem = () => response.promise;
+    const redeeming = first.redeemBankedReset("credit");
+    now = 1_999;
+    snapshot = { quotas: [notificationQuota(0, { resetAt: 4_000 })] };
+    await first.refreshUsage();
+    first.stop();
+    response.resolve();
+    await redeeming;
+    now = 2_001;
+    const returning = createMonitor();
+    await returning.refreshUsage();
+    assert.deepEqual(notifications, ["5 hours usage window exhausted."]);
+});
+
+test("cached usage, failed refreshes, and notification toggles do not create reset eligibility", async (t) => {
+    let now = 1_000;
+    t.mock.method(Date, "now", () => now * 1000);
+    const { monitor, notifications, settings, callbacks } = fixture();
+    enableNotifications(monitor);
+    const exhausted = { quotas: [notificationQuota(100, { resetAt: 2_000 })] };
+    const recovered = { quotas: [notificationQuota(0, { resetAt: 4_000 })] };
+    monitor._usageService.readCachedSnapshot = async () => exhausted;
+    await monitor._loadCachedSnapshot();
+    now = 2_001;
+    monitor._usageService.refresh = async () => recovered;
+    await monitor._refreshUsageOnce();
+    assert.deepEqual(notifications, [], "cached exhaustion cannot arm a reset alert");
+
+    now = 1_000;
+    monitor._usageService.refresh = async () => exhausted;
+    await monitor._refreshUsageOnce();
+    now = 2_001;
+    monitor._usageService.refresh = async () => {
+        throw new Error("offline");
+    };
+    await monitor._refreshUsageOnce();
+    assert.deepEqual(notifications, ["5 hours usage window exhausted."]);
+    monitor._usageService.refresh = async () => recovered;
+    await monitor._refreshUsageOnce();
+    assert.equal(notifications[1], "5 hours usage window reset.");
+
+    now = 1_000;
+    monitor._notifyUsage(exhausted);
+    settings.get_boolean = () => false;
+    callbacks.get("changed::usage-notifications")();
+    now = 2_001;
+    monitor._notifyUsage(recovered);
+    settings.get_boolean = () => true;
+    callbacks.get("changed::usage-notifications")();
+    monitor._notifyUsage(recovered);
+    assert.equal(notifications.filter((message) => message.endsWith(" reset.")).length, 1);
+    monitor.stop();
+});
+
+test("failed banked redemption preserves scheduled-reset eligibility", async (t) => {
+    let now = 1_000;
+    t.mock.method(Date, "now", () => now * 1000);
+    const { monitor, notifications } = fixture();
+    enableNotifications(monitor);
+    monitor._notifyUsage({ quotas: [notificationQuota(100, { resetAt: 2_000 })] });
+    api.redeem = async () => {
+        throw new Error("redemption failed");
+    };
+    await monitor.redeemBankedReset("credit");
+    now = 2_001;
+    monitor._usageService.refresh = async () => ({
+        quotas: [notificationQuota(0, { resetAt: 4_000 })],
+    });
+    await monitor._refreshUsageOnce();
+    assert.equal(notifications.at(-1), "5 hours usage window reset.");
+    monitor.stop();
+});
+
+for (const succeeds of [false, true]) {
+    test(`pending redemption defers dropped reset delivery (success: ${succeeds})`, async (t) => {
+        let now = 1_000;
+        t.mock.method(Date, "now", () => now * 1000);
+        let resetDeliveries = 0;
+        const { monitor } = fixture((message, settle) => {
+            if (message.endsWith(" reset.")) {
+                resetDeliveries++;
+                settle(resetDeliveries > 1);
+            } else {
+                settle?.(true);
+            }
+        });
+        enableNotifications(monitor);
+        t.after(() => monitor.stop());
+        monitor._notifyUsage({ quotas: [notificationQuota(100, { resetAt: 2_000 })] });
+        now = 2_001;
+        monitor._usageService.refresh = async () => ({
+            quotas: [notificationQuota(0, { resetAt: 4_000 })],
+        });
+        await monitor._refreshUsageOnce();
+        assert.equal(resetDeliveries, 1);
+        const response = deferred();
+        api.redeem = () => response.promise;
+        api.list = async () => ({ credits: [] });
+        const redeeming = monitor.redeemBankedReset("credit");
+        await monitor._refreshUsageOnce();
+        assert.equal(resetDeliveries, 1, "dropped reset must not retry during redemption");
+        if (succeeds) response.resolve();
+        else response.reject(new Error("redemption failed"));
+        await redeeming;
+        assert.equal(resetDeliveries, succeeds ? 1 : 2);
+        await monitor._refreshUsageOnce();
+        await monitor._refreshUsageOnce();
+        assert.equal(resetDeliveries, 2, "an earlier valid reset remains eligible for delivery");
+    });
+
+    for (const recoveredAt of [1_999, 2_001]) {
+        test(`reset detection waits for pending redemption (success: ${succeeds}, recovery at: ${recoveredAt})`, async (t) => {
+            let now = 1_000;
+            t.mock.method(Date, "now", () => now * 1000);
+            const { monitor, notifications } = fixture();
+            enableNotifications(monitor);
+            delete monitor.refreshUsage;
+            t.after(() => monitor.stop());
+            monitor._notifyUsage({ quotas: [notificationQuota(100, { resetAt: 2_000 })] });
+            const response = deferred();
+            api.redeem = () => response.promise;
+            api.list = async () => ({ credits: [] });
+            const redeeming = monitor.redeemBankedReset("credit");
+            now = recoveredAt;
+            monitor._usageService.refresh = async () => ({
+                quotas: [
+                    notificationQuota(0, { resetAt: 4_000 }),
+                    notificationQuota(100, { id: "weekly", label: "Weekly", resetAt: 4_000 }),
+                    notificationQuota(91, { id: "other", label: "Other", resetAt: 4_000 }),
+                ],
+            });
+            await monitor.refreshUsage();
+            assert.deepEqual(
+                notifications,
+                [
+                    "5 hours usage window exhausted.",
+                    "Weekly usage window exhausted.",
+                    "Other usage window is running low: 9% left.",
+                ],
+                "low and exhausted alerts continue, but reset alerts wait",
+            );
+            // A second result must not turn early recovery into a scheduled reset.
+            now = 2_002;
+            await monitor.refreshUsage();
+            if (succeeds) response.resolve();
+            else response.reject(new Error("redemption failed"));
+            await redeeming;
+            assert.equal(
+                notifications.filter((message) => message.endsWith(" reset.")).length,
+                !succeeds && recoveredAt > 2_000 ? 1 : 0,
+            );
+            await monitor.refreshUsage();
+            assert.equal(
+                notifications.filter((message) => message.endsWith(" reset.")).length,
+                !succeeds && recoveredAt > 2_000 ? 1 : 0,
+                "deferred reset detection does not repeat",
+            );
+        });
+    }
+}
+
+for (const automatic of [false, true]) {
+    for (const startsDuringRedemption of [false, true]) {
+        test(`${automatic ? "automatic" : "manual"} redemption excludes stale exhaustion (refresh starts during redemption: ${startsDuringRedemption})`, async (t) => {
+            let now = 1_000;
+            t.mock.method(Date, "now", () => now * 1000);
+            const redeemed = deferred();
+            const { monitor, notifications } = fixture((message, settle) => {
+                settle?.(true);
+                if (message.includes("redeemed")) redeemed.resolve();
+            });
+            enableNotifications(monitor);
+            delete monitor.refreshUsage;
+            t.after(() => monitor.stop());
+            const exhausted = {
+                quotas: [
+                    notificationQuota(100, { resetAt: 2_000 }),
+                    notificationQuota(100, { id: "weekly", label: "Weekly", resetAt: 2_000 }),
+                ],
+            };
+            monitor._notifyUsage(exhausted);
+            const oldResponse = deferred();
+            const freshResponse = deferred();
+            let calls = 0;
+            monitor._usageService.refresh = () =>
+                ++calls === 1 ? oldResponse.promise : freshResponse.promise;
+            let refreshing;
+            if (!startsDuringRedemption) refreshing = monitor.refreshUsage();
+            api.redeem = async () => {};
+            api.list = async () => ({
+                credits: [
+                    {
+                        id: "credit",
+                        status: "available",
+                        expires_at: new Date(1_100_000).toISOString(),
+                    },
+                ],
+            });
+            monitor._autoApplyBankedReset = automatic;
+            const redeeming = automatic
+                ? monitor._refreshBankedResetsForAutoApply()
+                : monitor.redeemBankedReset("credit");
+            if (startsDuringRedemption) refreshing = monitor.refreshUsage();
+            await redeemed.promise;
+            now = 1_500;
+            oldResponse.resolve({
+                quotas: [
+                    ...exhausted.quotas,
+                    notificationQuota(91, { id: "other", label: "Other", resetAt: 4_000 }),
+                ],
+            });
+            await refreshing;
+            assert.ok(notifications.includes("Other usage window is running low: 9% left."));
+            now = 2_001;
+            freshResponse.resolve({
+                quotas: exhausted.quotas.map((quota) => ({
+                    ...quota,
+                    usedPercent: 0,
+                    resetAt: 4_000,
+                })),
+            });
+            await redeeming;
+            assert.equal(calls, 2, "redemption waits for old usage, then fetches fresh usage");
+            assert.equal(
+                notifications.some((message) => message.endsWith(" reset.")),
+                false,
+            );
+            // A later independent exhaustion can still arm the next scheduled reset.
+            monitor._notifyUsage({ quotas: [notificationQuota(100, { resetAt: 4_000 })] });
+            now = 4_001;
+            monitor._notifyUsage({ quotas: [notificationQuota(0, { resetAt: 6_000 })] });
+            assert.equal(notifications.at(-1), "5 hours usage window reset.");
+        });
+    }
+}
+
 function enableUsageAutoApply(monitor, usedPercent = 99, resetAt = null) {
     monitor._autoApplyBankedResetOnUsage = true;
 

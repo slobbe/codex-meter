@@ -21,7 +21,9 @@ A GNOME Shell extension that shows your Codex usage limits, resets, and usage tr
 - **Usage pace**: See usage trends and estimates of whether your quota will last until it resets.
 - **Banked resets**: Redeem individual resets or enable automatic redemption before expiry or when quota runs low.
 - **Display options**: Choose between percentages, bars or circular progress indicators.
-- **Notifications**: Get notified when usage reaches a threshold or your quota is exhausted.
+- **Notifications**: Get alerts when a usage window runs low, is exhausted, or resets after exhaustion.
+
+    The **Usage notifications** switch controls all three alert types. A reset alert requires a window previously observed at 100% usage or more. Its scheduled reset time must pass. A successful usage refresh must then show a later reset time in the future and usage below 100%. Banked resets do not trigger reset alerts. Each alert applies to one window, not the whole account. Notification state clears when you turn off notifications or disable the extension.
 
 ## Requirements
 

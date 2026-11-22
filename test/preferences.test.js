@@ -879,6 +879,10 @@ test("notification preferences roundtrip threshold, track sensitivity, and clean
         assert.equal(page.children[5].children[0].children[0].label, "Codex Meter test");
         const [toggle, threshold] = group.children;
         assert.equal(toggle.title, "Usage notifications");
+        assert.equal(
+            toggle.subtitle,
+            "Notify when a usage window runs low, is exhausted, or resets after exhaustion.",
+        );
         assert.equal(toggle.active, enabled);
         assert.equal(threshold.title, "Warning threshold (% left)");
         assert.equal(threshold.value, 10);
