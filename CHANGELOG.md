@@ -19,31 +19,23 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Manual redemption shows the time left when a scheduled reset is close.
 - Changed popup warning and error messages to appear above the footer.
 - Changed the activity chart to a four-week grid with six-hour blocks that use the GNOME accent color.
-- Matched the appearance of activity cells with no data and no activity. Removed the summary below the grid.
 - Increased local usage history retention from 21 to 30 days.
 
 ### Fixed
 
 - Automatically migrated v0.12 usage data to the default account on first use.
-- Fixed activity grid cells appearing as thin horizontal lines.
 - Fixed preferences not opening on GNOME Shell 45 and 46.
-- Prevented reset redemption for the wrong account when the credentials file changes.
-- Prevented usage data from a previous account appearing after an account change.
 - Fixed reset confirmation with animations off. Enter no longer redeems a reset by default.
-- Fixed automatic redemption missing a low-quota trigger or selecting the wrong expiration date.
-- Prevented automatic redemption after its trigger no longer applies or a previous redemption is still unresolved.
 - Fixed expired resets and stale expiry times in the menu.
 - Fixed unavailable resets remaining in the menu after a redemption attempt.
-- Fixed queued usage alerts appearing after an account change or after notifications are turned off.
 - Fixed slow network responses keeping a refresh open indefinitely.
 - Fixed the refresh interval control accepting values above 30 minutes.
 - Fixed damaged history entries hiding valid usage history.
 - Fixed usage history appends failing on GNOME 45 to 49 when a write completes partially.
 - Fixed pauses in GNOME Shell when processing large usage histories.
-- Improved keyboard and screen reader access to the activity chart, panel quota values, and reset confirmation.
+- Improved keyboard and screen reader access to panel quota values and the reset confirmation.
 - Improved the readability and keyboard focus of warning and error messages.
 - Fixed the usage menu showing a full quota bar while loading.
-- Added an error message when the credentials chooser selects a non-local file.
 
 ## v0.12.0 (2026-11-13)
 
