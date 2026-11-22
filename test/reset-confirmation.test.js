@@ -146,6 +146,7 @@ test("confirmation shows the reset title, details, and warning before redeeming"
     assert.equal(content.layout_manager.orientation, "vertical");
     assert.equal(content.children.length, 3);
     assert.equal(content.children[0].text, "Weekly reset");
+    assert.equal(dialog.label_actor, content.children[0]);
     assert.equal(content.children[0].style_class, "cx-reset-dialog-title");
     const details = content.children[1].children;
     assert.equal(content.children[1].layout_manager.orientation, "vertical");

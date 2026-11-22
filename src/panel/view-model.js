@@ -61,6 +61,7 @@ export function createMenuViewModel(
             errorMessage,
             statusTitle: null,
             statusMessage: null,
+            loading: false,
             usageItems: [],
             accountType: "--",
             refreshLabel,
@@ -72,16 +73,8 @@ export function createMenuViewModel(
             errorMessage: null,
             statusTitle: null,
             statusMessage: null,
-            usageItems: [
-                {
-                    id: "loading",
-                    ...createUsageItemViewModel({
-                        title: "Usage",
-                        value: "Loading...",
-                        percentDisplayMode,
-                    }),
-                },
-            ],
+            loading: true,
+            usageItems: [],
             accountType: "--",
             refreshLabel,
             trend: createActivityGridViewModel(null),
@@ -92,6 +85,7 @@ export function createMenuViewModel(
         errorMessage: null,
         statusTitle: cachedFailureMessage ? "Showing cached data" : null,
         statusMessage: cachedFailureMessage ? `Refresh failed: ${cachedFailureMessage}` : null,
+        loading: false,
         usageItems: quotas.map((quota) => ({
             id: quota.id,
             ...createQuotaRowViewModel(quota, prediction, percentDisplayMode),

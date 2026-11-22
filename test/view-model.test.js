@@ -149,22 +149,8 @@ test("uses one generic loading row and no rows for errors or empty snapshots", (
         const settings = { percentDisplayMode };
         const loading = createMenuViewModel(settings, null, null);
         assert.deepEqual(loading, {
-            usageItems: [
-                {
-                    id: "loading",
-                    visible: true,
-                    title: "Usage",
-                    value: "Loading...",
-                    prediction: "",
-                    reset: "resets in --",
-                    percentValue: 0,
-                    displayPercentValue: percentDisplayMode === "left" ? 100 : 0,
-                    displayBaselinePercentValue: null,
-                    percentLabel: percentDisplayMode,
-                    predictionStyle: "muted",
-                    colorStyleClass: "cx-color-safe",
-                },
-            ],
+            loading: true,
+            usageItems: [],
             errorMessage: null,
             statusTitle: null,
             statusMessage: null,
@@ -173,7 +159,7 @@ test("uses one generic loading row and no rows for errors or empty snapshots", (
             trend: { visible: false, title: "Activity over 28 days", summary: "", days: [] },
         });
         const empty = createMenuViewModel(settings, { quotas: [] }, null);
-        assert.deepEqual(empty, { ...loading, usageItems: [] });
+        assert.deepEqual(empty, { ...loading, loading: false });
         for (const snapshot of [null, { quotas: [] }, { quotas: [sessionQuota] }]) {
             const error = createMenuViewModel(
                 settings,
@@ -185,7 +171,7 @@ test("uses one generic loading row and no rows for errors or empty snapshots", (
             );
             assert.deepEqual(error, {
                 ...loading,
-                usageItems: [],
+                loading: false,
                 errorMessage: "Unable to refresh",
             });
         }
@@ -284,6 +270,7 @@ test("renders quotas shortest first in menu values and panel bars and percentage
                 assert.deepEqual(Object.keys(menu).sort(), [
                     "accountType",
                     "errorMessage",
+                    "loading",
                     "refreshLabel",
                     "statusMessage",
                     "statusTitle",

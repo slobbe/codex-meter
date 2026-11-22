@@ -22,6 +22,12 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
             this.signals['notify::vscrollbar-policy']?.();
         }
         add_child(child) { this.children.push(child); child.parent = this; }
+        get_child_at_index(index) { return this.children[index]; }
+        set_child_at_index(child, index) {
+            this.children.splice(this.children.indexOf(child), 1);
+            this.children.splice(index, 0, child);
+        }
+        get_accessible() { return { set_description: value => { this.description = value; } }; }
         show() { this.visible = true; }
         hide() { this.visible = false; }
         set_child_above_sibling(child, sibling) {
@@ -41,6 +47,8 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
         }
         add_style_class_name(name) { (this.classes ??= new Set()).add(name); }
         remove_style_class_name(name) { this.classes?.delete(name); }
+        add_style_pseudo_class(name) { (this.pseudoClasses ??= new Set()).add(name); }
+        remove_style_pseudo_class(name) { this.pseudoClasses?.delete(name); }
         click() { if (this.reactive !== false) this.emit('clicked'); }
         keyPress(key) {
             if (key === 'Return' || key === 'space') this.click();
@@ -69,6 +77,11 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
         Role: { SECTION: 'section' },
         ActorAlign: { CENTER: 0, FILL: 1, END: 2, START: 3 },
         Orientation: { VERTICAL: 'vertical' },
+        TextDirection: { RTL: 'rtl' },
+        EventType: { KEY_PRESS: 'key-press' },
+        ModifierType: { MODIFIER_MASK: 255, LOCK_MASK: 2, MOD2_MASK: 16 },
+        KEY_Left: 'Left', KEY_Right: 'Right', KEY_Up: 'Up', KEY_Down: 'Down',
+        EVENT_STOP: true, EVENT_PROPAGATE: false,
         PolicyType: { NEVER: 'never', AUTOMATIC: 'automatic' },
     };
     export const uiGroup = new Actor();
@@ -76,6 +89,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
     export const PopupBaseMenuItem = Actor;
     export class PopupSeparatorMenuItem extends Actor {}
     export class PopupMenuItem extends Actor {
+        get actor() { return this; }
         constructor(text, options = {}) {
             super(options);
             this.label = new Actor({ text });
@@ -99,8 +113,9 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
             this.isOpen = true;
             this.closeCount = 0;
         }
-        addMenuItem(item) {
+        addMenuItem(item, index = this.children.length) {
             this.add_child(item);
+            this.set_child_at_index(item, index);
             // PopupMenuBase._connectItemSignals uses an AFTER handler to close the top menu.
             item.connect_after('activate', () => {
                 let menu = this;
@@ -115,6 +130,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
         constructor(text) {
             super(text);
             this.menu = new NativeMenu();
+            this.menu.box = this.menu;
             this.menu.actor = new Actor();
             this.menu.actor.vscrollbar_policy = 'never';
             this.menu.close = () => { this.menu.isOpen = false; };
@@ -126,9 +142,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(
                 this.menu.actor.vscrollbar_policy =
                     this.menu.children.length > 10 ? 'automatic' : 'never';
             };
-            this.menu.removeAll = () => {
-                for (const child of [...this.menu.children]) child.destroy();
-            };
+
         }
     }
     export class UsageBar {
@@ -169,7 +183,7 @@ test("usage and banner rows stay vertical without the removed St property", () =
     }
 });
 
-test("shows one focusable activity summary and exposes the state of each cell", async () => {
+test("shows activity details on hover or with arrow keys from one focus stop", async () => {
     const { uiGroup } = await import(stubUrl);
     const menu = new CodexMeterPopupMenu({});
     const tooltip = uiGroup.children.at(-1);
@@ -250,6 +264,48 @@ test("shows one focusable activity summary and exposes the state of each cell", 
     lastMonday.emit("notify::hover");
     assert.equal(tooltip.visible, false);
 
+    const item = menu.trendItem;
+    const next = children.get("1,1");
+    const below = children.get("1,2");
+    cell.mapped = next.mapped = below.mapped = true;
+    cell.hover = false;
+    item.mapped = true;
+    const press = (key, modifiers = 0) =>
+        item.signals["captured-event"](item, {
+            type: () => "key-press",
+            get_state: () => modifiers,
+            get_key_symbol: () => key,
+        });
+    const assertSelected = (selected) => {
+        assert.equal(tooltip.visible, true);
+        assert.equal(tooltip.text, selected.accessible_name);
+        assert.ok(item.accessible_name.endsWith(selected.accessible_name));
+        assert.ok(selected.pseudoClasses.has("selected"));
+    };
+    item.emit("key-focus-in");
+    assertSelected(cell);
+    for (const key of ["Up", "Left", "Tab", "Escape", "Return"]) {
+        assert.equal(press(key), false, `${key} must reach the menu`);
+    }
+    assert.equal(press("Right", 1), false, "modified arrows must reach the menu");
+    assert.equal(press("Right"), true);
+    assert.equal(cell.pseudoClasses.has("selected"), false);
+    assertSelected(next);
+    assert.equal(press("Down"), true);
+    assertSelected(below);
+    assert.equal(press("Up"), true);
+    assert.equal(press("Left"), true);
+    assertSelected(cell);
+    item.emit("key-focus-out");
+    assert.equal(tooltip.visible, false);
+    assert.equal(cell.pseudoClasses.has("selected"), false);
+    assert.equal(item.accessible_name, `${title}. ${summary}`);
+    item.emit("key-focus-in");
+    item.mapped = false;
+    item.emit("notify::mapped");
+    assert.equal(tooltip.visible, false);
+    assert.equal(cell.pseudoClasses.has("selected"), false);
+
     menu.setTrend({ visible: false, title, summary: "", days: [] });
     assert.equal(menu.trendItem.visible, false);
     menu.trendItem.destroy();
@@ -309,7 +365,15 @@ test("reconciles usage rows through 0 -> 3 -> 1 -> 0 and updates all row data", 
             colorStyleClass: vm.colorStyleClass,
         });
     };
+    menu.setUsageItems([], true);
+    assert.equal(menu.loadingItem.visible, true);
+    assert.equal(menu.loadingItem.label.text, "Loading usage…");
+    assert.equal(menu.loadingItem.can_focus, false);
+    assert.deepEqual(menu.usageItems, []);
+    menu.syncBars();
+
     menu.setUsageItems(viewModels);
+    assert.equal(menu.loadingItem.visible, false);
     const rows = [...menu.usageItems];
     assert.deepEqual(items, [...fixedItems.slice(0, 1), ...rows, ...fixedItems.slice(1)]);
     rows.forEach((item, index) => assertRow(item, viewModels[index]));
@@ -528,15 +592,16 @@ test("noninteractive header precedes usage and activity, then banked resets, sta
     });
     assert.deepEqual(items, [
         menu.headerItem,
+        menu.loadingItem,
         menu.trendItem,
-        items[2],
+        items[3],
         menu.bankedResetsItem,
-        items[4],
+        items[5],
         menu.statusItem,
         menu.footerItem,
     ]);
-    assert.equal(items[2].constructor.name, "PopupSeparatorMenuItem");
-    assert.equal(items[4].constructor.name, "PopupSeparatorMenuItem");
+    assert.equal(items[3].constructor.name, "PopupSeparatorMenuItem");
+    assert.equal(items[5].constructor.name, "PopupSeparatorMenuItem");
     assert.equal(menu.footerItem.reactive, false);
     assert.equal(menu.footerItem.can_focus, false);
     assert.deepEqual(menu.footerItem.children, [
@@ -917,9 +982,10 @@ test("native submenu stays scrollable when a large inventory arrives after openi
     );
 });
 
-test("expired available resets disappear even when inventory data is unchanged", (t) => {
+test("cached reset rows update countdowns in place and remove expired entries", (t) => {
     const now = Date.parse("2030-01-01T00:00:00Z");
-    t.mock.method(Date, "now", () => now);
+    let currentTime = now;
+    t.mock.method(Date, "now", () => currentTime);
     const selected = [];
     const menu = new CodexMeterPopupMenu({ onRedeemBankedReset: (id) => selected.push(id) });
     const state = {
@@ -927,7 +993,11 @@ test("expired available resets disappear even when inventory data is unchanged",
             credits: [
                 { id: "past", status: "available", expires_at: new Date(now - 1).toISOString() },
                 { id: "boundary", status: "available", expires_at: new Date(now).toISOString() },
-                { id: "future", status: "available", expires_at: new Date(now + 1).toISOString() },
+                {
+                    id: "future",
+                    status: "available",
+                    expires_at: new Date(now + 600_000).toISOString(),
+                },
                 { id: "missing", status: "available" },
                 { id: "invalid", status: "available", expires_at: "invalid" },
                 { id: "spent", status: "redeemed" },
@@ -935,12 +1005,22 @@ test("expired available resets disappear even when inventory data is unchanged",
         },
     };
     menu.setBankedResets(state);
-    for (const row of menu.bankedResetsItem.menu.children) row.signals.activate();
+    const submenu = menu.bankedResetsItem.menu;
+    const [expiring, ...remaining] = submenu.children;
+    assert.equal(expiring.label.text, "Usage limit reset · Expires in 10m");
+    for (const row of submenu.children) row.signals.activate();
     assert.deepEqual(selected, ["future", "missing", "invalid"]);
-    t.mock.method(Date, "now", () => now + 2);
+    currentTime += 120_000;
     menu.setBankedResets(state);
+    assert.equal(submenu.children[0], expiring);
+    assert.equal(expiring.label.text, "Usage limit reset · Expires in 8m");
+    currentTime = now + 600_000;
+    menu.setBankedResets(state);
+    assert.equal(expiring.destroyed, true);
+    assert.equal(submenu.children.length, remaining.length);
+    remaining.forEach((row, index) => assert.equal(submenu.children[index], row));
     selected.length = 0;
-    for (const row of menu.bankedResetsItem.menu.children) row.signals.activate();
+    for (const row of submenu.children) row.signals.activate();
     assert.deepEqual(selected, ["missing", "invalid"]);
     menu.setBankedResets({ snapshot: { credits: [state.snapshot.credits[0]] } });
     assert.equal(menu.bankedResetsItem.menu.children[0].label.text, "No banked resets available");

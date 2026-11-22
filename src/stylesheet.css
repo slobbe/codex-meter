@@ -117,14 +117,19 @@
 .cx-error-heading-button {
     padding: 4px;
     margin: 0;
+    border: 2px solid transparent;
     border-radius: 7px;
     background-color: transparent;
     transition-duration: 150ms;
 }
 
-.cx-error-heading-button:hover,
-.cx-error-heading-button:focus {
+.cx-error-heading-button:hover {
     background-color: rgba(255, 255, 255, 0.08);
+}
+
+.cx-error-heading-button:focus {
+    border-color: white;
+    box-shadow: 0 0 0 1px black;
 }
 
 .cx-error-expander {
@@ -225,11 +230,12 @@
 }
 
 .cx-activity-grid-cell {
+    border: 1px solid transparent;
     border-radius: 3px;
 }
 
 .cx-activity-grid-cell-unknown {
-    border: 1px solid rgba(128, 128, 128, 0.85);
+    border-color: rgba(128, 128, 128, 0.85);
 }
 
 .cx-activity-grid-cell-empty {
@@ -249,4 +255,9 @@
 .cx-activity-grid-cell-high {
     background-color: #4f83ff;
     background-color: -st-accent-color;
+}
+
+.cx-activity-grid-cell:selected {
+    border-color: white;
+    box-shadow: 0 0 0 1px black;
 }

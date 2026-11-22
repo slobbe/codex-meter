@@ -22,6 +22,12 @@ export class CodexMeterPopupMenu {
         resetScrollView.connect("notify::vscrollbar-policy", keepResetScrolling);
         keepResetScrolling();
 
+        this._bankedResetRows = new Map();
+        this.loadingItem = new PopupMenu.PopupMenuItem("Loading usage…", {
+            reactive: false,
+            can_focus: false,
+        });
+        this.loadingItem.hide();
         this.footerItem = this._createFooterItem();
         this.statusItem = this._createBannerItem();
         this.usageItems = [];
@@ -36,6 +42,7 @@ export class CodexMeterPopupMenu {
         menu.addMenuItem(this.headerItem);
 
         for (const item of this.usageItems) menu.addMenuItem(item);
+        menu.addMenuItem(this.loadingItem);
         menu.addMenuItem(this.trendItem);
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         menu.addMenuItem(this.bankedResetsItem);
@@ -52,7 +59,8 @@ export class CodexMeterPopupMenu {
         this._activityGrid.update(viewModel);
     }
 
-    setUsageItems(viewModels) {
+    setUsageItems(viewModels, loading = false) {
+        this.loadingItem.visible = loading;
         while (this.usageItems.length > viewModels.length) {
             this.usageItems.pop().destroy();
         }
@@ -119,44 +127,54 @@ export class CodexMeterPopupMenu {
         const credits = (snapshot?.credits ?? [])
             .filter((credit) => credit.status === "available" && resetExpiryTime(credit) > now)
             .toSorted((left, right) => resetExpiryTime(left) - resetExpiryTime(right));
-        const stateKey = JSON.stringify({
-            credits,
-            hasSnapshot: Boolean(snapshot),
-            loading,
-            error,
-            preparing,
-            preparingId,
-            redeeming,
-        });
-        if (this._bankedResetStateKey === stateKey) return;
-        this._bankedResetStateKey = stateKey;
-        const menu = this.bankedResetsItem.menu;
-        menu.removeAll();
-        const addInfo = (text) => {
-            menu.addMenuItem(
-                new PopupMenu.PopupMenuItem(text, { reactive: false, can_focus: false }),
-            );
-        };
+        const rows = new Map();
         if (!preparing) {
-            if (loading) addInfo("Loading banked resets…");
-            else if (error) addInfo(`Banked resets unavailable: ${error}`);
-            else if (!snapshot) addInfo("Banked resets unavailable");
+            if (loading) rows.set("status", { text: "Loading banked resets…" });
+            else if (error) rows.set("status", { text: `Banked resets unavailable: ${error}` });
+            else if (!snapshot) rows.set("status", { text: "Banked resets unavailable" });
         }
-        if (redeeming) addInfo("Redeeming reset…");
-
+        if (redeeming) rows.set("redeeming", { text: "Redeeming reset…" });
         if (snapshot && !loading && !error && credits.length === 0) {
-            addInfo("No banked resets available");
+            rows.set("empty", { text: "No banked resets available" });
         }
-        this._canRedeemBankedReset = !busy && !loading && !error && Boolean(snapshot);
         for (const credit of credits) {
-            const item = new PopupMenu.PopupMenuItem(
-                formatResetCredit(credit, now, preparing && credit.id === preparingId),
-            );
-            item.setSensitive(this._canRedeemBankedReset);
-            item.connect("activate", () => {
-                if (this._canRedeemBankedReset) this._onRedeemBankedReset(credit.id);
+            rows.set(`credit:${credit.id}`, {
+                creditId: credit.id,
+                text: formatResetCredit(credit, now, preparing && credit.id === preparingId),
             });
-            menu.addMenuItem(item);
+        }
+
+        this._canRedeemBankedReset = !busy && !loading && !error && Boolean(snapshot);
+        const menu = this.bankedResetsItem.menu;
+        for (const [key, item] of this._bankedResetRows) {
+            if (rows.has(key)) continue;
+            this._bankedResetRows.delete(key);
+            item.destroy();
+        }
+        let index = 0;
+        for (const [key, { creditId, text }] of rows) {
+            const isCredit = creditId !== undefined;
+            let item = this._bankedResetRows.get(key);
+            if (!item) {
+                item = new PopupMenu.PopupMenuItem(text, {
+                    reactive: isCredit,
+                    can_focus: isCredit,
+                });
+                if (isCredit) {
+                    item.connect("activate", () => {
+                        if (this._canRedeemBankedReset) this._onRedeemBankedReset(creditId);
+                    });
+                }
+                this._bankedResetRows.set(key, item);
+                menu.addMenuItem(item, index);
+            } else {
+                if (item.label.text !== text) item.label.text = text;
+                if (menu.box.get_child_at_index(index) !== item.actor) {
+                    menu.box.set_child_at_index(item.actor, index);
+                }
+            }
+            if (isCredit) item.setSensitive(this._canRedeemBankedReset);
+            index++;
         }
     }
 

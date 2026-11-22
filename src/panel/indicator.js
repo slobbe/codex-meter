@@ -128,6 +128,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
     _connectSignals() {
         this._menuOpenChangedId = this.menu.connect("open-state-changed", (_menu, isOpen) => {
             if (isOpen) {
+                this._syncBankedResets();
                 this._queueMenuBarSync();
                 void this._monitor.refreshBankedResets({
                     maxAgeMs: BANKED_RESET_POPUP_REFRESH_MAX_AGE_MS,
@@ -253,20 +254,8 @@ export class CodexMeterIndicator extends PanelMenu.Button {
     }
 
     _syncMenu() {
-        const {
-            snapshot,
-            prediction,
-            history,
-            errorMessage,
-            cachedFailureMessage,
-            bankedResetCount,
-            bankedResetSnapshot,
-            bankedResetLoading,
-            bankedResetError,
-            preparingBankedReset,
-            preparingBankedResetId,
-            redeemingBankedReset,
-        } = this._monitor.state;
+        const { snapshot, prediction, history, errorMessage, cachedFailureMessage } =
+            this._monitor.state;
         const viewModel = createMenuViewModel(
             readSettings(this._settings),
             snapshot,
@@ -280,8 +269,23 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             title: viewModel.errorMessage ? "Unable to load usage" : viewModel.statusTitle,
             message: viewModel.errorMessage ?? viewModel.statusMessage,
         });
-        this._popupMenu.setUsageItems(viewModel.usageItems);
+        this._popupMenu.setUsageItems(viewModel.usageItems, viewModel.loading);
         this._popupMenu.setTrend(viewModel.trend);
+        this._syncBankedResets();
+        this._popupMenu.headerItem.planLabel.text = viewModel.accountType;
+        this._popupMenu.setRefreshLabel(viewModel.refreshLabel);
+    }
+
+    _syncBankedResets() {
+        const {
+            bankedResetCount,
+            bankedResetSnapshot,
+            bankedResetLoading,
+            bankedResetError,
+            preparingBankedReset,
+            preparingBankedResetId,
+            redeemingBankedReset,
+        } = this._monitor.state;
         this._popupMenu.setBankedResets({
             count: bankedResetCount,
             snapshot: bankedResetSnapshot,
@@ -291,8 +295,6 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             preparingId: preparingBankedResetId,
             redeeming: redeemingBankedReset,
         });
-        this._popupMenu.headerItem.planLabel.text = viewModel.accountType;
-        this._popupMenu.setRefreshLabel(viewModel.refreshLabel);
     }
 
     _queueMenuBarSync() {

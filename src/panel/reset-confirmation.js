@@ -15,6 +15,7 @@ export function showBankedResetConfirmation(
     content.layout_manager.orientation = Clutter.Orientation.VERTICAL;
     const title = createWrappingLabel(credit.title || "Usage limit reset", "cx-reset-dialog-title");
     content.add_child(title);
+    dialog.label_actor = title;
 
     const details = new St.BoxLayout({
         style_class: "cx-reset-dialog-details",

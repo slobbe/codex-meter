@@ -299,11 +299,17 @@ test("circular bars surround any selected logo or CX text and restore it on fall
     }
 });
 
-test("main menu opening requests stale-aware inventory without waiting or delaying bar sync", async () => {
+test("main menu opening syncs cached reset rows before requesting fresh inventory", async () => {
     const indicator = createIndicator();
     let openChanged;
     let refreshCount = 0;
     let syncCount = 0;
+    const visibleInventories = [];
+    indicator._popupMenu = {
+        setBankedResets: ({ snapshot }) => visibleInventories.push(snapshot),
+    };
+    const cached = { credits: [{ id: "cached" }] };
+    indicator._monitor.state.bankedResetSnapshot = cached;
     let finishRefresh;
     const pending = new Promise((resolve) => {
         finishRefresh = resolve;
@@ -329,6 +335,8 @@ test("main menu opening requests stale-aware inventory without waiting or delayi
     indicator._monitor.refreshBankedResets = (options) => {
         assert.deepEqual(options, { maxAgeMs: 5 * 60 * 1000 });
         refreshCount++;
+        assert.equal(visibleInventories.length, refreshCount);
+        assert.equal(visibleInventories.at(-1), cached);
         return pending;
     };
     indicator._connectSignals();
@@ -339,6 +347,7 @@ test("main menu opening requests stale-aware inventory without waiting or delayi
     indicator.menu.close();
     assert.equal(refreshCount, 1, "closing must not refresh inventory");
     assert.equal(syncCount, 1);
+    assert.deepEqual(visibleInventories, [cached]);
     indicator.menu.open();
     assert.equal(refreshCount, 2, "each main menu opening requests one refresh");
     assert.equal(syncCount, 2);
@@ -351,18 +360,15 @@ test("menu sync passes the full usage collection and other view-model fields", (
     const indicator = createIndicator();
     const calls = {};
     indicator._popupMenu = { headerItem: { planLabel: {} } };
-    for (const method of [
-        "setUsageItems",
-
-        "setStatus",
-        "setTrend",
-        "setBankedResets",
-        "setRefreshLabel",
-    ]) {
+    for (const method of ["setStatus", "setTrend", "setBankedResets", "setRefreshLabel"]) {
         indicator._popupMenu[method] = (value) => {
             calls[method] = value;
         };
     }
+    indicator._popupMenu.setUsageItems = (items, loading) => {
+        calls.setUsageItems = items;
+        calls.loading = loading;
+    };
     const menu = {
         usageItems: [{ id: "a" }, { id: "b" }, { id: "c" }],
         errorMessage: "Refresh failed",
@@ -393,7 +399,9 @@ test("menu sync passes the full usage collection and other view-model fields", (
         message: menu.errorMessage,
     });
     menu.errorMessage = null;
+    menu.loading = true;
     indicator._syncMenu();
+    assert.equal(calls.loading, true);
     assert.deepEqual(calls.setStatus, {
         severity: "warning",
         title: menu.statusTitle,
