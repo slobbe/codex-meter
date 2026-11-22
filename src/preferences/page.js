@@ -24,13 +24,8 @@ import {
     SETTINGS_USAGE_NOTIFICATION_THRESHOLD,
 } from "./settings.js";
 
-export function createPreferencesPage(
-    settings,
-    metadata,
-    window,
-    snapshot = null,
-    releaseNotes = null,
-) {
+/** @param {() => {version: string, markup: string} | null} getReleaseNotes */
+export function createPreferencesPage(settings, metadata, window, getReleaseNotes = () => null) {
     migrateSettings(settings);
     const settingsSignalIds = [];
     const page = new Adw.PreferencesPage({
@@ -39,12 +34,12 @@ export function createPreferencesPage(
     });
     page.add(createAppearanceGroup(settings, settingsSignalIds));
     page.add(createNotificationsGroup(settings, settingsSignalIds));
-    const bankedResets = createBankedResetsGroup(settings, settingsSignalIds, snapshot);
+    const bankedResets = createBankedResetsGroup(settings, settingsSignalIds);
     page.add(bankedResets.group);
     page.add(createBackgroundRefreshGroup(settings, settingsSignalIds));
     const credentials = createCredentialsGroup(settings, settingsSignalIds, window);
     page.add(credentials.group);
-    page.add(createFooterGroup(metadata, window, releaseNotes));
+    page.add(createFooterGroup(metadata, window, getReleaseNotes));
     window.connect("close-request", () => {
         credentials.cleanup();
         bankedResets.cleanup();
@@ -180,7 +175,7 @@ function createCredentialsGroup(settings, settingsSignalIds, window) {
     };
 }
 
-function createBankedResetsGroup(settings, settingsSignalIds, snapshot) {
+function createBankedResetsGroup(settings, settingsSignalIds) {
     const group = new Adw.PreferencesGroup({ title: "Banked resets" });
     group.add(
         createBoundSwitchRow({
@@ -199,7 +194,6 @@ function createBankedResetsGroup(settings, settingsSignalIds, snapshot) {
         }),
     );
     const skipPeriods = createSkipPeriodsRow(settings, settingsSignalIds);
-    skipPeriods.setQuotas(snapshot?.quotas ?? []);
     group.add(skipPeriods.row);
 
     const stopWatching = watchUsageWindowCache(settings, settingsSignalIds, skipPeriods.setQuotas);
@@ -214,17 +208,19 @@ function createBankedResetsGroup(settings, settingsSignalIds, snapshot) {
 
 function watchUsageWindowCache(settings, settingsSignalIds, setQuotas) {
     let stop = null;
-    const refresh = (clearQuotas) => {
+    const refresh = () => {
         stop?.();
-        if (clearQuotas) setQuotas([]);
+        setQuotas([]);
         const service = new UsageService(settings.get_string(SETTINGS_CREDENTIALS_PATH));
         const scope = new Gio.Cancellable();
         let pendingRead = null;
-        let stopMonitoring = null;
+        let stopMonitoringSnapshot = null;
+        let stopMonitoringAuth = null;
         stop = () => {
             scope.cancel();
             pendingRead?.cancel();
-            stopMonitoring?.();
+            stopMonitoringSnapshot?.();
+            stopMonitoringAuth?.();
         };
         const read = async () => {
             if (scope.is_cancelled()) return;
@@ -234,8 +230,21 @@ function watchUsageWindowCache(settings, settingsSignalIds, setQuotas) {
             const snapshot = await service.readCachedSnapshot({ cancellable }).catch(() => null);
             if (scope.is_cancelled() || pendingRead !== cancellable) return;
             pendingRead = null;
-            if (snapshot) setQuotas(snapshot.quotas);
+            setQuotas(snapshot?.quotas ?? []);
         };
+        try {
+            const monitor = Gio.File.new_for_path(service.credentialsPath).monitor_file(
+                Gio.FileMonitorFlags.WATCH_MOVES,
+                scope,
+            );
+            const id = monitor.connect("changed", () => void read());
+            stopMonitoringAuth = () => {
+                monitor.disconnect(id);
+                monitor.cancel();
+            };
+        } catch (_error) {
+            // The snapshot watcher still checks the account if auth monitoring is unavailable.
+        }
         const file = Gio.File.new_for_path(service.snapshotPath);
         const exists = (directory) =>
             directory
@@ -263,9 +272,9 @@ function watchUsageWindowCache(settings, settingsSignalIds, setQuotas) {
             // Watch the directory so atomic replacements of the snapshot are visible.
             const monitor = parent.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, scope);
             const advance = () => {
-                if (scope.is_cancelled() || stopMonitoring !== disconnect) return;
+                if (scope.is_cancelled() || stopMonitoringSnapshot !== disconnect) return;
                 disconnect();
-                stopMonitoring = null;
+                stopMonitoringSnapshot = null;
                 start();
             };
             const id = monitor.connect("changed", (_monitor, changed, other) => {
@@ -277,7 +286,7 @@ function watchUsageWindowCache(settings, settingsSignalIds, setQuotas) {
                 monitor.disconnect(id);
                 monitor.cancel();
             };
-            stopMonitoring = disconnect;
+            stopMonitoringSnapshot = disconnect;
             // Check again after connecting so creation during monitor setup is not missed.
             if (atFile) await read();
             else if (await exists(child)) advance();
@@ -285,10 +294,8 @@ function watchUsageWindowCache(settings, settingsSignalIds, setQuotas) {
         const start = () => void arm().catch(read);
         start();
     };
-    settingsSignalIds.push(
-        settings.connect(`changed::${SETTINGS_CREDENTIALS_PATH}`, () => refresh(true)),
-    );
-    refresh(false);
+    settingsSignalIds.push(settings.connect(`changed::${SETTINGS_CREDENTIALS_PATH}`, refresh));
+    refresh();
     return () => {
         stop?.();
         stop = null;
@@ -526,7 +533,7 @@ function createRefreshIntervalRow(settings, settingsSignalIds) {
         subtitle: "Set to 0 to refresh manually.",
         adjustment: new Gtk.Adjustment({
             lower: MIN_REFRESH_INTERVAL_MINUTES,
-            upper: 60,
+            upper: 30,
             step_increment: 1,
             page_increment: 5,
             value: settings.get_uint(SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES),
@@ -548,7 +555,7 @@ function createRefreshIntervalRow(settings, settingsSignalIds) {
     return row;
 }
 
-function createFooterGroup(metadata, window, releaseNotes) {
+function createFooterGroup(metadata, window, getReleaseNotes) {
     const group = new Adw.PreferencesGroup();
     const box = new Gtk.Box({
         orientation: Gtk.Orientation.VERTICAL,
@@ -582,6 +589,7 @@ function createFooterGroup(metadata, window, releaseNotes) {
             issue_url: `${metadata.url}/issues`,
             license_type: Gtk.License.GPL_3_0,
         });
+        const releaseNotes = getReleaseNotes();
         if (releaseNotes) {
             about.release_notes = releaseNotes.markup;
             about.release_notes_version = releaseNotes.version;

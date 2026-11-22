@@ -96,16 +96,18 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         }
     }
     function fileForPath(path) {
+        const monitorPath = () => {
+            const monitor = new FileMonitor();
+            fileMonitors.set(path, monitor);
+            return monitor;
+        };
         return {
             get_path: () => path,
             get_parent: () => fileForPath(path.slice(0, path.lastIndexOf("/"))),
             equal: other => path === other.get_path(),
             query_info_async: async () => ({}),
-            monitor_directory() {
-                const monitor = new FileMonitor();
-                fileMonitors.set(path, monitor);
-                return monitor;
-            },
+            monitor_directory: monitorPath,
+            monitor_file: monitorPath,
         };
     }
     export default {
@@ -147,13 +149,13 @@ const hooks = registerHooks({
         if (context.parentURL === pageUrl && specifier === "../codex/usage/service.js") {
             return { url: snapshotStubUrl, shortCircuit: true };
         }
-        if (
-            context.parentURL === prefsUrl &&
-            ["./codex/usage/service.js", "./io/files.js"].includes(specifier)
-        ) {
+        if (context.parentURL === prefsUrl && specifier === "./io/files.js") {
             return { url: snapshotStubUrl, shortCircuit: true };
         }
-        if (context.parentURL === prefsUrl && specifier.includes("banked-resets")) {
+        if (
+            [pageUrl, prefsUrl].includes(context.parentURL) &&
+            specifier.includes("banked-resets")
+        ) {
             throw new Error("Preferences must not import banked reset inventory APIs");
         }
         if (
@@ -355,7 +357,9 @@ test("preferences groups appearance and background refresh with descriptive labe
         page.children[3].children.map((row) => row.title),
         ["Interval (minutes)"],
     );
-    assert.equal(page.children[3].children[0].subtitle, "Set to 0 to refresh manually.");
+    const [refreshInterval] = page.children[3].children;
+    assert.equal(refreshInterval.subtitle, "Set to 0 to refresh manually.");
+    assert.deepEqual([refreshInterval.adjustment.lower, refreshInterval.adjustment.upper], [0, 30]);
 });
 
 test("credentials group follows background refresh and tracks the configured file", () => {
@@ -958,14 +962,16 @@ test("usage auto-redemption schema is opt-in and has no threshold setting", () =
     assert.doesNotMatch(schema, /<key name="auto-apply-banked-reset-usage-threshold"/);
 });
 
-test("skip inputs display minutes and persist independent window overrides", () => {
+test("skip inputs display minutes and persist independent window overrides", async (t) => {
     const settings = settingsFixture({ [SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE]: true });
     const window = windowFixture();
     const quotas = [
         { id: "weekly", label: "Weekly", limitWindowSeconds: 604_800 },
         { id: "session", label: "5 hours", limitWindowSeconds: 18_000 },
     ];
-    const page = createPreferencesPage(settings, metadata, window, { quotas });
+    t.mock.method(cache, "read", async () => ({ quotas }));
+    const page = createPreferencesPage(settings, metadata, window);
+    await new Promise(setImmediate);
     const skipPeriods = page.children[2].children[2];
     const [session, weekly] = skipPeriods.children;
     assert.equal(skipPeriods.subtitle, "Keep banked reset if scheduled reset comes soon.");
@@ -1016,7 +1022,7 @@ test("selecting and resetting credentials replaces skip controls without writing
     });
     const settings = settingsFixture();
     const window = windowFixture();
-    const page = createPreferencesPage(settings, metadata, window, defaultSnapshot);
+    const page = createPreferencesPage(settings, metadata, window);
     const row = page.children[2].children[2];
     const [browse, reset] = page.children[4].children[0].children;
     const selectWork = async () => {
@@ -1028,6 +1034,9 @@ test("selecting and resetting credentials replaces skip controls without writing
     };
 
     const titles = () => row.children.map(({ title }) => title);
+    await new Promise(setImmediate);
+    reads.get(DEFAULT_CREDENTIALS_PATH).resolve(defaultSnapshot);
+    await new Promise(setImmediate);
     assert.deepEqual(titles(), ["Default window (minutes)"]);
     await selectWork();
     assert.equal(settings.get_string(SETTINGS_CREDENTIALS_PATH), workPath);
@@ -1046,7 +1055,7 @@ test("selecting and resetting credentials replaces skip controls without writing
     window.close();
 });
 
-test("a new account's usage windows appear when its first cache snapshot is written", async (t) => {
+test("usage controls follow cache writes, including a cache that no longer matches", async (t) => {
     const path = "/tmp/new-account.json";
     let snapshot = null;
     cache.read = async () => snapshot;
@@ -1076,6 +1085,12 @@ test("a new account's usage windows appear when its first cache snapshot is writ
         ["Weekly window (minutes)"],
     );
     assert.equal(row.expanded, true);
+
+    snapshot = null;
+    monitor.emit("changed", file);
+    await new Promise(setImmediate);
+    assert.deepEqual(row.children, []);
+    assert.equal(row.enable_expansion, false);
     assert.deepEqual(settings.writes, [{ key: SETTINGS_CREDENTIALS_PATH, value: path }]);
     window.close();
     assert.equal(monitor.cancelled, true);
@@ -1090,7 +1105,7 @@ test("switching credentials again or closing the window cancels usage cache work
     });
     const settings = settingsFixture();
     const window = windowFixture();
-    const page = createPreferencesPage(settings, metadata, window, { quotas: [] });
+    const page = createPreferencesPage(settings, metadata, window);
     const row = page.children[2].children[2];
     const paths = ["/tmp/first.json", "/tmp/current.json"];
     const switchTo = async (path) => {
@@ -1100,10 +1115,14 @@ test("switching credentials again or closing the window cancels usage cache work
         return fileMonitors.get("/tmp");
     };
     const firstMonitor = await switchTo(paths[0]);
+    const firstAuthMonitor = fileMonitors.get(paths[0]);
     const currentMonitor = await switchTo(paths[1]);
+    const currentAuthMonitor = fileMonitors.get(paths[1]);
     assert.equal(reads[0].cancellable.is_cancelled(), true);
-    assert.equal(firstMonitor.cancelled, true);
-    assert.deepEqual(firstMonitor.signals, {});
+    for (const monitor of [firstMonitor, firstAuthMonitor]) {
+        assert.equal(monitor.cancelled, true);
+        assert.deepEqual(monitor.signals, {});
+    }
 
     reads[1].resolve({ quotas: [{ id: "current", label: "Current window" }] });
     await new Promise(setImmediate);
@@ -1118,11 +1137,13 @@ test("switching credentials again or closing the window cancels usage cache work
         ["Current window (minutes)"],
     );
 
-    currentMonitor.emit("changed", toolkit.File.new_for_path(`${paths[1]}.snapshot.json`));
+    currentAuthMonitor.emit("changed");
     window.close();
     assert.equal(reads[2].cancellable.is_cancelled(), true);
-    assert.equal(currentMonitor.cancelled, true);
-    assert.deepEqual(currentMonitor.signals, {});
+    for (const monitor of [currentMonitor, currentAuthMonitor]) {
+        assert.equal(monitor.cancelled, true);
+        assert.deepEqual(monitor.signals, {});
+    }
     reads[2].resolve({ quotas: [{ id: "late", label: "Late window" }] });
     await new Promise(setImmediate);
     assert.deepEqual(row.children, []);
@@ -1137,68 +1158,48 @@ test("switching credentials again or closing the window cancels usage cache work
     assert.deepEqual(row.children, []);
 });
 
-test("preferences entry point reads cached usage without loading inventory", async (t) => {
-    let cancellable;
-    cache.read = async (value) => {
-        cancellable = value;
-        return { quotas: [{ id: "cached-id", label: "Cached window" }] };
-    };
-    t.after(() => {
-        cache.read = async () => null;
-    });
+test("preferences add the native page before the cache or changelog reads finish", async (t) => {
+    const snapshot = Promise.withResolvers();
+    const changelog = Promise.withResolvers();
+    const readSnapshot = t.mock.method(cache, "read", () => snapshot.promise);
+    t.mock.method(cache, "readChangelog", () => changelog.promise);
     const prefs = new CodexMeterPreferences();
     const settings = settingsFixture();
     prefs.getSettings = () => settings;
     prefs.metadata = metadata;
     const window = windowFixture();
-    await prefs.fillPreferencesWindow(window);
+
+    const pending = prefs.fillPreferencesWindow(window);
+    assert.equal(window.children.length, 1);
     const [page] = window.children;
+    assert.ok(page instanceof toolkit.PreferencesPage);
     assert.equal(page.title, "Codex Meter");
+    const row = page.children[2].children[2];
+    const [version, aboutLink] = page.children.at(-1).children[0].children;
+    assert.deepEqual(row.children, []);
+    assert.equal(version.label, "Codex Meter test");
+
+    await new Promise(setImmediate);
+    assert.equal(readSnapshot.mock.callCount(), 1);
+    snapshot.resolve({ quotas: [{ id: "cached-id", label: "Cached window" }] });
+    await new Promise(setImmediate);
     assert.deepEqual(
-        page.children[2].children[2].children.map(({ title }) => title),
+        row.children.map(({ title }) => title),
         ["Cached window (minutes)"],
     );
-    assert.equal(cancellable.is_cancelled(), false);
-    assert.equal(page.children[5].children[0].children[0].label, "Codex Meter test");
-    page.children[5].children[0].children[1].signals["activate-link"]();
+
+    changelog.resolve("## v0.13.0\n\n### Added\n\n- Latest feature.");
+    await pending;
+    assert.deepEqual(window.children, [page]);
+    aboutLink.emit("activate-link");
     const about = aboutWindows.at(-1);
     assert.equal(about.release_notes_version, "0.13.0");
     assert.equal(
         about.release_notes,
         "<p><em>Added</em></p>\n<ul>\n<li>Latest feature.</li>\n</ul>",
     );
-    assert.equal(settings.signals.size, 8);
     assert.equal(window.close(), false);
-    assert.equal(cancellable.is_cancelled(), true);
     assert.equal(settings.signals.size, 0);
-});
-
-test("closing preferences during a changelog read prevents late page creation", async (t) => {
-    const originalRead = cache.readChangelog;
-    t.after(() => {
-        cache.readChangelog = originalRead;
-    });
-    let finish;
-    let cancellable;
-    cache.readChangelog = (path, value) => {
-        assert.equal(path, "/extension/CHANGELOG.md");
-        cancellable = value;
-        return new Promise((resolve) => {
-            finish = resolve;
-        });
-    };
-    const prefs = new CodexMeterPreferences();
-    prefs.path = "/extension";
-    prefs.getSettings = () => settingsFixture();
-    prefs.metadata = metadata;
-    const window = windowFixture();
-    const pending = prefs.fillPreferencesWindow(window);
-    await new Promise((resolve) => setImmediate(resolve));
-    window.close();
-    assert.equal(cancellable.is_cancelled(), true);
-    finish("## v0.13.0\n- Latest feature.");
-    await pending;
-    assert.deepEqual(window.children, []);
 });
 
 test("preferences entry point tolerates an empty usage cache", async () => {
@@ -1214,43 +1215,6 @@ test("preferences entry point tolerates an empty usage cache", async () => {
     assert.deepEqual(settings.writes, []);
     assert.equal(window.close(), false);
     assert.equal(settings.signals.size, 0);
-});
-
-test("closing preferences cancels pending cache reads and prevents late page creation", async (t) => {
-    t.after(() => {
-        cache.read = async () => null;
-    });
-    for (const rejectOnClose of [false, true]) {
-        let cancellable;
-        let resolve;
-        let reject;
-        cache.read = (value) => {
-            cancellable = value;
-            return new Promise((onResolve, onReject) => {
-                resolve = onResolve;
-                reject = onReject;
-            });
-        };
-        const prefs = new CodexMeterPreferences();
-        const settings = settingsFixture();
-        prefs.getSettings = () => settings;
-        prefs.metadata = metadata;
-        const window = windowFixture();
-        const pending = prefs.fillPreferencesWindow(window);
-        assert.deepEqual(window.children, []);
-        assert.equal(cancellable.is_cancelled(), false);
-        assert.equal(window.close(), false);
-        assert.equal(cancellable.is_cancelled(), true);
-        if (rejectOnClose) {
-            reject(new Error("Cancelled"));
-        } else {
-            resolve({ quotas: [{ id: "late", label: "Late window" }] });
-        }
-        await pending;
-        assert.deepEqual(window.children, []);
-        assert.equal(settings.signals.size, 0);
-        assert.deepEqual(settings.writes, []);
-    }
 });
 
 test("closing preferences disconnects every settings callback without preventing close", () => {
