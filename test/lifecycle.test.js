@@ -12,6 +12,8 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export const SNAPSHOT_PATH = '/cache/codex/snapshot.json';
     export const resolveCredentialsPath = (path = DEFAULT_CREDENTIALS_PATH) => path;
     export const credentials = { accountFingerprint: 'test-account' };
+
+    export const importLegacyUsage = async () => {};
     export async function getCodexCredentials(cancellable) {
         cancellable?.set_error_if_cancelled();
         return credentials;
@@ -23,7 +25,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         is_cancelled() { return !!this.cancelled; }
         set_error_if_cancelled() { if (this.cancelled) throw new CancellationError('Cancelled'); }
     }
-    export default { Cancellable, build_filenamev: parts => parts.join('/') };
+    export default { Cancellable, build_filenamev: parts => parts.join('/'), canonicalize_filename: path => path };
     export const isCancellationError = error => error instanceof CancellationError;
     export const refreshCodexUsage = options => io.fetch(options);
     export const readSnapshot = cancellable => io.cacheRead(cancellable);

@@ -9,7 +9,7 @@ const MAX_HISTORY_AGE_SECONDS = 30 * 24 * 60 * 60;
 const MAX_HISTORY_ROW_BYTES = 2 * 1024 * 1024;
 export const HISTORY_PATH = GLib.build_filenamev([STATE_DIR, "codex", "usage-history.jsonl"]);
 
-export async function readHistory(path = HISTORY_PATH, cancellable = null) {
+export async function readHistory(path = HISTORY_PATH, cancellable = null, repair = true) {
     const decoder = new TextDecoder("utf-8");
     const minTimestamp = Date.now() - MAX_HISTORY_AGE_SECONDS * 1000;
     const entries = [];
@@ -83,7 +83,7 @@ export async function readHistory(path = HISTORY_PATH, cancellable = null) {
     if (entries.length > MAX_HISTORY_ENTRIES) needsRewrite = true;
     trimHistory(entries);
     const history = entries.map(({ row }) => row);
-    if (needsRewrite) await writeHistoryRows(history, path, cancellable);
+    if (needsRewrite && repair) await writeHistoryRows(history, path, cancellable);
     cancellable?.set_error_if_cancelled();
     return history;
 }

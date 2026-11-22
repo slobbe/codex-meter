@@ -6,6 +6,8 @@ const directory = GLib.dir_make_tmp("codex-meter-credentials-storage-XXXXXX");
 // GJS may cache GLib's user directories before this module starts.
 const getCacheDir = GLib.get_user_cache_dir;
 const getStateDir = GLib.get_user_state_dir;
+const getHomeDir = GLib.get_home_dir;
+GLib.get_home_dir = () => directory;
 GLib.get_user_cache_dir = () => GLib.build_filenamev([directory, "cache"]);
 GLib.get_user_state_dir = () => GLib.build_filenamev([directory, "state"]);
 
@@ -495,6 +497,94 @@ try {
         assertEqual(afterRestart.length, MAX_HISTORY_ENTRIES, "restart retains the full window");
         assertEqual(afterRestart[0].timestamp, recent.timestamp, "restart keeps the newer samples");
         print("ok - clock rollback preserves full history across restart");
+
+        Date.now = now;
+        const { HISTORY_PATH } = await import("../src/codex/usage/history.js");
+        const migrationAuth = resolveCredentialsPath(DEFAULT_CREDENTIALS_PATH);
+        const migrationCredentials = await writeCredentials(migrationAuth, "import-account");
+        const destination = GLib.build_filenamev([
+            STATE_DIR,
+            "codex",
+            migrationCredentials.accountFingerprint,
+            "usage-history.jsonl",
+        ]);
+        const oldRow = { ...row, timestamp: new Date(now() - 3 * day).toISOString() };
+        const overlap = { ...row, timestamp: new Date(now() - day).toISOString() };
+        const updatedOverlap = { ...overlap, quotas: [{ id: "weekly", usedPercent: 37 }] };
+        await rewriteHistory([oldRow, overlap], HISTORY_PATH);
+        await writeSnapshot(
+            legacy,
+            null,
+            GLib.build_filenamev([CACHE_DIR, "codex", "snapshot.json"]),
+        );
+        const originalLegacy = await readFile(HISTORY_PATH);
+        await rewriteHistory([updatedOverlap], destination);
+        const customAuth = GLib.build_filenamev([directory, "other-auth.json"]);
+        await writeCredentials(customAuth, "custom-account");
+        assertEqual(
+            (await new UsageService(customAuth).readHistory()).length,
+            0,
+            "custom credentials cannot adopt default legacy history",
+        );
+        const interrupted = new Gio.Cancellable();
+        Gio.File.prototype.replace_contents_async = function (...args) {
+            if (this.get_path() === destination) {
+                interrupted.cancel();
+                interrupted.set_error_if_cancelled();
+            }
+            return replace.apply(this, args);
+        };
+        let migrationError;
+        try {
+            await new UsageService().readCachedSnapshot({ cancellable: interrupted });
+        } catch (error) {
+            migrationError = error;
+        } finally {
+            Gio.File.prototype.replace_contents_async = replace;
+        }
+        assertEqual(
+            migrationError?.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED),
+            true,
+            "interrupted migration preserves cancellation",
+        );
+        await writeCredentials(migrationAuth, "other-import-account");
+        assertEqual(
+            (await new UsageService().readHistory()).length,
+            0,
+            "another account cannot claim an interrupted migration",
+        );
+        await writeCredentials(migrationAuth, "import-account");
+        const importing = new UsageService();
+        assertEqual(
+            (await importing.readCachedSnapshot())?.planType,
+            "legacy",
+            "default account automatically restores a v0.12 snapshot before live refresh",
+        );
+        const imported = await importing.readHistory();
+        assertEqual(imported.length, 2, "import merges legacy history with existing account rows");
+        assertEqual(
+            imported[1].quotas[0].usedPercent,
+            37,
+            "existing rows win at overlapping timestamps",
+        );
+        assertEqual(
+            await readFile(HISTORY_PATH),
+            originalLegacy,
+            "import preserves the original history",
+        );
+        assertEqual(
+            (await new UsageService(migrationAuth).readHistory()).length,
+            2,
+            "repeated import is idempotent",
+        );
+        await writeCredentials(migrationAuth, "other-import-account");
+        const other = new UsageService();
+        assertEqual(
+            (await other.readHistory()).length,
+            0,
+            "receipt prevents another account from adopting legacy data",
+        );
+        print("ok - automatic one-time v0.12 migration to the default account");
     } finally {
         Date.now = now;
         Soup.Session.prototype.send_async = sent;
@@ -505,5 +595,6 @@ try {
 } finally {
     GLib.get_user_cache_dir = getCacheDir;
     GLib.get_user_state_dir = getStateDir;
+    GLib.get_home_dir = getHomeDir;
     removeTree(Gio.File.new_for_path(directory));
 }

@@ -16,6 +16,7 @@ import {
     rewriteHistory,
 } from "./history.js";
 import { readSnapshot, SNAPSHOT_PATH, writeSnapshot } from "./snapshot.js";
+import { importLegacyUsage } from "./legacy-usage.js";
 
 // Keep the in-memory window in step with the JSONL reader's retention policy.
 const MAX_HISTORY_AGE_MS = 30 * 24 * 60 * 60 * 1000;
@@ -26,6 +27,8 @@ export class UsageService {
     #history = null;
     #historyDirectory;
     #snapshotAccounts = new WeakMap();
+
+    #legacyImportPromise = null;
 
     constructor(credentialsPath = DEFAULT_CREDENTIALS_PATH) {
         this.credentialsPath = resolveCredentialsPath(credentialsPath);
@@ -47,6 +50,7 @@ export class UsageService {
             credentials ??= await getCodexCredentials(cancellable, this.credentialsPath);
             const fingerprint = credentials.accountFingerprint;
             if (!fingerprint) return null;
+            await this.#importLegacyUsage(credentials, cancellable);
             const snapshot = await readSnapshot(cancellable, this.snapshotPath, fingerprint);
             if (!snapshot) return null;
             await getCodexCredentials(cancellable, this.credentialsPath, credentials);
@@ -61,6 +65,7 @@ export class UsageService {
     async refresh({ cancellable = null, credentials = null } = {}) {
         cancellable?.set_error_if_cancelled();
         credentials ??= await getCodexCredentials(cancellable, this.credentialsPath);
+        await this.#importLegacyUsage(credentials, cancellable);
         const snapshot = await refreshCodexUsage({
             cancellable,
             credentials,
@@ -111,8 +116,36 @@ export class UsageService {
         }
     }
 
+    async #importLegacyUsage(credentials, cancellable) {
+        if (
+            !credentials.accountFingerprint ||
+            GLib.canonicalize_filename(this.credentialsPath, null) !==
+                GLib.canonicalize_filename(resolveCredentialsPath(DEFAULT_CREDENTIALS_PATH), null)
+        )
+            return;
+        if (!this.#legacyImportPromise) {
+            this.#legacyImportPromise = importLegacyUsage({
+                credentialsPath: this.credentialsPath,
+                credentials,
+
+                historyPath: GLib.build_filenamev([
+                    this.#historyDirectory,
+                    credentials.accountFingerprint,
+                    "usage-history.jsonl",
+                ]),
+                snapshotPath: this.snapshotPath,
+                cancellable,
+            }).catch((error) => {
+                this.#legacyImportPromise = null;
+                throw error;
+            });
+        }
+        await this.#legacyImportPromise;
+    }
+
     async #loadHistory(credentials, cancellable) {
         cancellable?.set_error_if_cancelled();
+        await this.#importLegacyUsage(credentials, cancellable);
         if (!hasSameCodexAccount(this.#history?.credentials, credentials)) {
             const fingerprint = credentials.accountFingerprint;
             const path = fingerprint
