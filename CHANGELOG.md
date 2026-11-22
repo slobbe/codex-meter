@@ -19,6 +19,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Manual redemption shows the time left when a scheduled reset is close.
 - Changed popup warning and error messages to appear above the footer.
 - Changed the activity chart to a four-week grid with six-hour blocks that use the GNOME accent color.
+- Matched the appearance of activity cells with no data and no activity. Removed the summary below the grid.
 - Increased local usage history retention from 21 to 30 days.
 
 ### Fixed

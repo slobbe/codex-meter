@@ -234,10 +234,7 @@
     border-radius: 3px;
 }
 
-.cx-activity-grid-cell-unknown {
-    border-color: rgba(128, 128, 128, 0.85);
-}
-
+.cx-activity-grid-cell-unknown,
 .cx-activity-grid-cell-empty {
     background-color: rgba(128, 128, 128, 0.45);
 }

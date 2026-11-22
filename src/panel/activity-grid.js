@@ -30,10 +30,7 @@ export class ActivityGrid {
         });
         this._grid = new St.Widget({ layout_manager: layout, x_expand: true });
         box.add_child(this._grid);
-        this._summaryLabel = new St.Label({ x_expand: true });
-        this._summaryLabel.clutter_text.line_wrap = true;
-        this._summaryLabel.clutter_text.ellipsize = 0;
-        box.add_child(this._summaryLabel);
+
         this.item.add_child(box);
 
         this._hoveredCell = null;
@@ -118,7 +115,7 @@ export class ActivityGrid {
         }
 
         this._titleLabel.text = viewModel.title;
-        this._summaryLabel.text = viewModel.summary;
+
         this._accessibleSummary = `${viewModel.title}. ${viewModel.summary}`;
         for (const [index, day] of viewModel.days.entries()) {
             const { label, cells } = this._days[index];

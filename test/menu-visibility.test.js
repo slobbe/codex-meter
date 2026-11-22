@@ -219,13 +219,13 @@ test("shows activity details on hover or with arrow keys from one focus stop", a
         })),
     });
     const [box] = menu.trendItem.children;
-    const [titleLabel, grid, summaryLabel] = box.children;
+    const [titleLabel, grid] = box.children;
     const layout = grid.layout_manager;
     const { children } = layout;
     assert.equal(menu.trendItem.visible, true);
     assert.equal(box.layout_manager.orientation, "vertical");
     assert.equal(titleLabel.text, title);
-    assert.equal(summaryLabel.text, summary);
+    assert.equal(box.children.length, 2, "the activity summary is not shown below the grid");
     assert.equal(menu.trendItem.can_focus, true);
     assert.equal(menu.trendItem.reactive, false);
     assert.equal(menu.trendItem.accessible_name, `${title}. ${summary}`);
