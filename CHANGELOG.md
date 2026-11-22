@@ -23,6 +23,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Automatically migrated v0.12 usage data to the default account on first use.
+- Fixed activity grid cells appearing as thin horizontal lines.
 - Fixed preferences not opening on GNOME Shell 45 and 46.
 - Prevented reset redemption for the wrong account when the credentials file changes.
 - Prevented usage data from a previous account appearing after an account change.
