@@ -8,33 +8,34 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
-- Added configurable path for authentication credentials (default `~/.codex/auth.json`).
-- Added optional notifications for low usage, exhausted windows, and scheduled resets after exhaustion, with a configurable warning threshold.
-- Added About window in preferences with details, version, changelog, credits, license, and project links.
+- Added a setting to select a local credentials file. The default is `~/.codex/auth.json`.
+- Added optional alerts when quota runs low, runs out, or resets on schedule after exhaustion. The low-quota threshold is configurable.
+- Added an About window in preferences with the version, release notes, credits, license, and project links.
 
 ### Changed
 
-- Changed low-usage auto-redemption to use a fixed threshold of less than 2% quota remaining.
-- Replaced the window selector with a skip period in minutes for each window.
-- Manual redemption shows the time left when a scheduled reset is close.
-- Changed popup warning and error messages to appear above the footer.
-- Changed the activity chart to a four-week grid with six-hour blocks that use the GNOME accent color.
+- Replaced the configurable auto-redemption threshold with a fixed trigger below 2% remaining quota.
+- Replaced the auto-redemption window selector with a skip period before the scheduled reset for each window.
+- The manual redemption dialog shows how soon a window will reset if it is within its skip period. Cancel has initial keyboard focus.
+- Replaced the weekly activity chart with a four-week grid with six-hour blocks in the GNOME accent color.
+- Kept cached usage and history separate by account and credentials file. The first use of the default credentials file imports v0.12 usage data.
 - Increased local usage history retention from 21 to 30 days.
+- Moved popup warnings and errors above the footer. Improved readability and made keyboard focus easier to see.
+- Improved screen reader access to panel quota values and the reset confirmation.
 
 ### Fixed
 
-- Automatically migrated v0.12 usage data to the default account on first use.
 - Fixed preferences not opening on GNOME Shell 45 and 46.
-- Fixed reset confirmation with animations off. Enter no longer redeems a reset by default.
-- Fixed expired resets and stale expiry times in the menu.
+- Fixed reset confirmation when GNOME animations are off.
+- Prevented redemption if the active account changes after a banked reset is selected.
+- Fixed low-quota auto-redemption missing a trigger during an expiry check or selecting the wrong reset when an expiry date is missing.
+- Fixed expired resets and stale expiry times appearing when the menu opens.
 - Fixed unavailable resets remaining in the menu after a redemption attempt.
-- Fixed slow network responses keeping a refresh open indefinitely.
+- Fixed refreshes not timing out when a server sends data too slowly.
 - Fixed the refresh interval control accepting values above 30 minutes.
 - Fixed damaged history entries hiding valid usage history.
-- Fixed usage history appends failing on GNOME 45 to 49 when a write completes partially.
+- Fixed partial writes truncating new usage history entries.
 - Fixed pauses in GNOME Shell when processing large usage histories.
-- Improved keyboard and screen reader access to panel quota values and the reset confirmation.
-- Improved the readability and keyboard focus of warning and error messages.
 - Fixed the usage menu showing a full quota bar while loading.
 
 ## v0.12.0 (2026-11-13)

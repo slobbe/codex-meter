@@ -36,6 +36,8 @@ Codex Meter is a GNOME Shell extension written in JavaScript ES modules for GJS,
 - Use conventional release-note wording: Use `Added` for new features, `Changed` for changes to existing functionality, `Removed` for removed functionality, `Fixed` for bug fixes.
 - Follow the group order: `Added`, `Changed`, `Removed`, `Fixed`; omit empty groups.
 - Phrase entries around the user-visible problem resolved, not the implementation used to fix it.
+- Compare the current behavior with the latest release tag. Document only changes that users will see when they upgrade from that release.
+- Do not list fixes for issues introduced and resolved during development of the unreleased version. Describe the final behavior as part of the related feature or change.
 - Keep entries concise and short, with one bullet per feature, fix, or change.
 - Don't explain a feature or fix in detail; just describe what was done.
 - Keep wording consistent with existing release notes.
