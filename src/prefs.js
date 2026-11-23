@@ -43,7 +43,7 @@ function registerIconPath(window, theme, path) {
 }
 
 export default class CodexMeterPreferences extends ExtensionPreferences {
-    async fillPreferencesWindow(window) {
+    fillPreferencesWindow(window) {
         const settings = this.getSettings();
 
         const cancellable = new Gio.Cancellable();
@@ -57,9 +57,13 @@ export default class CodexMeterPreferences extends ExtensionPreferences {
         if (display) {
             registerIconPath(window, Gtk.IconTheme.get_for_display(display), `${this.path}/icons`);
         }
-        // Shell 45 and 46 expect a page before this method yields.
         window.add(page);
-        const changelog = await readFile(`${this.path}/CHANGELOG.md`, cancellable).catch(() => "");
-        if (!cancellable.is_cancelled()) releaseNotes = parseReleaseNotes(changelog);
+
+        // Optional release notes must not delay the preferences window.
+        void readFile(`${this.path}/CHANGELOG.md`, cancellable)
+            .then((changelog) => {
+                if (!cancellable.is_cancelled()) releaseNotes = parseReleaseNotes(changelog);
+            })
+            .catch(() => {});
     }
 }

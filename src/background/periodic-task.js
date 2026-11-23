@@ -11,6 +11,8 @@ export class PeriodicTask {
 
     started = false;
 
+    restartPending = false;
+
     constructor(intervalSeconds, task) {
         this.intervalSeconds = intervalSeconds;
         this.task = task;
@@ -22,11 +24,16 @@ export class PeriodicTask {
         }
         this.started = true;
         this.schedule();
-        void this.run();
+        if (this.running) {
+            this.restartPending = true;
+        } else {
+            void this.run();
+        }
     }
 
     stop() {
         this.started = false;
+        this.restartPending = false;
         this.removeTimeout();
     }
 
@@ -76,6 +83,10 @@ export class PeriodicTask {
             console.error("Periodic task failed", err);
         } finally {
             this.running = false;
+            if (this.restartPending) {
+                this.restartPending = false;
+                void this.run();
+            }
         }
     }
 }

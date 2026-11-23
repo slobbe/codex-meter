@@ -32,7 +32,7 @@ const snapshotStubUrl = `data:text/javascript,${encodeURIComponent(`
             this.credentialsPath = credentialsPath;
             this.snapshotPath = credentialsPath + ".snapshot.json";
         }
-        readCachedSnapshot({ cancellable }) { return cache.read(cancellable, this.credentialsPath); }
+        readStoredSnapshot({ cancellable }) { return cache.read(cancellable, this.credentialsPath); }
     }
 `)}`;
 const { cache } = await import(snapshotStubUrl);
@@ -201,6 +201,9 @@ function settingsFixture(values = {}) {
     };
     let skipMinutes = new toolkit.Variant("a{su}", {});
     const bindings = [];
+    const locked = new Set();
+    const rejected = new Set();
+    const canWrite = (key) => !locked.has(key) && !rejected.has(key);
     function emit(signal) {
         for (const { key, row, property } of bindings) {
             if (signal === `changed::${key}`) row[property] = booleans[key];
@@ -217,8 +220,20 @@ function settingsFixture(values = {}) {
         bindings,
         writes: [],
         resets: [],
+        rejected,
+        is_writable: (key) => !locked.has(key),
+        setLocked(key, value) {
+            if (value) locked.add(key);
+            else locked.delete(key);
+            emit(`writable-changed::${key}`);
+        },
+        get_user_value: (key) =>
+            strings[key] === DEFAULT_CREDENTIALS_PATH
+                ? null
+                : new toolkit.Variant("s", strings[key]),
         reset(key) {
             assert.equal(key, SETTINGS_CREDENTIALS_PATH);
+            if (!canWrite(key)) return;
             this.resets.push(key);
             strings[key] = DEFAULT_CREDENTIALS_PATH;
             emit(`changed::${key}`);
@@ -230,21 +245,27 @@ function settingsFixture(values = {}) {
         set_value(key, value) {
             assert.equal(key, SETTINGS_BANKED_RESET_SKIP_MINUTES);
             assert.equal(value.type, "a{su}");
+            if (!canWrite(key)) return false;
             this.writes.push({ key, value: value.deep_unpack() });
             skipMinutes = value;
             emit(`changed::${key}`);
+            return true;
         },
         get_string: (key) => strings[key],
         set_string(key, value) {
+            if (!canWrite(key)) return false;
             this.writes.push({ key, value });
             strings[key] = value;
             emit(`changed::${key}`);
+            return true;
         },
         get_uint: (key) => uints[key],
         set_uint(key, value) {
+            if (!canWrite(key)) return false;
             this.writes.push({ key, value });
             uints[key] = value;
             emit(`changed::${key}`);
+            return true;
         },
         get_boolean: (key) => booleans[key],
         set_boolean(key, value) {
@@ -479,6 +500,40 @@ test("credentials reset uses the schema default and updates the row", () => {
     assert.equal(settings.get_string(SETTINGS_CREDENTIALS_PATH), DEFAULT_CREDENTIALS_PATH);
     assert.equal(row.subtitle, DEFAULT_CREDENTIALS_PATH);
     assert.equal(reset.sensitive, false);
+    window.close();
+});
+
+test("locked credentials cannot be edited and rejected changes show an error", async () => {
+    const key = SETTINGS_CREDENTIALS_PATH;
+    const path = "/tmp/current.json";
+    const settings = settingsFixture({ [key]: path });
+    settings.setLocked(key, true);
+    const window = windowFixture();
+    const page = createPreferencesPage(settings, metadata, window);
+    const [row, error] = page.children[4].children;
+    const [browse, reset] = row.children;
+    assert.equal(browse.sensitive, false);
+    assert.equal(reset.sensitive, false);
+    settings.setLocked(key, false);
+    assert.equal(browse.sensitive, true);
+    assert.equal(reset.sensitive, true);
+
+    settings.rejected.add(key);
+    browse.emit("clicked");
+    const dialog = dialogs.at(-1);
+    dialog.file = toolkit.File.new_for_path("/tmp/selected.json");
+    dialog.emit("response", toolkit.ResponseType.ACCEPT);
+    await new Promise(setImmediate);
+    assert.equal(row.subtitle, path);
+    assert.equal(error.visible, true);
+    assert.match(error.label, /Could not save/);
+
+    browse.emit("clicked");
+    dialogs.at(-1).emit("response", toolkit.ResponseType.CANCEL);
+    assert.equal(error.visible, false);
+    reset.emit("clicked");
+    assert.equal(row.subtitle, path);
+    assert.equal(error.visible, true);
     window.close();
 });
 
@@ -810,21 +865,20 @@ test("preferences banked resets group keeps expiry and usage toggles separate", 
         group.children[0].subtitle,
         "Redeem a banked reset automatically within 1 hour of expiry.",
     );
-    assert.equal(settings.bindings.length, 5);
-    assert.equal(settings.bindings[2].key, SETTINGS_AUTO_APPLY_BANKED_RESET);
+    assert.equal(settings.bindings[1].key, SETTINGS_AUTO_APPLY_BANKED_RESET);
     assert.equal(
         group.children[1].subtitle,
         "Redeem below 2% remaining unless the window resets soon.",
     );
-    assert.deepEqual(settings.bindings[3], {
+    assert.deepEqual(settings.bindings[2], {
         key: SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
         row: group.children[1],
         property: "active",
         flags: 0,
     });
 
-    assert.equal(settings.bindings[2].row, group.children[0]);
-    assert.equal(settings.bindings[2].property, "active");
+    assert.equal(settings.bindings[1].row, group.children[0]);
+    assert.equal(settings.bindings[1].property, "active");
 
     const skipPeriods = group.children[2];
     assert.equal(skipPeriods.sensitive, false);
@@ -899,10 +953,12 @@ test("notification preferences roundtrip threshold, track sensitivity, and clean
         assert.equal(threshold.digits, 0);
         assert.equal(threshold.sensitive, enabled);
         assert.deepEqual(settings.writes, []);
-        assert.deepEqual(settings.bindings.slice(0, 2), [
-            { key: SETTINGS_USAGE_NOTIFICATIONS, row: toggle, property: "active", flags: 0 },
-            { key: SETTINGS_USAGE_NOTIFICATIONS, row: threshold, property: "sensitive", flags: 1 },
-        ]);
+        assert.deepEqual(settings.bindings[0], {
+            key: SETTINGS_USAGE_NOTIFICATIONS,
+            row: toggle,
+            property: "active",
+            flags: 0,
+        });
         settings.set_boolean(SETTINGS_USAGE_NOTIFICATIONS, !enabled);
         assert.equal(toggle.active, !enabled);
         assert.equal(threshold.sensitive, !enabled);
@@ -1011,6 +1067,42 @@ test("skip inputs display minutes and persist independent window overrides", asy
     window.close();
     assert.deepEqual(skipPeriods.children, []);
     assert.equal(settings.signals.size, 0);
+});
+
+test("manual controls track locks and restore stored values after rejected writes", async (t) => {
+    const weekly = { id: "weekly", label: "Weekly", limitWindowSeconds: 604_800 };
+    t.mock.method(cache, "read", async () => ({ quotas: [weekly] }));
+    const settings = settingsFixture({
+        [SETTINGS_USAGE_NOTIFICATIONS]: true,
+        [SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE]: true,
+    });
+    const window = windowFixture();
+    const page = createPreferencesPage(settings, metadata, window);
+    await new Promise(setImmediate);
+    const percent = page.children[0].children[0];
+    const threshold = page.children[1].children[1];
+    const skipPeriods = page.children[2].children[2];
+    const refresh = page.children[3].children[0];
+    for (const [key, row, property, value, sensitiveRow = row] of [
+        [SETTINGS_PERCENT_DISPLAY_MODE, percent, "selected", 1],
+        [SETTINGS_USAGE_NOTIFICATION_THRESHOLD, threshold, "value", 25],
+        [SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES, refresh, "value", 15],
+        [SETTINGS_BANKED_RESET_SKIP_MINUTES, skipPeriods.children[0], "value", 90, skipPeriods],
+    ]) {
+        assert.equal(sensitiveRow.sensitive, true);
+        settings.setLocked(key, true);
+        assert.equal(sensitiveRow.sensitive, false);
+        settings.setLocked(key, false);
+        assert.equal(sensitiveRow.sensitive, true);
+
+        const stored = row[property];
+        settings.rejected.add(key);
+        row[property] = value;
+        row.emit(`notify::${property}`);
+        assert.equal(row[property], stored);
+    }
+    assert.deepEqual(settings.writes, []);
+    window.close();
 });
 
 test("selecting and resetting credentials replaces skip controls without writing skip periods", async (t) => {
@@ -1227,7 +1319,6 @@ test("closing preferences disconnects every settings callback without preventing
     const [percent, icon, display] = page.children[0].children;
     const [refresh] = page.children[3].children;
     const signalIds = [...settings.signals.keys()];
-    assert.equal(signalIds.length, 8);
 
     settings.set_string(SETTINGS_PERCENT_DISPLAY_MODE, "used");
     settings.set_string(SETTINGS_TOP_PANEL_INDICATOR_ICON, "openai");
@@ -1265,18 +1356,19 @@ test("closing one window preserves other windows and reopening does not leak han
     const firstWindow = windowFixture();
     const firstPage = createPreferencesPage(settings, metadata, firstWindow);
     const firstIcon = firstPage.children[0].children[1];
+    const signalsPerWindow = settings.signals.size;
 
     for (let i = 0; i < 3; i++) {
         const window = windowFixture();
         const page = createPreferencesPage(settings, metadata, window);
         const icon = page.children[0].children[1];
-        assert.equal(settings.signals.size, 16);
+        assert.equal(settings.signals.size, 2 * signalsPerWindow);
         settings.set_string(SETTINGS_TOP_PANEL_INDICATOR_ICON, "openai");
         assert.equal(firstIcon.selected, 1);
         assert.equal(icon.selected, 1);
 
         assert.equal(window.close(), false);
-        assert.equal(settings.signals.size, 8);
+        assert.equal(settings.signals.size, signalsPerWindow);
         settings.set_string(SETTINGS_TOP_PANEL_INDICATOR_ICON, "text");
         assert.equal(firstIcon.selected, 2);
         assert.equal(icon.selected, 1);
@@ -1284,5 +1376,5 @@ test("closing one window preserves other windows and reopening does not leak han
 
     assert.equal(firstWindow.close(), false);
     assert.equal(settings.signals.size, 0);
-    assert.equal(settings.disconnected.length, 32);
+    assert.equal(settings.disconnected.length, 4 * signalsPerWindow);
 });

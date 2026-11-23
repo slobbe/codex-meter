@@ -201,7 +201,7 @@ try {
         const snapshotA = await service.refresh();
         const reloaded = new UsageService(authPath);
         assertEqual(
-            (await reloaded.readCachedSnapshot()).planType,
+            (await reloaded.readStoredSnapshot()).planType,
             planType,
             "verified snapshot survives restart",
         );
@@ -251,9 +251,9 @@ try {
         };
         try {
             assertEqual(
-                await service.readCachedSnapshot(),
+                await service.readStoredSnapshot(),
                 null,
-                "auth replacement during cache read rejects old data",
+                "auth replacement during read-only cache read rejects old data",
             );
         } finally {
             Gio.File.prototype.load_contents_async = load;
@@ -519,6 +519,23 @@ try {
         );
         const originalLegacy = await readFile(HISTORY_PATH);
         await rewriteHistory([updatedOverlap], destination);
+        const originalDestination = await readFile(destination);
+        const originalSnapshot = await readFile(defaults.snapshotPath);
+        const receipt = Gio.File.new_for_path(
+            GLib.build_filenamev([STATE_DIR, "codex", "legacy-import.json"]),
+        );
+        assertEqual(await defaults.readStoredSnapshot(), null, "read-only cache skips legacy data");
+        assertEqual(await readFile(destination), originalDestination, "history is unchanged");
+        assertEqual(
+            await readFile(defaults.snapshotPath),
+            originalSnapshot,
+            "snapshot is unchanged",
+        );
+        assertEqual(
+            receipt.query_exists(null),
+            false,
+            "read-only cache leaves no migration receipt",
+        );
         const customAuth = GLib.build_filenamev([directory, "other-auth.json"]);
         await writeCredentials(customAuth, "custom-account");
         assertEqual(

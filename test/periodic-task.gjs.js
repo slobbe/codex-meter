@@ -95,16 +95,49 @@ await test("pending work never overlaps, including across stop and restart", asy
     assertEqual(calls, 1, "ticks and explicit runs skip pending work");
     task.stop();
     task.start();
+    task.stop();
+    task.start();
+    const restartId = task.timeoutId;
     assertEqual(calls, 1, "restart does not overlap pending work");
     assertEqual(sources.has(firstId), false, "old timer was removed");
     assertEqual(sources.size, 1, "restart creates one replacement timer");
     resolve();
     await pending;
-    assertEqual(task.running, false, "completion clears overlap guard");
-    sources.get(task.timeoutId).callback();
-    assertEqual(calls, 2, "later ticks resume work");
+    assertEqual(calls, 2, "one restart run starts when pending work settles");
+    await Promise.resolve();
+    assertEqual(calls, 2, "repeated restarts do not queue extra runs");
+    assertEqual(task.timeoutId, restartId, "restart run keeps the scheduled timer");
+    sources.get(restartId).callback();
+    assertEqual(calls, 3, "later ticks resume work");
     task.stop();
 });
+
+for (const stopAfterRestart of [false, true]) {
+    const name = stopAfterRestart ? "stop clears a queued restart" : "busy ticks do not queue work";
+    await test(name, async ({ sources }) => {
+        let calls = 0;
+        let resolve;
+        const pending = new Promise((done) => {
+            resolve = done;
+        });
+        const task = new PeriodicTask(10, () => {
+            calls++;
+            return pending;
+        });
+
+        task.start();
+        sources.get(task.timeoutId).callback();
+        if (stopAfterRestart) {
+            task.stop();
+            task.start();
+            task.stop();
+        }
+        resolve();
+        await pending;
+        assertEqual(calls, 1, "settling does not start another run");
+        task.stop();
+    });
+}
 
 await test("stop is idempotent and restart schedules and runs again", async ({
     sources,

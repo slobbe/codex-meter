@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import test from "node:test";
+import { setImmediate } from "node:timers/promises";
 
 const prefsUrl = new URL("../src/prefs.js", import.meta.url).href;
 const stubUrl = `data:text/javascript,${encodeURIComponent(`
@@ -95,16 +96,45 @@ function themeFixture(t, searchPath) {
     return theme;
 }
 
+test("preferences open synchronously while the changelog read is pending", async (t) => {
+    const read = Promise.withResolvers();
+    const { prefs, window } = fixture();
+    t.mock.method(changelog, "read", () => {
+        assert.equal(window.pages.length, 1);
+        return read.promise;
+    });
+
+    assert.equal(prefs.fillPreferencesWindow(window), undefined);
+    const [page] = window.pages;
+    assert.equal(page.settings, prefs.settings);
+    assert.equal(page.getReleaseNotes(), null);
+
+    read.resolve("## v0.13.0\n- Latest feature.");
+    await setImmediate();
+
+    assert.equal(page.getReleaseNotes().version, "0.13.0");
+});
+
+test("preferences setup errors throw synchronously", (t) => {
+    const { prefs, window } = fixture();
+    const error = new Error("Settings unavailable");
+    t.mock.method(prefs, "getSettings", () => {
+        throw error;
+    });
+
+    assert.throws(() => prefs.fillPreferencesWindow(window), error);
+});
+
 test("preferences open without What's New when the changelog cannot be read", async (t) => {
     t.mock.method(changelog, "read", async () => {
         throw new Error("No such file");
     });
     const { prefs, window } = fixture();
 
-    await prefs.fillPreferencesWindow(window);
+    prefs.fillPreferencesWindow(window);
+    await setImmediate();
 
     assert.equal(window.pages.length, 1);
-    assert.equal(window.pages[0].settings, prefs.settings);
     assert.equal(window.pages[0].getReleaseNotes(), null);
 });
 
@@ -114,7 +144,7 @@ test("closing preferences cancels the changelog read and ignores its result", as
             const read = Promise.withResolvers();
             const load = t.mock.method(changelog, "read", () => read.promise);
             const { prefs, window } = fixture();
-            const pending = prefs.fillPreferencesWindow(window);
+            prefs.fillPreferencesWindow(window);
             const [path, cancellable] = load.mock.calls[0].arguments;
             assert.equal(path, "/extension/CHANGELOG.md");
             const [page] = window.pages;
@@ -123,7 +153,7 @@ test("closing preferences cancels the changelog read and ignores its result", as
             assert.equal(cancellable.is_cancelled(), true);
             if (outcome === "success") read.resolve("## v0.13.0\n- Latest feature.");
             else read.reject(new Error("Operation was cancelled"));
-            await pending;
+            await setImmediate();
 
             assert.deepEqual(window.pages, [page]);
             assert.equal(page.getReleaseNotes(), null);
@@ -131,15 +161,14 @@ test("closing preferences cancels the changelog read and ignores its result", as
     }
 });
 
-test("windows share one icon path until GTK removes the last owner", async (t) => {
+test("windows share one icon path until GTK removes the last owner", (t) => {
     const iconPath = "/extension/icons";
     const theme = themeFixture(t, ["/original"]);
     const first = fixture();
     const second = fixture();
-    const pending = first.prefs.fillPreferencesWindow(first.window);
+    first.prefs.fillPreferencesWindow(first.window);
     assert.deepEqual(theme.get_search_path(), ["/original", iconPath]);
-    await second.prefs.fillPreferencesWindow(second.window);
-    await pending;
+    second.prefs.fillPreferencesWindow(second.window);
     assert.deepEqual(theme.get_search_path(), ["/original", iconPath]);
 
     assert.equal(first.window.close(), false);
@@ -152,18 +181,18 @@ test("windows share one icon path until GTK removes the last owner", async (t) =
     assert.deepEqual(theme.get_search_path(), ["/external"]);
 
     const reopened = fixture();
-    await reopened.prefs.fillPreferencesWindow(reopened.window);
+    reopened.prefs.fillPreferencesWindow(reopened.window);
     assert.deepEqual(theme.get_search_path(), ["/external", iconPath]);
     toplevels.remove(reopened.window);
     assert.deepEqual(theme.get_search_path(), ["/external"]);
     assert.equal(toplevels.handlers.size, 0);
 });
 
-test("preferences leave a pre-existing icon path untouched", async (t) => {
+test("preferences leave a pre-existing icon path untouched", (t) => {
     const paths = ["/extension/icons", "/external"];
     const theme = themeFixture(t, [...paths]);
     const { prefs, window } = fixture();
-    await prefs.fillPreferencesWindow(window);
+    prefs.fillPreferencesWindow(window);
     assert.deepEqual(theme.get_search_path(), paths);
     toplevels.remove(window);
     assert.deepEqual(theme.get_search_path(), paths);

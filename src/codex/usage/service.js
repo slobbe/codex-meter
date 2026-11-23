@@ -46,11 +46,19 @@ export class UsageService {
     }
 
     async readCachedSnapshot({ cancellable = null, credentials = null } = {}) {
+        return this.#readCachedSnapshot(cancellable, credentials, { importLegacy: true });
+    }
+
+    async readStoredSnapshot({ cancellable = null } = {}) {
+        return this.#readCachedSnapshot(cancellable, null, { importLegacy: false });
+    }
+
+    async #readCachedSnapshot(cancellable, credentials, { importLegacy }) {
         try {
             credentials ??= await getCodexCredentials(cancellable, this.credentialsPath);
             const fingerprint = credentials.accountFingerprint;
             if (!fingerprint) return null;
-            await this.#importLegacyUsage(credentials, cancellable);
+            if (importLegacy) await this.#importLegacyUsage(credentials, cancellable);
             const snapshot = await readSnapshot(cancellable, this.snapshotPath, fingerprint);
             if (!snapshot) return null;
             await getCodexCredentials(cancellable, this.credentialsPath, credentials);

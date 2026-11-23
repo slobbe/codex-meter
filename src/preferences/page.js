@@ -84,6 +84,10 @@ function createCredentialsGroup(settings, settingsSignalIds, window) {
         errorLabel.visible = false;
         errorLabel.label = "";
     };
+    const showSaveError = () => {
+        errorLabel.label = "Could not save the credentials file setting.";
+        errorLabel.visible = true;
+    };
     const validateSelection = async (path) => {
         clearValidation();
         const cancellable = new Gio.Cancellable();
@@ -92,7 +96,7 @@ function createCredentialsGroup(settings, settingsSignalIds, window) {
             await getCodexCredentials(cancellable, path);
             if (closed || cancellable.is_cancelled() || validationCancellable !== cancellable)
                 return;
-            settings.set_string(SETTINGS_CREDENTIALS_PATH, path);
+            if (!settings.set_string(SETTINGS_CREDENTIALS_PATH, path)) showSaveError();
         } catch (error) {
             if (closed || cancellable.is_cancelled() || validationCancellable !== cancellable)
                 return;
@@ -107,14 +111,22 @@ function createCredentialsGroup(settings, settingsSignalIds, window) {
 
     const resolvePath = (path) =>
         path.startsWith("~/") ? GLib.build_filenamev([GLib.get_home_dir(), path.slice(2)]) : path;
+    const updateSensitivity = () => {
+        const path = settings.get_string(SETTINGS_CREDENTIALS_PATH);
+        browse.sensitive = settings.is_writable(SETTINGS_CREDENTIALS_PATH);
+        reset.sensitive =
+            browse.sensitive && resolvePath(path) !== resolvePath(DEFAULT_CREDENTIALS_PATH);
+    };
     const update = () => {
         clearValidation();
-        const path = settings.get_string(SETTINGS_CREDENTIALS_PATH);
-        row.subtitle = path;
-        reset.sensitive = resolvePath(path) !== resolvePath(DEFAULT_CREDENTIALS_PATH);
+        row.subtitle = settings.get_string(SETTINGS_CREDENTIALS_PATH);
+        updateSensitivity();
     };
+    settingsSignalIds.push(
+        settings.connect(`changed::${SETTINGS_CREDENTIALS_PATH}`, update),
+        settings.connect(`writable-changed::${SETTINGS_CREDENTIALS_PATH}`, updateSensitivity),
+    );
     update();
-    settingsSignalIds.push(settings.connect(`changed::${SETTINGS_CREDENTIALS_PATH}`, update));
 
     let dialog = null;
     let responseSignalId = null;
@@ -166,7 +178,13 @@ function createCredentialsGroup(settings, settingsSignalIds, window) {
     const resetSignalId = reset.connect("clicked", () => {
         if (closed) return;
         clearValidation();
+        if (!settings.is_writable(SETTINGS_CREDENTIALS_PATH)) {
+            showSaveError();
+            return;
+        }
         settings.reset(SETTINGS_CREDENTIALS_PATH);
+        // reset() has no return value. A successful reset removes the user value.
+        if (settings.get_user_value(SETTINGS_CREDENTIALS_PATH) !== null) showSaveError();
     });
     return {
         group,
@@ -233,7 +251,7 @@ function watchUsageWindowCache(settings, settingsSignalIds, setQuotas) {
             pendingRead?.cancel();
             const cancellable = new Gio.Cancellable();
             pendingRead = cancellable;
-            const snapshot = await service.readCachedSnapshot({ cancellable }).catch(() => null);
+            const snapshot = await service.readStoredSnapshot({ cancellable }).catch(() => null);
             if (scope.is_cancelled() || pendingRead !== cancellable) return;
             pendingRead = null;
             setQuotas(snapshot?.quotas ?? []);
@@ -314,11 +332,12 @@ function createSkipPeriodsRow(settings, settingsSignalIds) {
         title: "Wait for scheduled reset",
         enable_expansion: false,
     });
-    settings.bind(
-        SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
+    trackEditSensitivity(
+        settings,
+        settingsSignalIds,
+        key,
         row,
-        "sensitive",
-        Gio.SettingsBindFlags.GET,
+        SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
     );
     const windowRows = [];
     let windowSignature;
@@ -385,18 +404,22 @@ function createSkipPeriodsRow(settings, settingsSignalIds) {
                 const signal = control.connect("notify::value", () => {
                     const overrides = readBankedResetSkipMinutes(settings);
                     const minutes = Math.round(control.value);
-                    if (
-                        minutes ===
-                        Math.min(getBankedResetSkipMinutes(quota, overrides), maxMinutes)
-                    )
-                        return;
-                    settings.set_value(
-                        key,
-                        new GLib.Variant("a{su}", {
-                            ...overrides,
-                            [quota.id]: minutes,
-                        }),
+                    const stored = Math.min(
+                        getBankedResetSkipMinutes(quota, overrides),
+                        maxMinutes,
                     );
+                    if (minutes === stored) return;
+                    if (
+                        !settings.set_value(
+                            key,
+                            new GLib.Variant("a{su}", { ...overrides, [quota.id]: minutes }),
+                        )
+                    ) {
+                        control.value = Math.min(
+                            getBankedResetSkipMinutes(quota, readBankedResetSkipMinutes(settings)),
+                            maxMinutes,
+                        );
+                    }
                 });
                 windowRows.push({ control, quota, signal });
                 row.add_row(control);
@@ -425,20 +448,22 @@ function createNotificationsGroup(settings, settingsSignalIds) {
             upper: 100,
             step_increment: 1,
             page_increment: 5,
-            value: settings.get_uint(key),
         }),
         climb_rate: 1,
         digits: 0,
     });
+    const syncValue = () => {
+        row.value = settings.get_uint(key);
+    };
+    settingsSignalIds.push(settings.connect(`changed::${key}`, syncValue));
+    syncValue();
     row.connect("notify::value", () => {
-        settings.set_uint(key, Math.min(100, Math.max(1, Math.round(row.value))));
+        const value = Math.min(100, Math.max(1, Math.round(row.value)));
+        const stored = settings.get_uint(key);
+        if (row.value === stored) return;
+        if (value === stored || !settings.set_uint(key, value)) row.value = settings.get_uint(key);
     });
-    settingsSignalIds.push(
-        settings.connect(`changed::${key}`, () => {
-            row.value = settings.get_uint(key);
-        }),
-    );
-    settings.bind(SETTINGS_USAGE_NOTIFICATIONS, row, "sensitive", Gio.SettingsBindFlags.GET);
+    trackEditSensitivity(settings, settingsSignalIds, key, row, SETTINGS_USAGE_NOTIFICATIONS);
     group.add(row);
     return group;
 }
@@ -510,14 +535,17 @@ function createBoundComboRow({ settings, settingsSignalIds, key, title, subtitle
         title,
         subtitle,
         model: Gtk.StringList.new(options.map(([label]) => label)),
-        selected: getSelected(),
     });
-    row.connect("notify::selected", () => settings.set_string(key, options[row.selected][1]));
-    settingsSignalIds.push(
-        settings.connect(`changed::${key}`, () => {
-            row.selected = getSelected();
-        }),
-    );
+    const syncSelection = () => {
+        row.selected = getSelected();
+    };
+    settingsSignalIds.push(settings.connect(`changed::${key}`, syncSelection));
+    syncSelection();
+    row.connect("notify::selected", () => {
+        if (row.selected === getSelected()) return;
+        if (!settings.set_string(key, options[row.selected][1])) row.selected = getSelected();
+    });
+    trackEditSensitivity(settings, settingsSignalIds, key, row);
     return row;
 }
 
@@ -533,7 +561,18 @@ function createBoundSwitchRow({ settings, key, title, subtitle }) {
     return row;
 }
 
+function trackEditSensitivity(settings, settingsSignalIds, key, row, enabledKey = null) {
+    const update = () => {
+        row.sensitive =
+            settings.is_writable(key) && (!enabledKey || settings.get_boolean(enabledKey));
+    };
+    settingsSignalIds.push(settings.connect(`writable-changed::${key}`, update));
+    if (enabledKey) settingsSignalIds.push(settings.connect(`changed::${enabledKey}`, update));
+    update();
+}
+
 function createRefreshIntervalRow(settings, settingsSignalIds) {
+    const key = SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES;
     const row = new Adw.SpinRow({
         title: "Interval (minutes)",
         subtitle: "Set to 0 to refresh manually.",
@@ -542,22 +581,22 @@ function createRefreshIntervalRow(settings, settingsSignalIds) {
             upper: 30,
             step_increment: 1,
             page_increment: 5,
-            value: settings.get_uint(SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES),
         }),
         climb_rate: 1,
         digits: 0,
     });
+    const syncValue = () => {
+        row.value = settings.get_uint(key);
+    };
+    settingsSignalIds.push(settings.connect(`changed::${key}`, syncValue));
+    syncValue();
     row.connect("notify::value", () => {
-        settings.set_uint(
-            SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES,
-            Math.max(MIN_REFRESH_INTERVAL_MINUTES, Math.round(row.value)),
-        );
+        const value = Math.max(MIN_REFRESH_INTERVAL_MINUTES, Math.round(row.value));
+        const stored = settings.get_uint(key);
+        if (row.value === stored) return;
+        if (value === stored || !settings.set_uint(key, value)) row.value = settings.get_uint(key);
     });
-    settingsSignalIds.push(
-        settings.connect(`changed::${SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES}`, () => {
-            row.value = settings.get_uint(SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES);
-        }),
-    );
+    trackEditSensitivity(settings, settingsSignalIds, key, row);
     return row;
 }
 
