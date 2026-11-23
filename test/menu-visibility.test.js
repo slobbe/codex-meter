@@ -579,7 +579,7 @@ test("one status banner switches severity, resets expansion, and clears", () => 
         assert.equal(item.visible, true);
         assert.equal(item.icon.icon_name, `dialog-${severity}-symbolic`);
         const color = isError ? "danger" : "warning";
-        assert.equal(item.icon.style_class, "popup-menu-icon");
+        assert.equal(item.icon.style_class, `popup-menu-icon cx-status-icon-${color}`);
         assert.equal(item.titleLabel.style_class, "cx-error-title");
         assert.equal(item.messageLabel.style_class, `cx-error-message cx-error-message-${color}`);
         assert.equal(item.messageLabel.visible, isError);

@@ -99,6 +99,7 @@ export class CodexMeterPopupMenu {
         const color = isError ? "danger" : "warning";
         item.visible = Boolean(title || message);
         item.icon.icon_name = isError ? "dialog-error-symbolic" : "dialog-warning-symbolic";
+        item.icon.style_class = `popup-menu-icon cx-status-icon-${color}`;
         item.titleLabel.text = title ?? "";
         item.messageLabel.style_class = `cx-error-message cx-error-message-${color}`;
         item.setDetails(message, isError, severity !== this._statusSeverity);

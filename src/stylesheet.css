@@ -61,11 +61,13 @@
     color: #49c16d;
 }
 
-.cx-panel-ring .cx-color-warning {
+.cx-panel-ring .cx-color-warning,
+.cx-status-icon-warning {
     color: #e59a2f;
 }
 
-.cx-panel-ring .cx-color-exhausted {
+.cx-panel-ring .cx-color-exhausted,
+.cx-status-icon-danger {
     color: #d9534f;
 }
 
