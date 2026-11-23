@@ -849,7 +849,12 @@ test("banked resets show inventory states and disable stale or busy redemption",
         assert.equal(rows().at(-1).sensitive, false);
         rows().at(-1).signals.activate();
         assert.deepEqual(redeemed, ["a"]);
-        if (field === "error") assert.match(rows()[0].label.text, /unavailable: Network failed/);
+        if (field === "error") {
+            const { label } = rows()[0];
+            assert.equal(label.text, "Banked resets unavailable: Network failed");
+            assert.equal(label.clutter_text.line_wrap, true);
+            assert.equal(label.clutter_text.ellipsize, 0);
+        }
         if (field === "redeeming") assert.equal(rows()[0].label.text, "Redeeming reset…");
         state[field] = field === "error" ? null : false;
     }

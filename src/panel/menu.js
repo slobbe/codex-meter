@@ -161,6 +161,11 @@ export class CodexMeterPopupMenu {
                     reactive: isCredit,
                     can_focus: isCredit,
                 });
+                if (key === "status") {
+                    item.label.x_expand = true;
+                    item.label.clutter_text.line_wrap = true;
+                    item.label.clutter_text.ellipsize = 0;
+                }
                 if (isCredit) {
                     item.connect("activate", () => {
                         if (this._canRedeemBankedReset) this._onRedeemBankedReset(creditId);
