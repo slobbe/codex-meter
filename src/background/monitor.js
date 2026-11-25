@@ -202,6 +202,10 @@ export class CodexMonitor {
         this.onChange = null;
     }
 
+    async refreshManually() {
+        await Promise.allSettled([this.refreshUsage(), this.refreshBankedResets()]);
+    }
+
     async refreshUsage({ expectedCredentials = null } = {}) {
         if (this._lifecycleCancellable.is_cancelled()) return;
         if (this._refreshPromise) {

@@ -101,7 +101,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
     _buildMenu() {
         this._popupMenu = new CodexMeterPopupMenu({
             onRefresh: () => {
-                void this._refreshUsage();
+                void this._refreshManually();
             },
 
             onRedeemBankedReset: (creditId) => {
@@ -141,11 +141,11 @@ export class CodexMeterIndicator extends PanelMenu.Button {
         });
     }
 
-    async _refreshUsage() {
+    async _refreshManually() {
         const cancellable = this._uiCancellable;
         this._popupMenu.setRefreshing(true);
         try {
-            await this._monitor.refreshUsage();
+            await this._monitor.refreshManually();
         } finally {
             if (!cancellable.is_cancelled()) this._popupMenu.setRefreshing(false);
         }

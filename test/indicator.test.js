@@ -43,7 +43,11 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     };
     export const createMenuViewModel = (_settings, snapshot) => snapshot.menu;
     export const confirmations = [];
-    export const CodexMeterPopupMenu = null;
+    export class CodexMeterPopupMenu {
+        constructor({ onRefresh }) { this.onRefresh = onRefresh; }
+        addToMenu() {}
+        setRefreshing() {}
+    }
     export function showBankedResetConfirmation(credit, callbacks) {
         const dialog = {
             credit, callbacks,
@@ -523,8 +527,17 @@ test("destroy releases a selected reset and destroys its confirmation dialog", a
     assert.equal(dialog.destroyed, true);
 });
 
+test("the popup Refresh action calls the monitor's manual refresh", () => {
+    const indicator = createIndicator();
+    let calls = 0;
+    indicator._monitor.refreshManually = async () => calls++;
+    indicator._buildMenu();
+    indicator._popupMenu.onRefresh();
+    assert.equal(calls, 1);
+});
+
 for (const [method, operation] of [
-    ["_refreshUsage", "refreshUsage"],
+    ["_refreshManually", "refreshManually"],
     ["_redeemBankedReset", "redeemBankedReset"],
 ]) {
     test(`${operation} clears the refreshing state on completion`, async () => {

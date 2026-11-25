@@ -370,6 +370,29 @@ function usageMonitor(t, notify = () => {}, settings = { connect() {} }, options
     return monitor;
 }
 
+test("manual refresh retries failed popup inventory within cooldown even when usage fails", async (t) => {
+    t.mock.method(Date, "now", () => 1_800_000_000_000);
+    const monitor = usageMonitor(t);
+    const popupOptions = { maxAgeMs: 5 * 60 * 1000 };
+    io.respond = () => {
+        throw new Error("network down");
+    };
+    assert.equal(await monitor.refreshBankedResets(popupOptions), null);
+    assert.ok(monitor.state.bankedResetError);
+    await monitor.refreshBankedResets(popupOptions);
+    assert.equal(io.requests.length, 1, "popup remains on cooldown after failure");
+
+    io.respond = (url) => {
+        if (url === listUrl) return io.response;
+        throw new Error("usage unavailable");
+    };
+    await monitor.refreshManually();
+    assert.equal(monitor.state.errorMessage, "Usage refresh failed");
+    assert.equal(monitor.state.bankedResetSnapshot, io.response);
+    assert.equal(monitor.state.bankedResetError, null);
+    assert.equal(io.requests.filter(({ url }) => url === listUrl).length, 2);
+});
+
 test("usage, inventory, and consume keep the verified account across a token refresh", async (t) => {
     useAccount("account-a");
     const originalToken = io.auth.tokens.access_token;

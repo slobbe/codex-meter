@@ -1122,7 +1122,7 @@ test("available selections without a parseable expiry retain API availability se
     }
 });
 
-test("inventory refresh deduplicates popup, preparation, and reentrant loading requests", async () => {
+test("inventory refresh deduplicates popup, manual refresh, preparation, and reentrant requests", async () => {
     const { monitor } = fixture();
     const response = deferred();
     const requested = deferred();
@@ -1142,11 +1142,13 @@ test("inventory refresh deduplicates popup, preparation, and reentrant loading r
     const refresh = monitor.refreshBankedResets();
     const prepare = monitor.prepareBankedReset(selected.id);
     await requested.promise;
+    const manual = monitor.refreshManually();
     assert.equal(monitor.state.bankedResetLoading, true);
     response.resolve(inventory);
     assert.equal(await refresh, inventory);
     assert.equal(await prepare, selected);
     assert.equal(await reentrant, inventory);
+    await manual;
     assert.equal(calls, 1);
     assert.equal(monitor.state.bankedResetLoading, false);
 });

@@ -14,6 +14,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- The Refresh button updates both usage and banked resets.
 - Replaced the configurable auto-redemption threshold with a fixed trigger below 2% remaining quota.
 - Replaced the auto-redemption window selector with a skip period before the scheduled reset for each window.
 - The manual redemption dialog shows how soon a window will reset if it is within its skip period. Cancel has initial keyboard focus.
