@@ -336,8 +336,7 @@ test("main menu opening syncs cached reset rows before requesting fresh inventor
     };
     indicator._settings.connect = () => 2;
     indicator._queueMenuBarSync = () => syncCount++;
-    indicator._monitor.refreshBankedResets = (options) => {
-        assert.deepEqual(options, { maxAgeMs: 5 * 60 * 1000 });
+    indicator._monitor.refreshOnMenuOpen = () => {
         refreshCount++;
         assert.equal(visibleInventories.length, refreshCount);
         assert.equal(visibleInventories.at(-1), cached);

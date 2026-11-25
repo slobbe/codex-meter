@@ -21,7 +21,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         compute_checksum_for_string: (type, value) => createHash(type).update(value).digest('hex'),
     };
     export class UsageService {}
-    export class PeriodicTask { start() {} stop() {} }
+
     export const readSettings = () => ({ autoApplyBankedReset: true });
     export const readBankedResetSkipMinutes = () => ({});
     export const SETTINGS_BANKED_RESET_SKIP_MINUTES = "banked-reset-skip-minutes";
@@ -373,13 +373,13 @@ function usageMonitor(t, notify = () => {}, settings = { connect() {} }, options
 test("manual refresh retries failed popup inventory within cooldown even when usage fails", async (t) => {
     t.mock.method(Date, "now", () => 1_800_000_000_000);
     const monitor = usageMonitor(t);
-    const popupOptions = { maxAgeMs: 5 * 60 * 1000 };
+
     io.respond = () => {
         throw new Error("network down");
     };
-    assert.equal(await monitor.refreshBankedResets(popupOptions), null);
+    assert.equal(await monitor.refreshOnMenuOpen(), null);
     assert.ok(monitor.state.bankedResetError);
-    await monitor.refreshBankedResets(popupOptions);
+    await monitor.refreshOnMenuOpen();
     assert.equal(io.requests.length, 1, "popup remains on cooldown after failure");
 
     io.respond = (url) => {
@@ -697,7 +697,7 @@ test("a popup inventory request cannot swallow a new account's low-quota trigger
         if (options?.expectedCredentials?.accountId === "account-b") joined.resolve();
         return refreshInventory(options);
     };
-    const popup = monitor.refreshBankedResets();
+    const popup = monitor.refreshOnMenuOpen();
     await requested.promise;
     useAccount("account-b");
     const usage = monitor.refreshUsage();

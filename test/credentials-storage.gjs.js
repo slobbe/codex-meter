@@ -361,7 +361,7 @@ try {
         let timer = null;
         try {
             await new Promise((resolve) => {
-                monitor._usageRefreshTask.start = resolve;
+                monitor.refreshUsage = async () => resolve();
                 monitor.start();
             });
             assertEqual(

@@ -1,4 +1,5 @@
 import Gio from "gi://Gio";
+import GLib from "gi://GLib";
 
 import { CodexMonitor } from "../src/background/monitor.js";
 
@@ -231,7 +232,51 @@ function testAccountReplacementWithdrawsAlertsBeforePublishing() {
     assertDeepEqual(events, ["withdraw alerts", "change"], "withdraw before publishing");
 }
 
+async function testBackgroundSourceLifecycle() {
+    const settings = {
+        connect() {},
+        disconnect() {},
+        get_boolean: (key) => key === "auto-apply-banked-reset",
+        get_string: () => "",
+        get_uint: () => 1,
+        get_value: () => ({ deep_unpack: () => ({}) }),
+    };
+    const monitor = new CodexMonitor(settings, () => {});
+    const cache = deferred();
+    monitor._loadCachedSnapshot = () => cache.promise;
+    monitor._refreshInBackground = async () => {};
+    const context = GLib.MainContext.default();
+    try {
+        monitor.start();
+        const expirySource = monitor._backgroundTimeoutId;
+        assertEqual(
+            Boolean(context.find_source_by_id(expirySource)),
+            true,
+            "expiry source is armed",
+        );
+
+        cache.resolve();
+        await cache.promise;
+        const sharedSource = monitor._backgroundTimeoutId;
+        assertEqual(
+            Boolean(context.find_source_by_id(sharedSource)),
+            true,
+            "shared source is armed",
+        );
+        assertEqual(context.find_source_by_id(expirySource), null, "the previous source is gone");
+        monitor.stop();
+        assertEqual(
+            context.find_source_by_id(sharedSource),
+            null,
+            "stop removes the shared source",
+        );
+    } finally {
+        monitor.stop();
+    }
+}
+
 testAccountReplacementWithdrawsAlertsBeforePublishing();
+await testBackgroundSourceLifecycle();
 
 for (const workflow of workflows) {
     await testPredictionWorkflow(workflow, false);

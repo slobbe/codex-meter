@@ -34,7 +34,6 @@ check-gjs:
 	gjs -m test/credentials-storage.gjs.js
 	gjs -m test/lifecycle.gjs.js
 	gjs -m test/monitor.gjs.js
-	gjs -m test/periodic-task.gjs.js
 
 check-schemas:
 	glib-compile-schemas --strict --dry-run src/schemas

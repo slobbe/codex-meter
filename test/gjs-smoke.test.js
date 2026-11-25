@@ -17,7 +17,6 @@ const modules = [
     "../src/panel/view-model.js",
     "../src/preferences/settings.js",
     "../src/codex/error.js",
-    "../src/background/periodic-task.js",
     "../src/codex/usage/history.js",
     "../src/codex/usage/model.js",
     "../src/codex/usage/prediction.js",

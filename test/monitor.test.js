@@ -25,16 +25,28 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     }
     class GLibError extends Error { matches() { return true; } }
     export const isCancellationError = error => error instanceof GLibError;
-    export default { Cancellable, Error: GLibError, IOErrorEnum: { CANCELLED: 1 } };
+    export const clock = { now: 0, sources: new Map(), nextId: 1 };
+    export default {
+        Cancellable, Error: GLibError, IOErrorEnum: { CANCELLED: 1 }, SOURCE_REMOVE: false,
+        get_monotonic_time: () => clock.now * 1_000_000,
+        timeout_add(_priority, delayMs, callback) {
+            const id = clock.nextId++;
+            clock.sources.set(id, { due: clock.now + delayMs / 1000, callback });
+            return id;
+        },
+        source_remove: id => clock.sources.delete(id),
+    };
     export class UsageService {
         constructor(path) { this.path = path; }
         async refresh() { return api.usage(this.path); }
+        async readCachedSnapshot() { return null; }
         async readHistory() { return []; }
         async predict() { return null; }
     }
-    export class PeriodicTask { start() {} stop() {} }
     export const readSettings = settings => ({
-        autoApplyBankedReset: false,
+        autoApplyBankedReset: settings.expiryEnabled ?? false,
+        autoApplyBankedResetOnUsage: settings.usageAutoApplyEnabled ?? false,
+        backgroundRefreshIntervalSeconds: getBackgroundRefreshIntervalSeconds(settings),
         usageNotifications: settings.get_boolean(),
         usageNotificationThreshold: settings.get_uint(),
     });
@@ -45,7 +57,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
 
     export const SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE = "auto-usage";
 
-    export const getBackgroundRefreshIntervalSeconds = () => 0;
+    export const getBackgroundRefreshIntervalSeconds = settings => settings.usageInterval ?? 0;
     export const SETTINGS_AUTO_APPLY_BANKED_RESET = 'auto-apply';
     export const SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES = 'refresh';
     export const isCodexError = error => error.name === 'CodexError';
@@ -63,10 +75,10 @@ const hooks = registerHooks({
     },
 });
 let CodexMonitor;
-let api, credentials;
+let api, clock, credentials;
 try {
     ({ CodexMonitor } = await import(monitorUrl));
-    ({ api, credentials } = await import(stubUrl));
+    ({ api, clock, credentials } = await import(stubUrl));
 } finally {
     hooks.deregister();
 }
@@ -81,7 +93,7 @@ function deferred() {
     return { promise, resolve, reject };
 }
 
-function fixture(deliver = (_message, settle) => settle?.(true)) {
+function fixture(deliver = (_message, settle) => settle?.(true), schedule = {}) {
     const notifications = [];
     const changes = [];
     const callbacks = new Map();
@@ -93,8 +105,12 @@ function fixture(deliver = (_message, settle) => settle?.(true)) {
         disconnect(signal) {
             callbacks.delete(signal);
         },
-        get_boolean: () => false,
+        get_boolean(key) {
+            if (key === "auto-apply") return this.expiryEnabled ?? false;
+            return false;
+        },
         get_uint: () => 5,
+        ...schedule,
     };
     const monitor = new CodexMonitor(settings, (message, settle) => {
         notifications.push(message);
@@ -993,13 +1009,248 @@ test("failed usage refresh never auto-redeems from an existing high-usage snapsh
 const earlier = { id: "earlier", status: "available", expires_at: "2098-01-01T00:00:00Z" };
 const selected = { id: "selected", status: "available", expires_at: "2099-01-01T00:00:00Z" };
 const inventory = { available_count: 2, credits: [earlier, selected] };
+const emptyInventory = { available_count: 0, credits: [] };
+const flushRefreshes = () => new Promise((resolve) => setImmediate(resolve));
+
+function scheduledMonitor(t, settings) {
+    clock.now = 0;
+    const testFixture = fixture(undefined, settings);
+    const { monitor } = testFixture;
+    monitor.refreshUsage = CodexMonitor.prototype.refreshUsage;
+    t.after(() => {
+        monitor.stop();
+        assert.equal(clock.sources.size, 0);
+    });
+    return testFixture;
+}
+
+async function tick(seconds) {
+    clock.now = seconds;
+    assert.ok(clock.sources.size <= 1, "only one background source may be armed");
+    for (const [id, source] of clock.sources) {
+        if (source.due > seconds) break;
+        clock.sources.delete(id);
+        assert.equal(source.callback(), false, "the scheduler uses one-shot sources");
+    }
+    await flushRefreshes();
+}
+
+for (const [interval, expiryEnabled, usageTimes, expiryTimes] of [
+    [0, false, [0], []],
+    [0, true, [0], [0, 1200, 2400]],
+    [600, true, [0, 600, 1200, 1800, 2400], [0, 1200, 2400]],
+    [1800, true, [0, 1800], [0, 1200, 2400]],
+]) {
+    test(`background cadences with usage interval ${interval}s and expiry ${expiryEnabled}`, async (t) => {
+        const { monitor } = scheduledMonitor(t, { usageInterval: interval, expiryEnabled });
+        const usage = [];
+        const expiry = [];
+        api.usage = async () => {
+            usage.push(clock.now);
+            return { quotas: [] };
+        };
+        api.list = async () => {
+            expiry.push(clock.now);
+            return emptyInventory;
+        };
+        monitor.start();
+        for (const seconds of [0, 600, 1200, 1800, 2400]) await tick(seconds);
+        assert.deepEqual(usage, usageTimes);
+        assert.deepEqual(expiry, expiryTimes);
+        if (!interval && !expiryEnabled) assert.equal(clock.sources.size, 0);
+    });
+}
+
+test("slow startup cache delays usage and anchors its cadence without delaying expiry inventory", async (t) => {
+    const { monitor, settings, callbacks } = scheduledMonitor(t, {
+        usageInterval: 60,
+        expiryEnabled: true,
+        usageAutoApplyEnabled: true,
+    });
+    const cache = deferred();
+    monitor._loadCachedSnapshot = () => cache.promise;
+    const usage = [];
+    let lists = 0;
+    api.usage = async () => {
+        usage.push(clock.now);
+        return { quotas: usage.length === 1 ? [notificationQuota(99)] : [] };
+    };
+    api.list = async () => {
+        lists++;
+        return emptyInventory;
+    };
+
+    monitor.start();
+    await tick(60);
+    assert.equal(lists, 1, "expiry inventory starts before the cache settles");
+    assert.deepEqual(usage, [], "periodic usage cannot run before initial usage");
+    settings.usageInterval = 90;
+    callbacks.get("changed::refresh")();
+    await tick(150);
+    assert.deepEqual(usage, [], "an interval change cannot arm usage during cache loading");
+
+    cache.resolve();
+    await tick(150);
+    assert.deepEqual(usage, [150]);
+    assert.equal(lists, 1, "initial low usage shares the expiry inventory");
+    await tick(239);
+    assert.deepEqual(usage, [150]);
+    await tick(240);
+    assert.deepEqual(usage, [150, 240]);
+});
+
+test("background setting changes reset only the changed cadence and stop removes the source", async (t) => {
+    const { monitor, settings, callbacks } = scheduledMonitor(t, { usageInterval: 0 });
+    let usage = 0;
+    let expiry = 0;
+    api.usage = async () => {
+        usage++;
+        return { quotas: [] };
+    };
+    api.list = async () => {
+        expiry++;
+        return emptyInventory;
+    };
+    monitor.start();
+    await tick(600);
+    assert.deepEqual([usage, expiry], [1, 0]);
+
+    settings.expiryEnabled = true;
+    callbacks.get("changed::auto-apply")();
+    await tick(600);
+    assert.deepEqual([usage, expiry], [1, 1], "enabling expiry checks immediately");
+
+    settings.usageInterval = 60;
+    callbacks.get("changed::refresh")();
+    await tick(660);
+    assert.deepEqual([usage, expiry], [2, 1]);
+    settings.usageInterval = 0;
+    callbacks.get("changed::refresh")();
+    await tick(1799);
+    assert.deepEqual([usage, expiry], [2, 1]);
+    await tick(1800);
+    assert.deepEqual([usage, expiry], [2, 2], "changing usage leaves the expiry deadline intact");
+
+    settings.expiryEnabled = false;
+    callbacks.get("changed::auto-apply")();
+    assert.equal(clock.sources.size, 0);
+    await tick(3000);
+    settings.expiryEnabled = true;
+    callbacks.get("changed::auto-apply")();
+    await tick(3000);
+    assert.deepEqual([usage, expiry], [2, 3]);
+    monitor.stop();
+    assert.equal(clock.sources.size, 0);
+    await tick(4200);
+    assert.deepEqual([usage, expiry], [2, 3]);
+});
+
+for (const manual of [false, true]) {
+    test(`${manual ? "manual" : "overlapping background"} refresh reuses inventory that finishes before low usage`, async (t) => {
+        const { monitor, notifications } = scheduledMonitor(t, {
+            expiryEnabled: !manual,
+            usageAutoApplyEnabled: true,
+        });
+        const usage = deferred();
+        const requests = [];
+        api.usage = () => usage.promise;
+        api.list = async () => {
+            requests.push("inventory");
+            return requests.includes("consume") ? emptyInventory : inventory;
+        };
+        api.redeem = async (id) => {
+            assert.equal(id, earlier.id);
+            requests.push("consume");
+        };
+        const refresh = manual ? monitor.refreshManually() : monitor.start();
+        await flushRefreshes();
+        assert.deepEqual(requests, ["inventory"]);
+        usage.resolve({ quotas: [notificationQuota(99)] });
+        await refresh;
+        await flushRefreshes();
+        assert.deepEqual(requests, ["inventory", "consume", "inventory"]);
+        assert.match(notifications[0], /near a usage limit/);
+    });
+}
+
+test("an expiry deadline joins a manual inventory lookup even if manual usage fails", async (t) => {
+    const { monitor, notifications } = scheduledMonitor(t, {
+        expiryEnabled: true,
+        usageAutoApplyEnabled: true,
+    });
+    api.usage = async () => ({ quotas: [] });
+    api.list = async () => emptyInventory;
+    monitor.start();
+    await tick(0);
+
+    const usage = deferred();
+    api.usage = () => usage.promise;
+    const requests = [];
+    api.list = async () => {
+        requests.push("inventory");
+        return requests.includes("consume")
+            ? emptyInventory
+            : {
+                  credits: [
+                      { ...earlier, expires_at: new Date(Date.now() + 60_000).toISOString() },
+                  ],
+              };
+    };
+    api.redeem = async () => requests.push("consume");
+    const refresh = monitor.refreshManually();
+    await tick(0);
+    assert.deepEqual(requests, ["inventory"]);
+    await tick(1200);
+    api.usage = async () => ({ quotas: [] });
+    usage.reject(new Error("usage unavailable"));
+    await refresh;
+    assert.deepEqual(requests, ["inventory", "consume", "inventory"]);
+    assert.equal(notifications.length, 1);
+    assert.match(notifications[0], /Expiring banked Codex reset/);
+});
+
+test("expiry shares manual inventory without waiting for usage when low-usage auto-apply is off", async (t) => {
+    const { monitor, notifications } = scheduledMonitor(t, { expiryEnabled: true });
+    api.usage = async () => ({ quotas: [] });
+    api.list = async () => emptyInventory;
+    monitor.start();
+    await tick(0);
+
+    const usage = deferred();
+    const pendingInventory = deferred();
+    api.usage = () => usage.promise;
+    let lists = 0;
+    let redeemed = false;
+    api.list = () => {
+        lists++;
+        return redeemed ? emptyInventory : pendingInventory.promise;
+    };
+    api.redeem = async () => {
+        redeemed = true;
+    };
+    const refresh = monitor.refreshManually();
+    await tick(0);
+    assert.equal(lists, 1);
+    await tick(1200);
+    pendingInventory.resolve({
+        credits: [{ ...earlier, expires_at: new Date(Date.now() + 60_000).toISOString() }],
+    });
+    await flushRefreshes();
+    assert.equal(lists, 1, "expiry joins the manual inventory request");
+    assert.equal(redeemed, true, "unrelated manual usage does not delay expiry redemption");
+    api.usage = async () => ({ quotas: [] });
+    usage.reject(new Error("usage unavailable"));
+    await refresh;
+    await flushRefreshes();
+    assert.match(notifications[0], /Expiring banked Codex reset/);
+});
 
 for (const outcome of ["success", "failure", "failure with cached inventory"]) {
     test(`popup refresh cooldown includes ${outcome} and expires five minutes after request start`, async (t) => {
         let now = 0;
         t.mock.method(Date, "now", () => now);
         const { monitor, changes } = fixture();
-        const options = { maxAgeMs: 5 * 60 * 1000 };
+
         const response = deferred();
         const requested = deferred();
         let calls = 0;
@@ -1009,11 +1260,11 @@ for (const outcome of ["success", "failure", "failure with cached inventory"]) {
             return response.promise;
         };
         if (outcome === "failure with cached inventory") monitor._bankedResetSnapshot = inventory;
-        const refresh = monitor.refreshBankedResets(options);
+        const refresh = monitor.refreshOnMenuOpen();
         await requested.promise;
         assert.equal(calls, 1, "first popup fetches even at timestamp zero");
         now = 20_000;
-        const shared = monitor.refreshBankedResets(options);
+        const shared = monitor.refreshOnMenuOpen();
         assert.equal(monitor.state.bankedResetLoading, true);
         if (outcome === "success") response.resolve(inventory);
         else response.reject(new Error("network down"));
@@ -1023,7 +1274,7 @@ for (const outcome of ["success", "failure", "failure with cached inventory"]) {
         const state = monitor.state;
         const changeCount = changes.length;
         for (now of [20_000, 5 * 60 * 1000 - 1]) {
-            assert.equal(await monitor.refreshBankedResets(options), state.bankedResetSnapshot);
+            assert.equal(await monitor.refreshOnMenuOpen(), state.bankedResetSnapshot);
             assert.equal(calls, 1);
             assert.deepEqual(monitor.state, state, "skips preserve errors and loading state");
             assert.equal(changes.length, changeCount, "skips do not emit a fake refresh");
@@ -1033,7 +1284,7 @@ for (const outcome of ["success", "failure", "failure with cached inventory"]) {
             return inventory;
         };
         now = 5 * 60 * 1000;
-        assert.equal(await monitor.refreshBankedResets(options), inventory);
+        assert.equal(await monitor.refreshOnMenuOpen(), inventory);
         assert.equal(calls, 2, "exact boundary allows another attempt, including after failure");
         assert.equal(monitor.state.bankedResetError, null);
     });
@@ -1043,7 +1294,7 @@ test("validation, redemption, and background refresh bypass popup cooldown and r
     let now = 0;
     t.mock.method(Date, "now", () => now);
     const { monitor } = fixture();
-    const options = { maxAgeMs: 5 * 60 * 1000 };
+
     let calls = 0;
     let currentInventory = inventory;
     api.list = async () => {
@@ -1053,7 +1304,7 @@ test("validation, redemption, and background refresh bypass popup cooldown and r
     api.redeem = async () => {
         currentInventory = { credits: [earlier, { ...selected, status: "redeemed" }] };
     };
-    await monitor.refreshBankedResets(options);
+    await monitor.refreshOnMenuOpen();
     now = 20_000;
     assert.equal(await monitor.prepareBankedReset(selected.id), selected);
     assert.equal(calls, 2, "manual validation must fetch despite recent popup inventory");
@@ -1061,12 +1312,12 @@ test("validation, redemption, and background refresh bypass popup cooldown and r
     assert.equal(calls, 3, "manual redemption must fetch post-redemption inventory");
     assert.equal(monitor.state.bankedResetSnapshot, currentInventory);
     now = 5 * 60 * 1000;
-    await monitor.refreshBankedResets(options);
+    await monitor.refreshOnMenuOpen();
     assert.equal(calls, 3, "forced refresh renews cooldown beyond the original popup attempt");
     await monitor._refreshBankedResetsForAutoApply();
     assert.equal(calls, 4, "background inventory refresh bypasses popup cooldown");
     now += 20_000;
-    await monitor.refreshBankedResets(options);
+    await monitor.refreshOnMenuOpen();
     assert.equal(calls, 4, "background refresh also renews popup cooldown");
 });
 
@@ -1357,7 +1608,7 @@ test("background auto-redemption still selects the earliest expiring reset and r
     assert.equal(calls, 2);
     assert.equal(monitor.state.bankedResetSnapshot, after);
     assert.equal(notifications[0], "Expiring banked Codex reset redeemed automatically.");
-    await monitor.refreshBankedResets({ maxAgeMs: 5 * 60 * 1000 });
+    await monitor.refreshOnMenuOpen();
     assert.equal(calls, 2, "automatic post-redemption refresh establishes popup cooldown");
 });
 

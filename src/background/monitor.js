@@ -1,4 +1,5 @@
 import Gio from "gi://Gio";
+import GLib from "gi://GLib";
 import {
     getBackgroundRefreshIntervalSeconds,
     readBankedResetSkipMinutes,
@@ -21,10 +22,10 @@ import {
     selectCreditExpiringWithin,
     selectCreditToRedeem,
 } from "../codex/banked-resets/response.js";
-import { PeriodicTask } from "./periodic-task.js";
 import { formatRefreshFailure } from "./refresh-error-message.js";
 
 const BANKED_RESET_BACKGROUND_REFRESH_SECONDS = 20 * 60;
+const BANKED_RESET_POPUP_COOLDOWN_MS = 5 * 60 * 1000;
 
 const AUTO_APPLY_BANKED_RESET_WINDOW_MS = 60 * 60 * 1000;
 const ACCOUNT_EXHAUSTION = Symbol("account exhaustion");
@@ -74,13 +75,12 @@ export class CodexMonitor {
         this._accountAppliedSequence = 0;
         this._credentialsMonitor = null;
         this._credentialsMonitorId = null;
-        this._usageRefreshTask = new PeriodicTask(values.backgroundRefreshIntervalSeconds, () =>
-            this.refreshUsage(),
-        );
-        this._bankedResetRefreshTask = new PeriodicTask(
-            BANKED_RESET_BACKGROUND_REFRESH_SECONDS,
-            () => this._refreshBankedResetsForAutoApply(),
-        );
+        this._usageIntervalSeconds = values.backgroundRefreshIntervalSeconds;
+        this._backgroundStarted = false;
+        this._usageScheduleStarted = false;
+        this._backgroundTimeoutId = null;
+        this._nextUsageRefresh = Infinity;
+        this._nextExpiryRefresh = Infinity;
         this._refreshPromise = null;
         this._refreshCancellable = null;
         this._usageResetGeneration = 0;
@@ -95,6 +95,7 @@ export class CodexMonitor {
         this._unverifiedBankedResetConsumes = new Map();
         this._bankedResetRefreshAttemptAt = null;
         this._autoApplyBankedResetCancellable = null;
+        this._pendingExpiryCheck = false;
         this._pendingUsageReset = null;
         this._bankedResetSnapshot = null;
         this._bankedResetCredentials = null;
@@ -135,7 +136,8 @@ export class CodexMonitor {
     }
 
     start() {
-        if (this._lifecycleCancellable.is_cancelled()) return;
+        if (this._lifecycleCancellable.is_cancelled() || this._backgroundStarted) return;
+        this._backgroundStarted = true;
         try {
             this._credentialsMonitor = Gio.File.new_for_path(
                 this._usageService.credentialsPath,
@@ -146,13 +148,14 @@ export class CodexMonitor {
         } catch (_error) {
             // Request boundaries still check the credentials if a file monitor is unavailable.
         }
-        if (this._autoApplyBankedReset) {
-            this._bankedResetRefreshTask.start();
-        }
-        void this._loadCachedSnapshot().finally(() => {
+        const cache = this._loadCachedSnapshot().finally(() => {
             if (this._lifecycleCancellable.is_cancelled()) return;
-            this._usageRefreshTask.start();
+            this._usageScheduleStarted = true;
+            this._setNextUsageRefresh(GLib.get_monotonic_time());
+            this._runBackgroundRefresh();
         });
+        if (this._autoApplyBankedReset) this._nextExpiryRefresh = GLib.get_monotonic_time();
+        this._runBackgroundRefresh(cache);
     }
 
     stop({ replacing = false } = {}) {
@@ -170,8 +173,7 @@ export class CodexMonitor {
         this._bankedResetCredentials = null;
         this._pendingUsageReset = null;
         this._bankedResetPreparation = null;
-        this._usageRefreshTask.stop();
-        this._bankedResetRefreshTask.stop();
+        this._removeBackgroundTimeout();
         this._autoApplyBankedResetCancellable?.cancel();
         this._refreshCancellable?.cancel();
         this._refreshCancellable = null;
@@ -202,49 +204,132 @@ export class CodexMonitor {
         this.onChange = null;
     }
 
+    _removeBackgroundTimeout() {
+        if (this._backgroundTimeoutId === null) return;
+        GLib.source_remove(this._backgroundTimeoutId);
+        this._backgroundTimeoutId = null;
+    }
+
+    _setNextUsageRefresh(now) {
+        this._nextUsageRefresh =
+            this._usageIntervalSeconds > 0
+                ? now + this._usageIntervalSeconds * 1_000_000
+                : Infinity;
+    }
+
+    _runBackgroundRefresh(cache = null) {
+        if (!this._backgroundStarted || this._lifecycleCancellable.is_cancelled()) return;
+        this._removeBackgroundTimeout();
+        const now = GLib.get_monotonic_time();
+        // Startup can share expiry inventory, but only cache completion arms periodic usage.
+        const usageDue = cache !== null || this._nextUsageRefresh <= now;
+        const expiryDue =
+            this._nextExpiryRefresh <= now &&
+            !this._autoApplyBankedResetCancellable?.is_cancelled();
+        if (usageDue && cache === null) this._setNextUsageRefresh(now);
+        if (expiryDue) {
+            this._nextExpiryRefresh = now + BANKED_RESET_BACKGROUND_REFRESH_SECONDS * 1_000_000;
+        }
+        // Let an interrupted check release inventory before starting a new expiry check.
+        const nextExpiry = this._nextExpiryRefresh > now ? this._nextExpiryRefresh : Infinity;
+        const next = Math.min(this._nextUsageRefresh, nextExpiry);
+        if (next !== Infinity) {
+            this._backgroundTimeoutId = GLib.timeout_add(
+                GLib.PRIORITY_DEFAULT,
+                Math.max(1, Math.ceil((next - now) / 1000)),
+                () => {
+                    this._backgroundTimeoutId = null;
+                    this._runBackgroundRefresh();
+                    return GLib.SOURCE_REMOVE;
+                },
+            );
+        }
+        if (usageDue || expiryDue) {
+            void this._refreshInBackground(usageDue, expiryDue, cache).catch((error) => {
+                if (!this._lifecycleCancellable.is_cancelled())
+                    console.error("Background refresh failed", error);
+            });
+        }
+    }
+
+    async _refreshInBackground(usageDue, expiryDue, cache) {
+        if (
+            usageDue &&
+            expiryDue &&
+            this._autoApplyBankedResetOnUsage &&
+            this._canStartAutoApply()
+        ) {
+            await this._refreshBankedResetsForAutoApply(null, {
+                usageRefresh: cache ? cache.then(() => this._refreshUsage()) : this._refreshUsage(),
+            });
+            return;
+        }
+        await Promise.all([
+            expiryDue && this._refreshBankedResetsForAutoApply(),
+            usageDue && (cache ? cache.then(() => this.refreshUsage()) : this.refreshUsage()),
+        ]);
+    }
+
+    refreshOnMenuOpen() {
+        return this.refreshBankedResets({ forMenu: true });
+    }
+
     async refreshManually() {
-        await Promise.allSettled([this.refreshUsage(), this.refreshBankedResets()]);
+        if (this._autoApplyBankedResetOnUsage && this._canStartAutoApply()) {
+            await Promise.allSettled([
+                this._refreshBankedResetsForAutoApply(null, {
+                    usageRefresh: this._refreshUsage(),
+                    checkExpiry: false,
+                }),
+            ]);
+        } else {
+            await Promise.allSettled([this.refreshUsage(), this.refreshBankedResets()]);
+        }
     }
 
     async refreshUsage({ expectedCredentials = null } = {}) {
-        if (this._lifecycleCancellable.is_cancelled()) return;
         if (this._refreshPromise) {
             await this._refreshPromise;
             return;
         }
-        this._refreshCancellable = new Gio.Cancellable();
-        this._refreshPromise = this._refreshUsageOnce(
-            this._refreshCancellable,
-            expectedCredentials,
-        );
-        let snapshot;
-        try {
-            snapshot = await this._refreshPromise;
-        } finally {
-            this._refreshPromise = null;
-            this._refreshCancellable = null;
-        }
-        // Release the refresh promise before redemption requests its own fresh usage.
+        const snapshot = await this._refreshUsage(expectedCredentials);
         if (snapshot && this._usageNeedsBankedReset(snapshot)) {
             await this._refreshBankedResetsForAutoApply(snapshot);
         }
     }
 
-    async refreshBankedResets({ maxAgeMs = 0, expectedCredentials = null } = {}) {
+    async _refreshUsage(expectedCredentials = null) {
+        if (this._lifecycleCancellable.is_cancelled()) return;
+        if (this._refreshPromise) return await this._refreshPromise;
+        this._refreshCancellable = new Gio.Cancellable();
+        this._refreshPromise = this._refreshUsageOnce(
+            this._refreshCancellable,
+            expectedCredentials,
+        );
+        try {
+            return await this._refreshPromise;
+        } finally {
+            // Release the refresh promise before redemption requests its own fresh usage.
+            this._refreshPromise = null;
+            this._refreshCancellable = null;
+        }
+    }
+
+    async refreshBankedResets({ forMenu = false, expectedCredentials = null } = {}) {
         if (this._lifecycleCancellable.is_cancelled()) return null;
         const pending = this._bankedResetRefresh;
         if (pending) {
-            if (maxAgeMs <= 0) pending.force = true;
+            if (!forMenu) pending.force = true;
             const response = await pending.promise;
             const wanted = expectedCredentials ?? this._accountCredentials;
             if (!hasSameCodexAccount(wanted, this._accountCredentials)) return null;
             if (pending.credentials && !hasSameCodexAccount(wanted, pending.credentials)) {
-                return await this.refreshBankedResets({ maxAgeMs, expectedCredentials });
+                return await this.refreshBankedResets({ forMenu, expectedCredentials });
             }
             return response;
         }
         const cancellable = new Gio.Cancellable();
-        const request = { cancellable, credentials: null, force: maxAgeMs <= 0, promise: null };
+        const request = { cancellable, credentials: null, force: !forMenu, promise: null };
         this._bankedResetRefresh = request;
         // Assign before notifying listeners so reentrant refreshes share this request too.
         request.promise = Promise.resolve().then(async () => {
@@ -262,7 +347,7 @@ export class CodexMonitor {
                 if (
                     !request.force &&
                     this._bankedResetRefreshAttemptAt !== null &&
-                    now - this._bankedResetRefreshAttemptAt < maxAgeMs
+                    now - this._bankedResetRefreshAttemptAt < BANKED_RESET_POPUP_COOLDOWN_MS
                 )
                     return this._bankedResetSnapshot;
                 // Failed requests also cool down popup requests; default callers always refresh.
@@ -601,12 +686,12 @@ export class CodexMonitor {
                 const enabled = this._settings.get_boolean(SETTINGS_AUTO_APPLY_BANKED_RESET);
                 const wasEnabled = this._autoApplyBankedReset;
                 this._autoApplyBankedReset = enabled;
-                if (enabled && !wasEnabled) {
-                    this._bankedResetRefreshTask.start();
-                } else if (!enabled && wasEnabled) {
-                    this._bankedResetRefreshTask.stop();
+                if (enabled === wasEnabled) return;
+                this._nextExpiryRefresh = enabled ? GLib.get_monotonic_time() : Infinity;
+                // Keep a shared check alive if the other trigger can still use it.
+                if (!enabled && !this._autoApplyBankedResetOnUsage)
                     this._autoApplyBankedResetCancellable?.cancel();
-                }
+                this._runBackgroundRefresh();
             },
         );
         this._autoApplyUsageChangedId = this._settings.connect(
@@ -615,7 +700,7 @@ export class CodexMonitor {
                 this._autoApplyBankedResetOnUsage = this._settings.get_boolean(
                     SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
                 );
-                this._autoApplyBankedResetCancellable?.cancel();
+                if (!this._autoApplyBankedReset) this._autoApplyBankedResetCancellable?.cancel();
             },
         );
         this._bankedResetSkipMinutesChangedId = this._settings.connect(
@@ -627,9 +712,10 @@ export class CodexMonitor {
         this._refreshIntervalChangedId = this._settings.connect(
             `changed::${SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES}`,
             () => {
-                this._usageRefreshTask.setIntervalSeconds(
-                    getBackgroundRefreshIntervalSeconds(this._settings),
-                );
+                this._usageIntervalSeconds = getBackgroundRefreshIntervalSeconds(this._settings);
+                if (!this._usageScheduleStarted) return;
+                this._setNextUsageRefresh(GLib.get_monotonic_time());
+                this._runBackgroundRefresh();
             },
         );
     }
@@ -900,23 +986,48 @@ export class CodexMonitor {
         });
     }
 
-    async _refreshBankedResetsForAutoApply(usageSnapshot = null) {
+    _canStartAutoApply() {
+        return (
+            !this._lifecycleCancellable.is_cancelled() &&
+            !this._redeemingBankedReset &&
+            !this._autoApplyBankedResetCancellable
+        );
+    }
+
+    async _refreshBankedResetsForAutoApply(
+        usageSnapshot = null,
+        { usageRefresh = null, checkExpiry = true } = {},
+    ) {
         if (this._lifecycleCancellable.is_cancelled() || this._redeemingBankedReset) return;
         const usageCredentials = usageSnapshot ? this._accountCredentials : null;
         if (usageSnapshot) {
             if (!usageCredentials || !this._usageNeedsBankedReset(usageSnapshot)) return;
             // A quota refresh can finish while an expiry check is fetching the same inventory.
             this._pendingUsageReset = { snapshot: usageSnapshot, credentials: usageCredentials };
+        } else if (checkExpiry) {
+            this._pendingExpiryCheck = true;
         }
         if (this._autoApplyBankedResetCancellable) return;
         const cancellable = new Gio.Cancellable();
         this._autoApplyBankedResetCancellable = cancellable;
         let interruptedBeforeRedemption = false;
         try {
-            const response = await this.refreshBankedResets({
+            const inventoryRefresh = this.refreshBankedResets({
                 expectedCredentials: usageCredentials,
             });
+            // Only a cycle that requested both reads waits for usage before choosing a credit.
+            const [response, usage] = await Promise.all([
+                inventoryRefresh,
+                usageRefresh?.catch(() => null),
+            ]);
+            if (usage && this._usageNeedsBankedReset(usage) && this._accountCredentials) {
+                this._pendingUsageReset = {
+                    snapshot: usage,
+                    credentials: this._accountCredentials,
+                };
+            }
             interruptedBeforeRedemption = cancellable.is_cancelled();
+            if (!this._pendingExpiryCheck && !this._pendingUsageReset) return;
             if (!response || response !== this._bankedResetSnapshot || interruptedBeforeRedemption)
                 return;
             const credentials = this._bankedResetCredentials;
@@ -947,6 +1058,7 @@ export class CodexMonitor {
             if (redemption) await redemption;
         } finally {
             const pending = this._pendingUsageReset;
+            this._pendingExpiryCheck = false;
             this._pendingUsageReset = null;
             this._autoApplyBankedResetCancellable = null;
             // A fresh observation can arrive after a different account's check was interrupted.
@@ -956,6 +1068,8 @@ export class CodexMonitor {
             ) {
                 await this._refreshBankedResetsForAutoApply(pending.snapshot);
             }
+            if (this._backgroundStarted && this._nextExpiryRefresh <= GLib.get_monotonic_time())
+                this._runBackgroundRefresh();
         }
     }
 

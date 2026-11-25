@@ -25,7 +25,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
         is_cancelled() { return !!this.cancelled; }
         set_error_if_cancelled() { if (this.cancelled) throw new CancellationError('Cancelled'); }
     }
-    export default { Cancellable, build_filenamev: parts => parts.join('/'), canonicalize_filename: path => path };
+    export default { Cancellable, build_filenamev: parts => parts.join('/'), canonicalize_filename: path => path, get_monotonic_time: () => 0 };
     export const isCancellationError = error => error instanceof CancellationError;
     export const refreshCodexUsage = options => io.fetch(options);
     export const readSnapshot = cancellable => io.cacheRead(cancellable);
@@ -38,7 +38,7 @@ const stubUrl = `data:text/javascript,${encodeURIComponent(`
     export const hasSameQuotaValues = () => false;
     export const toHistoryEntry = snapshot => snapshot;
     export const predict = () => ({});
-    export class PeriodicTask { start() { io.start?.(); } stop() {} }
+
     export const readSettings = () => ({ autoApplyBankedReset: false });
     export const readBankedResetSkipMinutes = () => ({});
     export const SETTINGS_BANKED_RESET_SKIP_MINUTES = "banked-reset-skip-minutes";
@@ -175,7 +175,7 @@ for (const stage of ["cacheRead", "fetch", "cacheWrite", "historyRead", "append"
                 return ioResult(name, stage);
             };
         }
-        stubs.io.start = () => events.push("start");
+
         const monitor = new CodexMonitor({ connect() {}, disconnect() {} }, assert.fail);
         let changes = 0;
         monitor.onChange = () => changes++;

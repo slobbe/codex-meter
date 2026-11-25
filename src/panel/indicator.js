@@ -11,8 +11,6 @@ import { UsageBar } from "./usage-bar.js";
 import { UsageRing } from "./usage-ring.js";
 import { createMenuViewModel, createPanelBarViewModel } from "./view-model.js";
 
-const BANKED_RESET_POPUP_REFRESH_MAX_AGE_MS = 5 * 60 * 1000;
-
 export class CodexMeterIndicator extends PanelMenu.Button {
     static {
         GObject.registerClass(this);
@@ -130,9 +128,7 @@ export class CodexMeterIndicator extends PanelMenu.Button {
             if (isOpen) {
                 this._syncBankedResets();
                 this._queueMenuBarSync();
-                void this._monitor.refreshBankedResets({
-                    maxAgeMs: BANKED_RESET_POPUP_REFRESH_MAX_AGE_MS,
-                });
+                void this._monitor.refreshOnMenuOpen();
             }
         });
         this._settingsChangedId = this._settings.connect("changed", () => {
