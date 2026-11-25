@@ -19,7 +19,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Replaced the auto-redemption window selector with a skip period before the scheduled reset for each window.
 - The manual redemption dialog shows how soon a window will reset if it is within its skip period. Cancel has initial keyboard focus.
 - Replaced the weekly activity chart with a four-week grid with six-hour blocks in the GNOME accent color.
-- Kept cached usage and history separate by account and credentials file. The first time the extension runs with the default credentials file, it imports v0.12 usage data.
+- Kept cached usage and history separate by account and credentials file.
 - Increased local usage history retention from 21 to 30 days.
 - Moved popup warnings and errors above the footer. Improved readability and made keyboard focus easier to see.
 - Improved screen reader access to panel quota values and the reset confirmation.
