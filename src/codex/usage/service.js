@@ -73,7 +73,17 @@ export class UsageService {
     async refresh({ cancellable = null, credentials = null } = {}) {
         cancellable?.set_error_if_cancelled();
         credentials ??= await getCodexCredentials(cancellable, this.credentialsPath);
-        await this.#importLegacyUsage(credentials, cancellable);
+        try {
+            await this.#importLegacyUsage(credentials, cancellable);
+        } catch (error) {
+            if (
+                isCancellationError(error) ||
+                (isCodexError(error) &&
+                    ["missing-auth", "credentials-changed"].includes(error.kind))
+            )
+                throw error;
+            console.error("Unable to import legacy Codex usage", error);
+        }
         const snapshot = await refreshCodexUsage({
             cancellable,
             credentials,

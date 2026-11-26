@@ -553,7 +553,7 @@ try {
         };
         let migrationError;
         try {
-            await new UsageService().readCachedSnapshot({ cancellable: interrupted });
+            await new UsageService().refresh({ cancellable: interrupted });
         } catch (error) {
             migrationError = error;
         } finally {
@@ -602,6 +602,59 @@ try {
             "receipt prevents another account from adopting legacy data",
         );
         print("ok - automatic one-time v0.12 migration to the default account");
+
+        await writeCredentials(migrationAuth, "import-account");
+        receipt.delete(null);
+        Gio.File.prototype.replace_contents_async = async function (...args) {
+            if (this.equal(receipt)) {
+                await writeCredentials(migrationAuth, "other-import-account");
+            }
+            return replace.apply(this, args);
+        };
+        let accountChangeError;
+        try {
+            await new UsageService().refresh();
+        } catch (error) {
+            accountChangeError = error;
+        } finally {
+            Gio.File.prototype.replace_contents_async = replace;
+        }
+        assertEqual(
+            accountChangeError?.kind,
+            "credentials-changed",
+            "account changes during migration still stop live refresh",
+        );
+        await writeCredentials(migrationAuth, "import-account");
+        receipt.delete(null);
+        const migrationFailureService = new UsageService();
+
+        Gio.File.prototype.replace_contents_async = function (...args) {
+            if (this.equal(receipt)) {
+                throw new GLib.Error(Gio.IOErrorEnum, Gio.IOErrorEnum.NO_SPACE, "Disk is full");
+            }
+            return replace.apply(this, args);
+        };
+
+        try {
+            const live = await migrationFailureService.refresh();
+            assertEqual(live.planType, planType, "migration storage failure permits live usage");
+
+            assertEqual(receipt.query_exists(null), false, "failed import remains retryable");
+        } finally {
+            Gio.File.prototype.replace_contents_async = replace;
+        }
+        assertEqual(
+            (await migrationFailureService.readHistory()).length,
+            2,
+            "the same service retries migration after storage recovers",
+        );
+        assertEqual(
+            JSON.parse(await readFile(receipt.get_path())).completed,
+            true,
+            "retried migration completes",
+        );
+        assertEqual(await readFile(HISTORY_PATH), originalLegacy, "legacy history is preserved");
+        print("ok - migration storage failure permits live refresh and later recovery");
     } finally {
         Date.now = now;
         Soup.Session.prototype.send_async = sent;
