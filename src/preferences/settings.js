@@ -16,6 +16,8 @@ export const SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE = "auto-apply-banked-rese
 
 export const SETTINGS_BANKED_RESET_SKIP_MINUTES = "banked-reset-skip-minutes";
 
+export const SETTINGS_BANKED_RESET_USAGE_POLICY_MIGRATED = "banked-reset-usage-policy-migrated";
+
 export const SETTINGS_USAGE_NOTIFICATIONS = "usage-notifications";
 
 export const SETTINGS_USAGE_NOTIFICATION_THRESHOLD = "usage-notification-threshold";
@@ -32,6 +34,16 @@ export function getBackgroundRefreshIntervalSeconds(settings) {
 }
 
 export function migrateSettings(settings) {
+    if (!settings.get_boolean(SETTINGS_BANKED_RESET_USAGE_POLICY_MIGRATED)) {
+        // The old opt-in does not authorize the new threshold and window rules.
+        if (
+            !settings.get_boolean(SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE) ||
+            settings.set_boolean(SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE, false)
+        ) {
+            settings.set_boolean(SETTINGS_BANKED_RESET_USAGE_POLICY_MIGRATED, true);
+        }
+    }
+
     if (settings.get_string(SETTINGS_TOP_PANEL_INDICATOR_ICON) !== "codex-ring") {
         return;
     }

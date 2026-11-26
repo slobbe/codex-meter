@@ -11,6 +11,7 @@ import {
     SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
     SETTINGS_BACKGROUND_REFRESH_INTERVAL_MINUTES,
     SETTINGS_BANKED_RESET_SKIP_MINUTES,
+    SETTINGS_BANKED_RESET_USAGE_POLICY_MIGRATED,
     SETTINGS_CREDENTIALS_PATH,
     SETTINGS_PERCENT_DISPLAY_MODE,
     SETTINGS_TOP_PANEL_DISPLAY_MODE,
@@ -196,6 +197,7 @@ function settingsFixture(values = {}) {
     const booleans = {
         [SETTINGS_AUTO_APPLY_BANKED_RESET]: false,
         [SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE]: false,
+        [SETTINGS_BANKED_RESET_USAGE_POLICY_MIGRATED]: true,
         [SETTINGS_USAGE_NOTIFICATIONS]: false,
         ...values,
     };
@@ -269,9 +271,11 @@ function settingsFixture(values = {}) {
         },
         get_boolean: (key) => booleans[key],
         set_boolean(key, value) {
+            if (!canWrite(key)) return false;
             this.writes.push({ key, value });
             booleans[key] = value;
             emit(`changed::${key}`);
+            return true;
         },
         connect(signal, callback) {
             const id = nextSignalId++;
@@ -730,6 +734,53 @@ test("display dropdown reads, writes, and tracks all display modes in order", ()
         settings.set_string(SETTINGS_TOP_PANEL_DISPLAY_MODE, mode);
         assert.equal(row.selected, index);
     }
+});
+
+test("migration requires a new low-quota opt-in once and preserves expiry redemption", () => {
+    for (const enabled of [false, true]) {
+        const settings = settingsFixture({
+            [SETTINGS_AUTO_APPLY_BANKED_RESET]: true,
+            [SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE]: enabled,
+            [SETTINGS_BANKED_RESET_USAGE_POLICY_MIGRATED]: false,
+        });
+        migrateSettings(settings);
+        assert.equal(settings.get_boolean(SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE), false);
+        assert.equal(settings.get_boolean(SETTINGS_AUTO_APPLY_BANKED_RESET), true);
+        assert.equal(settings.get_boolean(SETTINGS_BANKED_RESET_USAGE_POLICY_MIGRATED), true);
+        const writes = [...settings.writes];
+        migrateSettings(settings);
+        assert.deepEqual(settings.writes, writes);
+
+        settings.set_boolean(SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE, true);
+        migrateSettings(settings);
+        assert.equal(settings.get_boolean(SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE), true);
+    }
+});
+
+test("migration retries a rejected low-quota opt-out before marking it complete", () => {
+    const settings = settingsFixture({
+        [SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE]: true,
+        [SETTINGS_BANKED_RESET_USAGE_POLICY_MIGRATED]: false,
+    });
+    settings.rejected.add(SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE);
+    migrateSettings(settings);
+    assert.equal(settings.get_boolean(SETTINGS_BANKED_RESET_USAGE_POLICY_MIGRATED), false);
+    settings.rejected.clear();
+    migrateSettings(settings);
+    assert.equal(settings.get_boolean(SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE), false);
+    assert.equal(settings.get_boolean(SETTINGS_BANKED_RESET_USAGE_POLICY_MIGRATED), true);
+});
+
+test("preferences applies the low-quota opt-out before binding its switch", () => {
+    const settings = settingsFixture({
+        [SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE]: true,
+        [SETTINGS_BANKED_RESET_USAGE_POLICY_MIGRATED]: false,
+    });
+    createPreferencesPage(settings, metadata, windowFixture());
+    const binding = settings.bindings.find(
+        ({ key }) => key === SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
+    );
+    assert.equal(binding.row[binding.property], false);
 });
 
 test("migration converts only legacy ring selections and is idempotent", () => {

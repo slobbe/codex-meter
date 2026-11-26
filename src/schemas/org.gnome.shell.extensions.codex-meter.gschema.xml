@@ -55,6 +55,11 @@
     </key>
 
 
+    <key name="banked-reset-usage-policy-migrated" type="b">
+      <default>false</default>
+      <summary>Low-quota redemption policy migration completed</summary>
+      <description>Records the one-time reset of the low-quota redemption opt-in when its threshold and window rules changed.</description>
+    </key>
     <key name="banked-reset-skip-minutes" type="a{su}">
       <default>{}</default>
       <summary>Skip periods for banked resets</summary>

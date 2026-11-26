@@ -3,6 +3,8 @@ import { registerHooks } from "node:module";
 
 import test from "node:test";
 import {
+    SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE,
+    SETTINGS_BANKED_RESET_USAGE_POLICY_MIGRATED,
     SETTINGS_CREDENTIALS_PATH,
     SETTINGS_TOP_PANEL_DISPLAY_MODE,
     SETTINGS_TOP_PANEL_INDICATOR_ICON,
@@ -148,6 +150,8 @@ function fixture(t, credentialsPath = "/accounts/first/auth.json") {
     const values = new Map([
         [SETTINGS_CREDENTIALS_PATH, credentialsPath],
         [SETTINGS_USAGE_NOTIFICATIONS, false],
+        [SETTINGS_AUTO_APPLY_BANKED_RESET_ON_USAGE, false],
+        [SETTINGS_BANKED_RESET_USAGE_POLICY_MIGRATED, false],
         [SETTINGS_TOP_PANEL_DISPLAY_MODE, "bars"],
         [SETTINGS_TOP_PANEL_INDICATOR_ICON, "codex-ring"],
     ]);
@@ -187,6 +191,7 @@ function fixture(t, credentialsPath = "/accounts/first/auth.json") {
         for (const { signal, callback } of [...listeners.values()]) {
             if (signal === `changed::${key}`) callback(settings, key);
         }
+        return true;
     }
     const extension = new CodexMeterExtension();
     extension.uuid = "codex-meter@test";
