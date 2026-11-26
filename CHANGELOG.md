@@ -36,6 +36,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Fixed refreshes not timing out when a server sends data too slowly.
 - Fixed the refresh interval control accepting values above 30 minutes.
 - Disabled editing for preferences locked by system policy.
+- Fixed usage predictions using history dated after the current snapshot.
 - Fixed damaged history entries hiding valid usage history.
 - Fixed partial writes truncating new usage history entries.
 - Fixed pauses in GNOME Shell when processing large usage histories.

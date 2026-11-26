@@ -57,7 +57,7 @@ function predictQuota(history, snapshot, quota) {
             timestamp: entry.timestamp,
             usedPercent: Number(entry.usedPercent),
         }))
-        .filter((entry) => entry.timestamp >= startedAt);
+        .filter((entry) => entry.timestamp >= startedAt && entry.timestamp <= snapshot.fetchedAt);
 
     return predictWindow(quotaHistory, startedAt, quota.resetAt);
 }

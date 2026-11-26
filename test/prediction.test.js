@@ -164,6 +164,27 @@ test("preserves predictions for out-of-order history", () => {
     assert.deepEqual(history, originalHistory);
 });
 
+test("ignores history newer than the current snapshot", () => {
+    const snapshot = createSnapshot();
+    const history = [
+        {
+            timestamp: new Date((fetchedAt - 1_800) * 1000).toISOString(),
+            quotas: [{ id: "session", usedPercent: 4 }],
+        },
+        {
+            timestamp: new Date((fetchedAt + 120) * 1000).toISOString(),
+            quotas: [{ id: "session", usedPercent: 100 }],
+        },
+    ];
+    const originalHistory = structuredClone(history);
+
+    assert.deepEqual(predict(history, snapshot).quotas.session, {
+        estimatedLimitAt: fetchedAt + 12_600,
+        trend: "unsafe",
+    });
+    assert.deepEqual(history, originalHistory);
+});
+
 test("preserves equal-timestamp order and prefers the snapshot at the latest timestamp", () => {
     const history = [
         {
